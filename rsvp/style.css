@@ -10,19 +10,31 @@ body {
 
 .page {
   container: page / inline-size;
+  position: relative;
   overflow-x: clip;
+  /* how much bigger than the Figma frame to draw everything; the extra width only trims the gray beside the photo */
+  --zoom: 1.2;
 }
 
 /*
  * Everything inside the scene is laid out in design pixels (the 1728x2036
  * Figma frame) multiplied by --u, so the overlays stay locked to the photo.
+ * The flag uses the same scale but sits in the page's top-left corner.
  */
+.scene,
+.flag {
+  --u: calc(var(--zoom) * min(100cqw, 1728px) / 1728);
+}
+
+.flag {
+  z-index: 1;
+}
+
 .scene {
-  --u: calc(min(100cqw, 1728px) / 1728);
   position: relative;
   width: calc(1728 * var(--u));
   height: calc(2036 * var(--u));
-  margin-inline: auto;
+  margin-left: calc(50cqw - 864 * var(--u));
 }
 
 .abs {
@@ -314,8 +326,7 @@ body {
   }
 
   .flag {
-    left: calc(var(--view-cx) - 50cqw + 16px);
-    transition: left 0.8s ease;
+    --u: 0.9px;
   }
 
   .error,
@@ -328,7 +339,6 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .scene,
-  .flag,
   .error,
   .privacy,
   .credit {
