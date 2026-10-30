@@ -1,0 +1,342 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  /* matches the backdrop of the machine photo */
+  background: #cecbc4;
+}
+
+.page {
+  container: page / inline-size;
+  overflow-x: clip;
+}
+
+/*
+ * Everything inside the scene is laid out in design pixels (the 1728x2036
+ * Figma frame) multiplied by --u, so the overlays stay locked to the photo.
+ */
+.scene {
+  --u: calc(min(100cqw, 1728px) / 1728);
+  position: relative;
+  width: calc(1728 * var(--u));
+  height: calc(2036 * var(--u));
+  margin-inline: auto;
+}
+
+.abs {
+  position: absolute;
+  left: calc(var(--x) * var(--u));
+  top: calc(var(--y) * var(--u));
+  width: calc(var(--w) * var(--u));
+  height: calc(var(--h) * var(--u));
+  margin: 0;
+}
+
+:where(.abs) > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.label,
+.tagline,
+.prompt,
+.error,
+.privacy,
+.credit {
+  position: absolute;
+  left: calc(var(--x) * var(--u));
+  top: calc(var(--y) * var(--u));
+  translate: -50% 0;
+  margin: 0;
+  white-space: nowrap;
+  text-align: center;
+  color: #000;
+}
+
+.label,
+.prompt,
+.field,
+.ticket-text {
+  font-family: Handjet, sans-serif;
+  font-weight: 400;
+  font-variation-settings: "ELGR" 1, "ELSH" 2;
+}
+
+.label {
+  color: #273444;
+  font-size: calc(35 * var(--u));
+  letter-spacing: calc(2.1 * var(--u));
+}
+
+.tagline {
+  font-family: Doto, monospace;
+  font-weight: 900;
+  font-size: calc(18 * var(--u));
+  line-height: calc(42 * var(--u));
+  transform: skewX(-20deg) scaleY(0.94);
+}
+
+.reflection {
+  transform: scaleY(-1);
+  opacity: 0.5;
+}
+
+.panel {
+  border-radius: calc(8 * var(--u));
+  background: url("assets/grain.png") 0 0 / calc(64 * var(--u)) #edeef2;
+  image-rendering: pixelated;
+  box-shadow:
+    inset 0 calc(10 * var(--u)) calc(12 * var(--u)) rgb(0 0 0 / 0.25),
+    inset 0 calc(25 * var(--u)) calc(6.5 * var(--u)) rgb(0 0 0 / 0.4);
+  transform: skewX(-0.4deg);
+}
+
+.prompt {
+  font-size: calc(18 * var(--u));
+  line-height: calc(42 * var(--u));
+  transform: skewX(-1deg);
+}
+
+.form {
+  display: contents;
+}
+
+.field {
+  padding: 0 calc(3 * var(--u));
+  /* the design's 0.3px black line; browsers round that up to a full black pixel */
+  border: calc(1 * var(--u)) solid rgb(0 0 0 / 0.3);
+  border-radius: 0;
+  background: #94a0a6;
+  color: #000;
+  font-size: calc(18 * var(--u));
+  text-align: center;
+  outline: none;
+  appearance: none;
+}
+
+.field::placeholder {
+  color: #636363;
+  opacity: 1;
+}
+
+.field:focus {
+  background: #a1acb1;
+}
+
+.field:-webkit-autofill {
+  -webkit-box-shadow: inset 0 0 0 100px #94a0a6;
+  -webkit-text-fill-color: #000;
+}
+
+.trap {
+  position: absolute;
+  left: -9999px;
+}
+
+.submit {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.submit:disabled {
+  cursor: default;
+}
+
+.submit:focus-visible {
+  outline: calc(2 * var(--u)) solid #164c8d;
+  outline-offset: calc(4 * var(--u));
+}
+
+.submit-face {
+  position: absolute;
+  left: calc(0.58 * var(--u));
+  top: calc(1.41 * var(--u));
+  width: calc(63 * var(--u));
+  height: calc(28 * var(--u));
+  background: rgb(22 76 141 / 0.6);
+  box-shadow:
+    0 0 0 calc(3 * var(--u)) #000,
+    inset 0 0 0 calc(1 * var(--u)) rgb(0 0 0 / 0.25);
+  transform: skewX(-2deg);
+}
+
+.submit-check {
+  position: absolute;
+  left: calc(19.56 * var(--u));
+  top: calc(1.41 * var(--u));
+  width: calc(29 * var(--u));
+  height: calc(29 * var(--u));
+  transform: rotate(-5.92deg) skewX(-1.96deg);
+}
+
+.submit:active:not(:disabled) > * {
+  translate: 0 calc(1 * var(--u));
+}
+
+/* The slot is a fixed window with a slanted lip; the ticket slides down through it. */
+.slot {
+  clip-path: polygon(0 0, 37.6% 0, 53% 7.9%, 100% 7.9%, 100% 100%, 0 100%);
+}
+
+.ticket {
+  translate: 0 calc(-166.983 * var(--u));
+}
+
+.printed .ticket {
+  animation: print 5s linear forwards;
+}
+
+/* Keyframes from the Figma timeline, including the jerk back up at 40%. */
+@keyframes print {
+  0% { translate: 0 calc(-166.983 * var(--u)); }
+  29.96% { translate: 0 calc(-104.448 * var(--u)); }
+  40.02% { translate: 0 calc(-114.983 * var(--u)); }
+  69.9% { translate: 0 calc(-55.983 * var(--u)); }
+  79.98% { translate: 0 calc(-35.983 * var(--u)); }
+  90% { translate: 0 0; }
+  100% { translate: 0 calc(10.017 * var(--u)); }
+}
+
+.ticket-text {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  translate: -50% 0;
+}
+
+.ticket-text > span {
+  flex: none;
+  color: #000;
+  line-height: calc(42 * var(--u));
+  text-align: center;
+  white-space: nowrap;
+}
+
+.europe {
+  left: calc(33.58 * var(--u));
+  top: calc(52.5 * var(--u));
+  width: calc(17.631 * var(--u));
+  height: calc(91.15 * var(--u));
+}
+
+.europe > span {
+  width: calc(91.15 * var(--u));
+  height: calc(17.631 * var(--u));
+  font-size: calc(16 * var(--u));
+  rotate: -90deg;
+}
+
+.jan {
+  left: calc(55.58 * var(--u));
+  top: calc(85.48 * var(--u));
+  width: calc(16.348 * var(--u));
+  height: calc(24.756 * var(--u));
+}
+
+.jan > span {
+  width: calc(24.756 * var(--u));
+  height: calc(16.348 * var(--u));
+  font-size: calc(12 * var(--u));
+  rotate: -90deg;
+}
+
+.hack-club {
+  left: calc(45.58 * var(--u));
+  top: calc(31.73 * var(--u));
+  width: calc(91.15 * var(--u));
+  height: calc(17.631 * var(--u));
+}
+
+.hack-club > span {
+  width: calc(91.15 * var(--u));
+  height: calc(17.631 * var(--u));
+  font-size: calc(12 * var(--u));
+  rotate: 180deg;
+}
+
+.error,
+.privacy,
+.credit {
+  --x: 868;
+  font-family: Lora, serif;
+  font-weight: 700;
+  line-height: calc(42 * var(--u));
+}
+
+.error {
+  --y: 52;
+  font-size: calc(18 * var(--u));
+}
+
+.privacy {
+  --y: 1838;
+  font-size: calc(18 * var(--u));
+  text-decoration: underline;
+}
+
+.credit {
+  --y: 1878;
+  font-size: calc(14 * var(--u));
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/*
+ * Narrow screens: stop shrinking and zoom in on the form instead. --view-cx is
+ * the scene x that sits in the middle of the viewport; it centres the machine
+ * when there's room, otherwise keeps the screen and form in view. Once the
+ * ticket prints, it pans right far enough to show the ticket slot.
+ */
+@container page (width < 1000px) {
+  .scene {
+    --u: 0.9px;
+    --view-cx-rest: min(calc(864 * var(--u)), max(calc(717.5 * var(--u)), calc(505 * var(--u) + 50cqw)));
+    --view-cx: var(--view-cx-rest);
+    margin-left: calc(50cqw - var(--view-cx));
+    transition: margin-left 0.8s ease;
+  }
+
+  .scene.printed {
+    --view-cx: max(var(--view-cx-rest), calc(1216 * var(--u) - 50cqw));
+  }
+
+  .flag {
+    left: calc(var(--view-cx) - 50cqw + 16px);
+    transition: left 0.8s ease;
+  }
+
+  .error,
+  .privacy,
+  .credit {
+    left: var(--view-cx);
+    transition: left 0.8s ease;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene,
+  .flag,
+  .error,
+  .privacy,
+  .credit {
+    transition: none !important;
+  }
+
+  .printed .ticket {
+    animation: none;
+    translate: 0 calc(10.017 * var(--u));
+  }
+}

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>crossroads</title>
+  <meta name="description" content="hack across europe">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Doto:wght@900&family=Handjet:wght,ELGR,ELSH@400,1,2&family=Lora:wght@700&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <main class="page">
+    <!-- Positions are in design pixels from the 1728x2036 Figma frame; style.css scales them. -->
+    <div class="scene" id="scene">
+      <img class="abs" src="assets/machine.jpg" alt="" style="--x: 224; --y: 11; --w: 1288; --h: 1920">
+
+      <a class="flag abs" href="https://hackclub.com" style="--x: 257; --y: 32; --w: 176; --h: 62">
+        <img src="assets/flag.svg" alt="Hack Club">
+      </a>
+
+      <p class="error" id="error" role="alert" hidden>sorry, server trouble</p>
+
+      <img class="abs" src="assets/label-patch.svg" alt="" style="--x: 530; --y: 622; --w: 149; --h: 28">
+      <p class="label" style="--x: 611; --y: 615">Hack Club</p>
+
+      <img class="abs" src="assets/tray-patch.svg" alt="" style="--x: 529; --y: 1089; --w: 490; --h: 103">
+
+      <img class="screen abs" src="assets/screen.png" alt="" style="--x: 509.48; --y: 765; --w: 306.52; --h: 200.725">
+      <h1 class="abs" style="--x: 533; --y: 813; --w: 250; --h: 50">
+        <img src="assets/wordmark.png" alt="crossroads">
+      </h1>
+      <img class="reflection abs" src="assets/wordmark.png" alt="" style="--x: 534; --y: 851; --w: 250; --h: 50">
+      <p class="tagline" style="--x: 662.32; --y: 883.73">hack across europe</p>
+
+      <div class="panel abs" style="--x: 824.52; --y: 757; --w: 103; --h: 149"></div>
+      <p class="prompt" style="--x: 877.13; --y: 770">change your life</p>
+
+      <form class="form" id="rsvp" novalidate>
+        <input class="field abs" id="email" type="email" placeholder="your email" aria-label="your email" autocomplete="email" style="--x: 836; --y: 808; --w: 79; --h: 28">
+        <input class="field abs" id="name" type="text" placeholder="your name" aria-label="your name" autocomplete="name" style="--x: 836; --y: 840; --w: 79; --h: 28">
+        <input class="trap" id="website" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <button class="submit abs" type="submit" aria-label="submit" style="--x: 842.44; --y: 921; --w: 64.11; --h: 31.83">
+          <span class="submit-face"></span>
+          <img class="submit-check" src="assets/check.png" alt="">
+        </button>
+      </form>
+
+      <div class="slot abs" aria-hidden="true" style="--x: 1126.5; --y: 1055.5; --w: 74.5; --h: 183">
+        <div class="ticket abs" style="--x: -10.5; --y: 12.48; --w: 91.15; --h: 146.37">
+          <img class="abs" src="assets/ticket.png" alt="" style="--x: 14.7; --y: -1.11; --w: 62.584; --h: 149.385">
+          <span class="ticket-text europe"><span>EUROPE</span></span>
+          <span class="ticket-text jan"><span>JAN</span></span>
+          <span class="ticket-text hack-club"><span>HACK CLUB</span></span>
+        </div>
+      </div>
+      <p class="sr-only" id="status" role="status"></p>
+
+      <a class="privacy" href="https://hackclub.com/privacy-and-terms" target="_blank" rel="noopener">privacy and terms</a>
+      <p class="credit">made with love by guac and max</p>
+    </div>
+  </main>
+</body>
+</html>
