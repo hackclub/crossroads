@@ -1,0 +1,592 @@
+# Crossroads API routes
+
+Every route the backend serves, what it takes and what it returns. For how to call these from a frontend (same-origin setup, sign-in, error handling, typical flows), see [INTEGRATING.md](INTEGRATING.md). For how they're implemented, see [INTERNALS.md](INTERNALS.md).
+
+The code is the source of truth. Routes are registered in `backend/main.go`, `backend/auth/auth.go` (`Routes`) and `backend/api/api.go` (`Routes`). If this file and the code disagree, the code wins. Please fix this file.
+
+## Conventions
+
+- **Sign-in.** Everything under `/api` needs a signed-in session (the `crossroads_session` cookie). Without one: `401 {"error": "Sign in first."}`.
+- **Roles.** People are `participant`, `reviewer` or `admin`. `/api/review/*` needs reviewer or admin, `/api/admin/*` needs admin. Otherwise: `403 {"error": "You don't have access to this."}`. Admins can do everything reviewers can.
+- **Bodies** are JSON. Unknown fields are rejected with `400`, so typos don't fail silently. An empty body counts as `{}`.
+- **Errors** are always `{"error": "..."}`, written to be shown to people as is. Server errors are `500 {"error": "Something went wrong on our end."}`; the details only go to the server log.
+- **IDs in paths** that aren't numbers give `404 {"error": "That doesn't exist."}`. So does anything that belongs to someone else: participants can't tell someone else's project from a missing one.
+- **Units.** Time is always whole **seconds** (`approved_seconds`, `new_seconds`, …). Stamps are whole numbers. Timestamps are RFC 3339 strings with an offset. Money for stipends is in **cents**.
+- **PATCH** changes only the fields you send. For fields marked *nullable*, sending `null` clears them.
+
+Status codes used across the API:
+
+| Code | Meaning |
+|---|---|
+| 200 | OK, body is the result |
+| 201 | Created, body is the new thing |
+| 204 | Done, no body |
+| 400 | The request couldn't be read (bad JSON, unknown field) |
+| 401 | Not signed in |
+| 403 | Signed in but not allowed (role, verification, flagged by Hackatime, own submission) |
+| 404 | Doesn't exist, or isn't yours |
+| 409 | Conflicts with the current state (already pending, sold out, already reviewed, …) |
+| 422 | Understood, but invalid or not possible (missing fields, not enough stamps, Hackatime problems) |
+| 502 | An outside service (Hack Club Auth) couldn't be reached |
+
+## Shapes
+
+TypeScript definitions of everything the API returns. Copy them into the frontend.
+
+```ts
+type Role = "participant" | "reviewer" | "admin";
+type SubmissionStatus = "pending" | "approved" | "rejected";
+type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
+type Effect = "none" | "priority_review";
+type ShopItemKind = "ticket" | "physical" | "stipend";
+type OrderStatus = "pending" | "fulfilled" | "cancelled";
+
+interface Me {
+  id: number;
+  name: string;
+  email: string;
+  slack_id: string | null;
+  role: Role;
+  stamps: number; // current balance; can be negative after an admin clawback
+  verification_status: string; // "needs_submission" | "pending" | "verified" | "ineligible"
+  ysws_eligible: boolean;
+}
+
+interface Project {
+  id: number;
+  name: string;
+  description: string;
+  repo_url: string | null;
+  demo_url: string | null;
+  screenshot_url: string | null;
+  hackatime_projects: string[]; // linked Hackatime project names, sorted
+  approved_seconds: number;     // total approved across its submissions
+  created_at: string;
+  updated_at: string;
+  // Only on GET /api/projects/{id}, and only if it has Hackatime projects linked:
+  hackatime_seconds?: number;   // its Hackatime time since the event started, right now
+  unsubmitted_seconds?: number; // how much a submission right now would claim
+  hackatime_error?: string;     // set instead of the two above if Hackatime couldn't be asked
+  submissions: Submission[];    // newest first
+}
+
+interface Submission {
+  id: number;
+  status: SubmissionStatus;
+  hackatime_projects: string[]; // what it counted, as of submitting
+  hackatime_seconds: number;    // the project's Hackatime total when submitted
+  new_seconds: number;          // what this submission claims
+  approved_seconds: number | null; // what the reviewer accepted (approved only)
+  feedback: string | null;      // from the reviewer
+  submitted_at: string;
+  reviewed_at: string | null;
+  // Reviewer routes only:
+  internal_notes?: string | null;
+  reviewer_id?: number | null;
+}
+
+interface HackatimeProject {
+  name: string;
+  seconds: number;          // since the event started
+  project_id: number | null; // the Crossroads project it counts toward, if any
+}
+
+interface SpecialStampType {
+  id: number;
+  name: string;
+  description: string;
+  image_url: string | null;
+  rarity: Rarity;
+  effect: Effect; // "none" means it's only a collectible
+}
+
+interface SpecialStamp {
+  id: number;
+  type: SpecialStampType;
+  box_id: number | null;        // null if an admin gave it
+  submission_id: number | null; // set once it's been used
+  acquired_at: string;
+}
+
+interface Box {
+  id: number;
+  box_type_id: number;
+  milestone_id: number | null;      // null if an admin gave it
+  granted_at: string;
+  opened_at: string | null;         // null until opened
+  special_stamp_id: number | null;  // what it dropped, once opened
+}
+
+interface BoxType {
+  id: number;
+  name: string;
+  description: string;
+  image_url: string | null;
+  // What can drop right now. Types that have run out are left out, so the
+  // chances (0 to 1) always add up to 1.
+  odds: { special_stamp_type: SpecialStampType; chance: number }[];
+}
+
+interface ShopItem {
+  id: number;
+  kind: ShopItemKind;
+  name: string;
+  description: string;
+  image_url: string | null;
+  price: number;                // stamps
+  stipend_cents: number | null; // stipends only
+  stock: number | null;         // left in stock; null is unlimited
+  max_per_user: number | null;  // null is unlimited; tickets are always 1
+  active: boolean;
+  bought: number;               // how many the signed-in person has (0 on admin routes)
+}
+
+interface Address {
+  name: string;
+  line_1: string;
+  line_2: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+}
+
+interface Order {
+  id: number;
+  item: ShopItem;   // the item as it is now; price below is what was paid
+  price: number;
+  status: OrderStatus;
+  shipping_address: Address | null; // physical items only
+  created_at: string;
+  updated_at: string;
+}
+```
+
+Reviewer and admin shapes are listed with their routes below.
+
+## Route index
+
+| Method | Path | Who | What |
+|---|---|---|---|
+| GET | `/healthz` | anyone | Is the server up and the database reachable |
+| GET | `/auth/login?next=/path` | anyone | Start signing in (full-page navigation) |
+| GET | `/auth/hcacallback` | Hack Club Auth | Where sign-in comes back to |
+| POST | `/auth/logout` | anyone | Sign out |
+| GET | `/api/me` | signed in | The signed-in person |
+| GET | `/api/hackatime/projects` | signed in | Their Hackatime projects, for linking |
+| GET | `/api/projects` | signed in | Their projects |
+| POST | `/api/projects` | signed in | Create a project |
+| GET | `/api/projects/{id}` | owner | One project, with live Hackatime numbers |
+| PATCH | `/api/projects/{id}` | owner | Edit a project |
+| DELETE | `/api/projects/{id}` | owner | Delete a never-submitted project |
+| POST | `/api/projects/{id}/submissions` | owner | Submit for review |
+| GET | `/api/boxes` | signed in | Their boxes |
+| POST | `/api/boxes/{id}/open` | owner | Open a box |
+| GET | `/api/box-types` | signed in | Box types and their current odds |
+| GET | `/api/special-stamps` | signed in | Their special stamps |
+| GET | `/api/shop/items` | signed in | What's in the shop |
+| POST | `/api/shop/items/{id}/orders` | signed in, verified | Buy something |
+| GET | `/api/orders` | signed in | Their orders |
+| GET | `/api/review/queue` | reviewer | Pending submissions |
+| GET | `/api/review/submissions/{id}` | reviewer | Everything about one submission |
+| POST | `/api/review/submissions/{id}` | reviewer | Approve or reject |
+| GET | `/api/admin/users?q=` | admin | Find people |
+| PATCH | `/api/admin/users/{id}` | admin | Change someone's role |
+| POST | `/api/admin/users/{id}/stamp-adjustments` | admin | Add or take away stamps |
+| POST | `/api/admin/users/{id}/boxes` | admin | Give someone a box |
+| POST | `/api/admin/users/{id}/special-stamps` | admin | Give someone a special stamp |
+| GET | `/api/admin/special-stamp-types` | admin | Stamp types with supply numbers |
+| POST | `/api/admin/special-stamp-types` | admin | Create a stamp type |
+| PATCH | `/api/admin/special-stamp-types/{id}` | admin | Edit a stamp type, including its supply cap |
+| GET | `/api/admin/box-types` | admin | Box types with their full drop tables |
+| POST | `/api/admin/box-types` | admin | Create a box type |
+| PATCH | `/api/admin/box-types/{id}` | admin | Edit a box type |
+| PUT | `/api/admin/box-types/{id}/drops` | admin | Replace a box type's drop table |
+| GET | `/api/admin/milestones` | admin | Milestones |
+| POST | `/api/admin/milestones` | admin | Create a milestone |
+| GET | `/api/admin/shop-items` | admin | Every shop item, including inactive |
+| POST | `/api/admin/shop-items` | admin | Create a shop item |
+| PATCH | `/api/admin/shop-items/{id}` | admin | Edit a shop item |
+| GET | `/api/admin/orders?status=` | admin | Orders to fulfill |
+| PATCH | `/api/admin/orders/{id}` | admin | Fulfill or cancel an order |
+
+---
+
+## Health
+
+### `GET /healthz`
+
+`204` if the server is up and can reach Postgres, `503` (plain text) if it can't reach the database. Not under `/api`, so no sign-in needed.
+
+## Signing in (`/auth`)
+
+These are browser routes, not JSON APIs: navigate to them, don't `fetch` them. Errors here are plain text pages.
+
+### `GET /auth/login?next=/path`
+
+Redirects (`302`) to Hack Club Auth. `next` is where to land afterwards, and has to be a path on this site (`/shop?tab=stickers` works; `https://…` or `//…` fall back to `/`). Sets a short-lived `crossroads_oauth_state` cookie (10 minutes) to guard against forged sign-ins.
+
+### `GET /auth/hcacallback`
+
+Hack Club Auth sends people here with `?code=…&state=…`. The backend checks the state, trades the code for the person's identity, creates or updates their user, starts a 30-day session (the `crossroads_session` cookie, `HttpOnly`, `SameSite=Lax`) and redirects (`302`) to `next`.
+
+Name, email, Slack ID, birthday, phone, primary mailing address, verification status and YSWS eligibility are refreshed from Hack Club Auth on every sign-in.
+
+| Status | When |
+|---|---|
+| 302 | Signed in, redirecting to `next` |
+| 400 | State missing, expired or forged ("Sign-in timed out. Please try again.") |
+| 403 | They cancelled on Hack Club Auth's side |
+| 502 | Hack Club Auth couldn't be reached or rejected the code |
+
+### `POST /auth/logout`
+
+Ends the session and clears the cookie. `204`. Safe to call when already signed out.
+
+## The signed-in person
+
+### `GET /api/me`
+
+`200` → `Me`. Use it to find out whether someone is signed in: `401` means they aren't.
+
+## Hackatime
+
+### `GET /api/hackatime/projects`
+
+`200` → `HackatimeProject[]`: every Hackatime project they've worked on since the event started (Nov 3 2026, midnight UTC), with which Crossroads project each counts toward. Use it to build the project-linking picker.
+
+| Status | When |
+|---|---|
+| 422 | No Slack linked to their Hack Club account; no Hackatime account for their Slack; their Hackatime stats are private; or Hackatime couldn't be reached. The `error` says which and what to do. |
+
+## Projects
+
+### `GET /api/projects`
+
+`200` → `Project[]`, newest first, each with all its submissions. No live Hackatime numbers (use `GET /api/projects/{id}` for those).
+
+### `POST /api/projects`
+
+```json
+{
+  "name": "Crossroads Racer",
+  "description": "A racing game",
+  "repo_url": "https://github.com/heidi/racer",
+  "demo_url": "https://heidi.github.io/racer",
+  "screenshot_url": "https://cdn.example.com/racer.png",
+  "hackatime_projects": ["racer-client", "racer-server"]
+}
+```
+
+Only `name` is required. Everything else can be filled in later, but submitting needs it all. URLs have to be `http(s)://`. Hackatime project names are trimmed, deduplicated and sorted; at most 20, no commas.
+
+`201` → `Project`.
+
+| Status | When |
+|---|---|
+| 422 | Missing or too-long name (100 characters max), a bad URL, a description over 5,000 characters, or bad Hackatime project names |
+| 409 | One of the Hackatime projects already counts toward another of their projects. Nothing is created. |
+
+### `GET /api/projects/{id}`
+
+`200` → `Project`, including `hackatime_seconds` and `unsubmitted_seconds` (or `hackatime_error`) if it has Hackatime projects linked. `unsubmitted_seconds` is exactly what submitting now would claim, after both double-counting limits (see INTERNALS.md). Asking Hackatime makes this slower than the list.
+
+`404` if it's not theirs.
+
+### `PATCH /api/projects/{id}`
+
+Any of the fields from `POST`. Left-out fields don't change. A URL set to `""` is cleared. `hackatime_projects` replaces the whole list.
+
+`200` → `Project`.
+
+| Status | When |
+|---|---|
+| 409 | It's waiting for review ("can't be changed until that's done") |
+| 409 | Trying to unlink a Hackatime project that's already been paid out on this project |
+| 409 | A new Hackatime project already counts toward another of their projects |
+| 422 | Same validation as `POST` |
+
+### `DELETE /api/projects/{id}`
+
+`204`. Only for projects that have never been submitted; otherwise `409`.
+
+### `POST /api/projects/{id}/submissions`
+
+Sends the project for review. The body is optional:
+
+```json
+{ "special_stamp_id": 12 }
+```
+
+to use a special stamp on it (one with an effect, like priority review, that hasn't been used yet).
+
+The submission claims the project's Hackatime time that nobody has claimed yet. See INTERNALS.md, "Hours accounting".
+
+`201` → `Submission` (status `pending`).
+
+| Status | When |
+|---|---|
+| 422 | Missing a description, repo link, demo link, screenshot or Hackatime project. The `error` lists them all. |
+| 422 | A Hackatime problem (no Slack, no account, private stats, unreachable) |
+| 403 | Hackatime has flagged them as a cheater |
+| 409 | It's already waiting for review |
+| 409 | Their Hackatime links changed mid-request; try again |
+| 422 | No new time since its last approval, or its new time was already claimed by another of their projects (the two cases have different messages) |
+| 404 | The special stamp isn't theirs |
+| 409 | The special stamp has already been used |
+| 422 | The special stamp has no effect (it's only a collectible) |
+
+## Boxes and special stamps
+
+### `GET /api/boxes`
+
+`200` → `Box[]`, newest first. Unopened boxes have `opened_at: null`.
+
+People get boxes when their approved hours pass a milestone (granted during review), or from an admin.
+
+### `POST /api/boxes/{id}/open`
+
+Rolls a special stamp from the box's type, among the stamp types that still have supply left, weighted by the drop table. `200` → `SpecialStamp` (what dropped).
+
+| Status | When |
+|---|---|
+| 404 | Not their box |
+| 409 | Already opened |
+| 409 | Nothing left to drop (shouldn't happen: admins can't leave a box without an unlimited stamp) |
+
+### `GET /api/box-types`
+
+`200` → `BoxType[]` with live odds. Show these to people before they open anything.
+
+### `GET /api/special-stamps`
+
+`200` → `SpecialStamp[]`, newest first. Ones they can use on a submission have `type.effect !== "none"` and `submission_id === null`.
+
+## Shop
+
+### `GET /api/shop/items`
+
+`200` → `ShopItem[]`: active items only, cheapest first, each with how many they've `bought`. The event ticket is the item with `kind: "ticket"`.
+
+### `POST /api/shop/items/{id}/orders`
+
+Buys one. For physical items, the body can give a shipping address:
+
+```json
+{
+  "shipping_address": {
+    "name": "Heidi Trashworth", "line_1": "15 Falls Rd", "line_2": "",
+    "city": "Shelburne", "state": "VT", "postal_code": "05482", "country": "US"
+  }
+}
+```
+
+If it's left out, the address they gave Hack Club Auth is used. Name, `line_1`, city and country are required. Tickets and stipends take no body.
+
+Buying needs a verified identity that Hack Club Auth says is eligible for YSWS programs. If what was saved at sign-in doesn't say that, the backend asks Hack Club Auth again first.
+
+`201` → `Order` (status `pending`). Their stamps go down by `price` straight away.
+
+| Status | When |
+|---|---|
+| 403 | Not verified yet, verification still pending, or not eligible. The `error` says which. |
+| 502 | Hack Club Auth couldn't be reached to check |
+| 404 | No such item, or it's inactive |
+| 422 | A physical item with no address (and none on file), an incomplete address, or an address on a non-physical item |
+| 409 | Already have a ticket, already have `max_per_user` of it, or sold out |
+| 422 | Not enough stamps ("That costs 1800 stamps and you have 1500, so you need 300 more.") |
+
+### `GET /api/orders`
+
+`200` → `Order[]`, newest first. Their ticket is an order whose `item.kind` is `"ticket"` and whose status isn't `"cancelled"`.
+
+## Reviewing (`/api/review`, reviewers and admins)
+
+### `GET /api/review/queue`
+
+`200` → pending submissions, with priority-review ones first, then oldest first:
+
+```ts
+interface QueueItem {
+  id: number;            // submission ID
+  project_id: number;
+  project_name: string;
+  user_id: number;
+  user_name: string;
+  slack_id: string | null;
+  hackatime_projects: string[];
+  new_seconds: number;
+  submitted_at: string;
+  priority: boolean;     // a priority review stamp was used on it
+}
+```
+
+### `GET /api/review/submissions/{id}`
+
+`200` →
+
+```ts
+interface ReviewDetail {
+  submission: Submission;  // with internal_notes and reviewer_id
+  project: Project;        // its submissions include internal_notes and reviewer_id too
+  user: {
+    id: number; name: string; email: string; slack_id: string | null;
+    verification_status: string; ysws_eligible: boolean;
+  };
+  // Other projects, anyone's, with the same repo or demo link (ignoring
+  // http/https, www., case, trailing slashes and .git): copied projects, or
+  // one project split up to be paid twice.
+  projects_sharing_links: {
+    id: number; name: string; repo_url: string | null; demo_url: string | null;
+    user_id: number; user_name: string;
+  }[];
+  // Fresh from Hackatime, for the submission's Hackatime projects:
+  hackatime: { seconds: number; projects: { name: string; seconds: number; project_id: null }[]; convicted: boolean } | null;
+  hackatime_error?: string; // set when hackatime is null
+}
+```
+
+`404` if there's no such submission.
+
+### `POST /api/review/submissions/{id}`
+
+```json
+{
+  "status": "approved",
+  "approved_seconds": 7200,
+  "feedback": "Great project! Only counted the first two hours.",
+  "internal_notes": "third hour was idle time"
+}
+```
+
+- `status`: `"approved"` or `"rejected"`.
+- `approved_seconds`: approvals only, between 0 and the submission's `new_seconds`. Defaults to all of `new_seconds`.
+- `feedback`: shown to the participant. Required to reject.
+- `internal_notes`: reviewers only.
+
+Approving pays stamps for the approved time and grants a box for every milestone the person's approved total has now reached, all at once.
+
+`200` →
+
+```ts
+interface ReviewResult {
+  submission: Submission; // with internal_notes and reviewer_id
+  stamps_paid: number;
+  boxes_granted: Box[];
+}
+```
+
+| Status | When |
+|---|---|
+| 422 | Bad `status`, rejecting without feedback, `approved_seconds` on a rejection or out of range, feedback or notes over 5,000 characters |
+| 404 | No such submission |
+| 403 | It's the reviewer's own project |
+| 409 | It's already been reviewed |
+
+## Admin (`/api/admin`, admins only)
+
+Admin user shape, used by several routes below:
+
+```ts
+interface AdminUser {
+  id: number; name: string; email: string; slack_id: string | null;
+  role: Role; stamps: number; verification_status: string; ysws_eligible: boolean;
+}
+```
+
+### People
+
+**`GET /api/admin/users?q=heidi`** → `200 AdminUser[]`. Matches part of a name or email, or a whole Slack ID. Without `q`, the newest 50 people.
+
+**`PATCH /api/admin/users/{id}`** with `{"role": "reviewer"}` → `200 AdminUser`. `422` for an unknown role, or for an admin removing their own admin role. `404` for no such user. Role changes apply on the person's next request.
+
+**`POST /api/admin/users/{id}/stamp-adjustments`** with `{"amount": -300, "note": "clawback: copied project"}` → `201 AdminUser` (with their new balance). The amount can be negative, and can take them below zero. A note is required (1,000 characters max). `422` for a zero amount or no note, `404` for no such user.
+
+**`POST /api/admin/users/{id}/boxes`** with `{"box_type_id": 1}` → `201 Box`. `404` for no such user, `422` for no such box type.
+
+**`POST /api/admin/users/{id}/special-stamps`** with `{"special_stamp_type_id": 1}` → `201 SpecialStamp`. Comes out of the type's supply: `409` if it's run out. `404` for no such user, `422` for no such type.
+
+### Special stamp types
+
+```ts
+interface AdminSpecialStampType extends SpecialStampType {
+  supply_cap: number | null; // null is unlimited
+  issued_count: number;      // how many exist
+  applied_count: number;     // how many have been used on submissions (list only; 0 elsewhere)
+}
+```
+
+**`GET /api/admin/special-stamp-types`** → `200 AdminSpecialStampType[]`.
+
+**`POST /api/admin/special-stamp-types`**:
+
+```json
+{ "name": "Express", "description": "Skip the line", "image_url": null,
+  "rarity": "rare", "effect": "priority_review", "supply_cap": 25 }
+```
+
+`name` and `rarity` are required. `effect` defaults to `"none"`. `supply_cap` is *nullable* (null or left out = unlimited). → `201 AdminSpecialStampType`. `422` for invalid fields.
+
+**`PATCH /api/admin/special-stamp-types/{id}`**: any of the same fields. → `200`. Lowering `supply_cap` below `issued_count` just stops further drops; nobody loses theirs. `409` if capping it would leave a box type with no unlimited stamp type, since that box could then come up empty. `404` for no such type.
+
+### Box types
+
+```ts
+interface AdminBoxType {
+  id: number; name: string; description: string; image_url: string | null;
+  drops: { special_stamp_type_id: number; weight: number }[]; // including types that have run out
+}
+```
+
+**`GET /api/admin/box-types`** → `200 AdminBoxType[]`.
+
+**`POST /api/admin/box-types`** with `{"name": "Starter box", "description": "", "image_url": null}` → `201 AdminBoxType` with no drops. Set its drops before handing any out.
+
+**`PATCH /api/admin/box-types/{id}`**: name, description, image_url (*nullable*). → `200`.
+
+**`PUT /api/admin/box-types/{id}/drops`** replaces the whole drop table:
+
+```json
+[ { "special_stamp_type_id": 1, "weight": 90 },
+  { "special_stamp_type_id": 2, "weight": 10 } ]
+```
+
+A type's chance is its weight over the total weight of types that still have supply. → `200 AdminBoxType`. `422` if a weight isn't above 0, a type is listed twice or doesn't exist, or none of the types is unlimited.
+
+### Milestones
+
+```ts
+interface Milestone { id: number; name: string; approved_seconds: number; box_type_id: number }
+```
+
+**`GET /api/admin/milestones`** → `200 Milestone[]`, lowest first.
+
+**`POST /api/admin/milestones`** with `{"name": "First 10 hours", "approved_seconds": 36000, "box_type_id": 1}` → `201 {"milestone": Milestone, "boxes_granted": number}`. Everyone already past it gets the box straight away; `boxes_granted` says how many did. `409` if there's already a milestone at that many seconds, `422` for a bad name, non-positive seconds or no such box type.
+
+### Shop items
+
+**`GET /api/admin/shop-items`** → `200 ShopItem[]`, including inactive ones.
+
+**`POST /api/admin/shop-items`**:
+
+```json
+{ "kind": "ticket", "name": "Crossroads ticket", "description": "", "image_url": null,
+  "price": 1800, "stipend_cents": null, "stock": null, "max_per_user": 1, "active": true }
+```
+
+`kind`, `name` and `price` are required. Stipends need `stipend_cents`, and nothing else can have it. Tickets are always one per person (`max_per_user` defaults to 1 for them, and anything else is rejected). `stock`, `max_per_user` and `image_url` are *nullable* (null = unlimited / none). `active` defaults to true. → `201 ShopItem`.
+
+**`PATCH /api/admin/shop-items/{id}`**: any of the same fields. → `200`. Price changes don't affect existing orders. Set `active: false` to take something out of the shop.
+
+### Orders
+
+```ts
+interface AdminOrder extends Order {
+  user: AdminUser;
+  notes: string | null; // admin notes
+}
+```
+
+**`GET /api/admin/orders?status=pending`** → `200 AdminOrder[]`, oldest first. `status` is optional.
+
+**`PATCH /api/admin/orders/{id}`** with `{"status": "fulfilled" | "cancelled", "notes": "shipped 11/10"}` → `200 Order`. Only pending orders can change (`409` otherwise). Cancelling refunds the stamps and puts the item back in stock. Orders can also be fulfilled by ticking **Fulfilled** in the Shop Orders table in Airtable (see INTERNALS.md, "Airtable sync").
