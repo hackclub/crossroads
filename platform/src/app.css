@@ -10,8 +10,8 @@
 	--deepest: #2d2929;
 	--light: #d9d9d9; /* devlog cards, bar track */
 	--text: #fff;
-	--muted: rgba(255, 255, 255, 0.68);
-	--faint: rgba(255, 255, 255, 0.4);
+	--muted: rgba(255, 255, 255, 0.8); /* ≥4.5:1 on --body */
+	--faint: rgba(255, 255, 255, 0.72); /* placeholders, ≥4.5:1 on --body */
 	--ink: #000; /* text on light cards */
 
 	/* Status, borrowed from the film strip's light leak. */
@@ -173,7 +173,7 @@ img { max-width: 100%; }
 	border-radius: var(--radius);
 	text-decoration: none;
 }
-.project-row:hover { background: #979797; }
+.project-row:hover { background: #7a7a7a; } /* darker, so white text keeps its contrast */
 .project-row .name { font-size: clamp(30px, 2.8vw, 48px); line-height: 1.05; }
 .project-row .meta { font-size: 24px; }
 
@@ -218,7 +218,8 @@ img { max-width: 100%; }
 .btn.ghost { background: transparent; box-shadow: inset 0 0 0 2px var(--body); }
 .btn.danger { background: transparent; color: var(--danger); box-shadow: inset 0 0 0 2px currentColor; }
 .btn.small { padding: 3px 14px; font-size: 22px; }
-.btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+/* Solid colours instead of opacity: disabled labels often carry information ("Need 77 more stamps"). */
+.btn:disabled { background: var(--deep); color: var(--muted); box-shadow: none; cursor: not-allowed; filter: none; }
 
 .link-btn {
 	padding: 0;
@@ -305,8 +306,8 @@ img { max-width: 100%; }
 
 .hours-bar { position: relative; height: 23px; border-radius: 24px; background: var(--light); }
 .hours-bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 24px; }
-.hours-bar .unsubmitted { background: var(--body); }
-.hours-bar .pending { background: var(--deep); }
+.hours-bar .unshipped { background: var(--body); }
+.hours-bar .review { background: var(--deep); }
 .hours-bar .approved { background: var(--deepest); }
 .hours-ticks { position: relative; height: 26px; font-size: 22px; }
 .hours-ticks span { position: absolute; bottom: 0; transform: translateX(-50%); white-space: nowrap; }
@@ -340,9 +341,11 @@ input, select, textarea {
 }
 input::placeholder, textarea::placeholder { color: var(--faint); }
 textarea { min-height: 140px; resize: vertical; }
-input:focus-visible, select:focus-visible, textarea:focus-visible, .btn:focus-visible, .chip:focus-visible, .link-btn:focus-visible, .tabs button:focus-visible, a:focus-visible {
-	outline: 3px solid var(--info);
+/* White ring with a black gap: visible on black, the warm greys and #8c8c8c alike. */
+:focus-visible {
+	outline: 3px solid #fff;
 	outline-offset: 2px;
+	box-shadow: 0 0 0 2px #000;
 }
 input[type='checkbox'], input[type='radio'] { width: 20px; height: 20px; margin: 0; padding: 0; accent-color: var(--head); flex: none; }
 
@@ -355,7 +358,7 @@ input[type='checkbox'], input[type='radio'] { width: 20px; height: 20px; margin:
 	background: var(--head);
 	font-size: 30px;
 }
-.field em { font-style: normal; color: rgba(255, 255, 255, 0.8); font-size: 20px; align-self: center; }
+.field em { font-style: normal; color: var(--text); font-size: 20px; align-self: center; padding: 0 10px; background: var(--deep); border-radius: 999px; }
 .field input, .field select, .field textarea { border-radius: 0; padding: 14px 24px; }
 .field small, fieldset > small { color: var(--muted); font-size: 21px; padding: 6px 4px 0; }
 /* Compact fields (admin, review): rounded, smaller label bar. */

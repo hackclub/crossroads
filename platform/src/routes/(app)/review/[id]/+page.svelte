@@ -29,7 +29,15 @@
 		formError = '';
 		busy = true;
 		const body = { status: decision, feedback: feedback || undefined, internal_notes: notes || undefined };
-		if (decision === 'approved') body.approved_seconds = Math.min(Math.round(approvedHours * 3600), d.submission.new_seconds);
+		if (decision === 'approved') {
+			body.approved_seconds = Math.min(Math.round(approvedHours * 3600), d.submission.new_seconds);
+			// Cut time is gone for good, so make sure it's on purpose.
+			const cut = d.submission.new_seconds - body.approved_seconds;
+			if (cut > 0 && !confirm(`You're approving ${hours(body.approved_seconds)} of the ${hours(d.submission.new_seconds)} claimed. The ${hours(cut)} you cut can't be shipped again. Approve?`)) {
+				busy = false;
+				return;
+			}
+		}
 		try {
 			result = await api('POST', `/review/submissions/${d.submission.id}`, body);
 			await load();
@@ -69,7 +77,7 @@
 		{#if !d.user.ysws_eligible}<p class="callout info small">Identity: {d.user.verification_status}, not YSWS-eligible yet. They can still ship, but can't buy until verified.</p>{/if}
 
 		{#if result}
-			<p class="callout good">Saved. Paid {result.stamps_paid} stamps{result.boxes_granted.length ? ` and granted ${result.boxes_granted.length} box(es)` : ''}.</p>
+			<p class="callout good" role="status">Saved. Paid {result.stamps_paid} stamps{result.boxes_granted.length ? ` and granted ${result.boxes_granted.length} box(es)` : ''}.</p>
 		{/if}
 
 		<div class="grid-2">

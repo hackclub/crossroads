@@ -39,13 +39,13 @@ The reward is a train journey across Europe with other teen builders, not a priz
 ## Brand Commitments
 
 - Hack Club, written exactly that way.
-- The dark film-strip / train-ticket look from the `crossroads-draft` Figma file and the landing page in `main page/`, with the Hack Club flag pinned top left.
+- The dark film-strip / train-ticket look from the `crossroads-draft` Figma file and the landing page (`platform/src/routes/+page.svelte`), with the Hack Club flag pinned top left.
 - Names fixed: Crossroads, stamps, boxes, special stamps.
 
 ## Evidence on Hand
 
 - Figma `crossroads-draft` (SLiFzmgzcIoQKyTeTvvt5T): landing page drafts, and platform frames **home**, **project edit**, **project main**.
-- Landing page: `main page/`. RSVP page: `rsvp/`.
+- Landing page: `platform/src/routes/+page.svelte` (the `/` route; assets in `platform/src/lib/assets/landing/`). RSVP page: `rsvp/`.
 - No real participant projects, testimonials or photos yet; don't invent them.
 
 ## Product Principles

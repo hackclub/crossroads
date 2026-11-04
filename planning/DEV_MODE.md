@@ -67,7 +67,7 @@ Removing dev mode means deleting or reverting each of these. The ✂ items exist
 **Frontend** (`platform/`)
 - ✂ `src/lib/DevPanel.svelte`, and its use in `src/routes/(app)/+layout.svelte`.
 - `src/lib/api.js`: `isDevMode`, `devLoginUrl` and `devHackatime`.
-- `src/routes/+page.svelte`: the Dev sign-in form.
+- `src/routes/signin/+page.svelte`: the Dev sign-in form.
 - `src/app.css`: the `.devpanel` styles.
 - `vite.config.js`: the `/dev` proxy entry. Keep `/api`, `/auth` and `/uploads`.
 
@@ -82,7 +82,7 @@ Removing dev mode means deleting or reverting each of these. The ✂ items exist
 3. **Deploy on one origin.** The frontend and backend must share a domain, with `/api` and `/auth` routed to the backend (INTEGRATING.md, section 1). The frontend uses `@sveltejs/adapter-auto` and renders only in the browser (`ssr = false`). A static adapter with an SPA fallback, or a Node adapter, behind the same proxy is the simplest setup. The backend has no Dockerfile yet.
 4. **Airtable.** Set `AIRTABLE_TOKEN` and `AIRTABLE_BASE_ID` on exactly one production instance.
 5. **Launch data.** As an admin: special stamp types, box types and drops, milestones, shop items with the 1,800-stamp ticket. Set the first admin in the database (DEVELOPMENT.md).
-6. **The real design.** Restyle the pages from the Figma frames (home, project edit, project main) and the landing page in `main page/`. Wire the landing page's "Get Started" buttons to `/auth/login`.
+6. **The real design.** The app pages follow the Figma frames (home, project edit, project main) in a temporary form; finish them with the designer. The landing page is now the platform's `/` route, and its "Get Started" buttons go to `/signin`. Remove the Dev sign-in panel from `/signin` along with dev mode.
 7. **Gaps the frontend works around today:**
    - screenshot uploads are stored on the backend's own disk (`UPLOADS_DIR`). In production that folder has to survive redeploys, and only works with one backend instance; otherwise move storage to S3 or the Hack Club CDN (`backend/uploads/`). Set `PUBLIC_URL` to the site's https address so upload URLs are right.
    - participants can't see milestones ("next box at 30h")
@@ -116,9 +116,9 @@ planning/INTEGRATING.md, planning/INTERNALS.md and PRODUCT.md first.
    sign-in. Confirm the birthday and address are saved.
 4. Restyle the platform from the crossroads-draft Figma file (fileKey
    SLiFzmgzcIoQKyTeTvvt5T: frames "home", "project edit", "project main") and the
-   landing page in "main page/". Use the Figma MCP's design context rather than
-   screenshots. Keep every page's behavior and copy. Point the landing page's
-   "Get Started" buttons at /auth/login.
+   landing page at platform/src/routes/+page.svelte. Use the Figma MCP's design context rather than
+   screenshots. Keep every page's behavior and copy. The landing page's
+   "Get Started" buttons already go to /signin, which starts Hack Club Auth.
 5. Propose a deployment that serves the frontend and backend on one origin (a
    Dockerfile for the backend, a frontend adapter, and the reverse-proxy rules) and
    wait for my go-ahead before creating anything outside the repository.

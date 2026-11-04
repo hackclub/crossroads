@@ -12,6 +12,8 @@
 	let adjust = $state({ amount: 0, note: '' });
 	let boxTypeId = $state('');
 	let stampTypeId = $state('');
+	// Role changes are drafted here and only saved with the Save button.
+	let roleDraft = $state({}); // user id → role
 
 	async function search(e) {
 		e?.preventDefault();
@@ -39,7 +41,13 @@
 		}
 	}
 
-	const setRole = (u, role) => run(() => api('PATCH', `/admin/users/${u.id}`, { role }), (r) => `${r.name} is now ${r.role}.`);
+	function setRole(u) {
+		const role = roleDraft[u.id];
+		const self = u.id === session.me.id;
+		const warning = self && role !== 'admin' ? '\n\nThis is you: you will lose access to Admin.' : '';
+		if (!confirm(`Change ${u.name} from ${u.role} to ${role}?${warning}`)) return;
+		run(() => api('PATCH', `/admin/users/${u.id}`, { role }), (r) => `${r.name} is now ${r.role}.`).then(() => delete roleDraft[u.id]);
+	}
 	const doAdjust = (e) => {
 		e.preventDefault();
 		run(() => api('POST', `/admin/users/${selected.id}/stamp-adjustments`, { amount: Number(adjust.amount), note: adjust.note }), (r) => `${r.name} now has ${r.stamps} stamps.`).then(() => (adjust = { amount: 0, note: '' }));
@@ -50,11 +58,11 @@
 
 <div class="stack">
 	<form class="row" onsubmit={search}>
-		<input type="search" bind:value={q} placeholder="Name, email or Slack ID" style="max-width: 320px" />
+		<input type="search" bind:value={q} placeholder="Name, email or Slack ID" aria-label="Search people" style="max-width: 320px" />
 		<button class="btn">Search</button>
 		<span class="small muted">Without a search: the newest 50.</span>
 	</form>
-	{#if msg}<p class="callout {msg.tone} small">{msg.text}</p>{/if}
+	<div role="status" aria-live="polite">{#if msg}<p class="callout {msg.tone} small">{msg.text}</p>{/if}</div>
 
 	<div class="card table-wrap">
 		<table>
@@ -68,9 +76,15 @@
 						<td>{u.stamps}</td>
 						<td class="small">{u.verification_status}{u.ysws_eligible ? ' ✓' : ''}</td>
 						<td>
-							<select value={u.role} onchange={(e) => setRole(u, e.currentTarget.value)} aria-label="Role for {u.name}" style="padding: 3px 6px">
-								<option>participant</option><option>reviewer</option><option>admin</option>
-							</select>
+							<div class="row" style="flex-wrap: nowrap; gap: 6px">
+								<select value={roleDraft[u.id] ?? u.role} onchange={(e) => (roleDraft[u.id] = e.currentTarget.value)} aria-label="Role for {u.name}" style="padding: 3px 6px">
+									<option>participant</option><option>reviewer</option><option>admin</option>
+								</select>
+								{#if roleDraft[u.id] && roleDraft[u.id] !== u.role}
+									<button class="btn small primary" onclick={() => setRole(u)}>Save</button>
+									<button class="btn small ghost" onclick={() => delete roleDraft[u.id]}>Undo</button>
+								{/if}
+							</div>
 						</td>
 						<td><button class="btn small ghost" onclick={() => (selected = u)}>Manage</button></td>
 					</tr>

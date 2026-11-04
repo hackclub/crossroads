@@ -12,7 +12,7 @@
 
 	onMount(async () => {
 		try {
-			if (!(await refresh())) goto('/?next=' + encodeURIComponent(page.url.pathname), { replaceState: true });
+			if (!(await refresh())) goto('/signin?next=' + encodeURIComponent(page.url.pathname), { replaceState: true });
 		} catch (e) {
 			error = e.message;
 		}
