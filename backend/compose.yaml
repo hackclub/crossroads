@@ -1,0 +1,16 @@
+name: crossroads
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: crossroads
+      POSTGRES_PASSWORD: crossroads
+      POSTGRES_DB: crossroads
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres:/var/lib/postgresql
+
+volumes:
+  postgres:
