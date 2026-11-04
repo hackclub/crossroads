@@ -1,0 +1,110 @@
+<script>
+	import { onMount } from 'svelte';
+	import { api, get } from '../api.js';
+	import { money } from '../format.js';
+
+	let items = $state([]);
+	let msg = $state(null);
+	const blank = () => ({ kind: 'physical', name: '', description: '', image_url: '', price: 100, stipend_dollars: '', stock: '', max_per_user: '', active: true });
+	let form = $state(blank());
+	let editing = $state(null); // item id
+
+	async function load() {
+		try {
+			items = await get('/admin/shop-items');
+		} catch (e) {
+			msg = { tone: 'warn', text: e.message };
+		}
+	}
+	onMount(load);
+
+	const num = (v) => (v === '' || v == null ? null : Number(v));
+
+	function toBody(f) {
+		return {
+			kind: f.kind,
+			name: f.name,
+			description: f.description,
+			image_url: f.image_url || null,
+			price: Number(f.price),
+			stipend_cents: f.kind === 'stipend' ? Math.round(Number(f.stipend_dollars) * 100) : null,
+			stock: num(f.stock),
+			max_per_user: f.kind === 'ticket' ? 1 : num(f.max_per_user),
+			active: f.active
+		};
+	}
+
+	async function save(e) {
+		e.preventDefault();
+		msg = null;
+		try {
+			const body = toBody(form);
+			if (editing) {
+				delete body.kind; // can't change kind after creating
+				await api('PATCH', `/admin/shop-items/${editing}`, body);
+			} else {
+				await api('POST', '/admin/shop-items', body);
+			}
+			msg = { tone: 'good', text: `Saved ${form.name}.` };
+			form = blank();
+			editing = null;
+			await load();
+		} catch (err) {
+			msg = { tone: 'warn', text: err.message };
+		}
+	}
+
+	function edit(i) {
+		editing = i.id;
+		form = { ...i, image_url: i.image_url ?? '', stipend_dollars: i.stipend_cents == null ? '' : i.stipend_cents / 100, stock: i.stock ?? '', max_per_user: i.max_per_user ?? '' };
+	}
+</script>
+
+<div class="stack">
+	{#if msg}<p class="callout {msg.tone} small">{msg.text}</p>{/if}
+	<div class="card table-wrap">
+		<table>
+			<thead><tr><th>Name</th><th>Kind</th><th>Price</th><th>Stock</th><th>Per person</th><th>Active</th><th></th></tr></thead>
+			<tbody>
+				{#each items as i}
+					<tr>
+						<td>{i.name}</td>
+						<td>{i.kind}{i.stipend_cents ? ` (${money(i.stipend_cents)})` : ''}</td>
+						<td>{i.price}</td>
+						<td>{i.stock ?? '∞'}</td>
+						<td>{i.max_per_user ?? '∞'}</td>
+						<td>{i.active ? 'Yes' : 'No'}</td>
+						<td><button class="btn small ghost" onclick={() => edit(i)}>Edit</button></td>
+					</tr>
+				{:else}
+					<tr><td colspan="7" class="muted">No items yet. Start with the ticket (kind ticket, price 1800).</td></tr>
+				{/each}
+			</tbody>
+		</table>
+	</div>
+
+	<form class="card" onsubmit={save}>
+		<h2>{editing ? `Edit ${form.name}` : 'New item'}</h2>
+		<div class="grid-halves">
+			<label class="field"><span>Kind</span>
+				<select bind:value={form.kind} disabled={!!editing}><option>ticket</option><option>physical</option><option>stipend</option></select>
+			</label>
+			<label class="field"><span>Name</span><input required bind:value={form.name} /></label>
+			<label class="field"><span>Price (stamps)</span><input type="number" min="0" required bind:value={form.price} /></label>
+			{#if form.kind === 'stipend'}
+				<label class="field"><span>Stipend ($)</span><input type="number" min="0" step="0.01" required bind:value={form.stipend_dollars} /></label>
+			{/if}
+			<label class="field"><span>Stock <em>empty = unlimited</em></span><input type="number" min="0" bind:value={form.stock} /></label>
+			{#if form.kind !== 'ticket'}
+				<label class="field"><span>Max per person <em>empty = unlimited</em></span><input type="number" min="1" bind:value={form.max_per_user} /></label>
+			{/if}
+			<label class="field"><span>Image link <em>optional</em></span><input type="url" bind:value={form.image_url} /></label>
+		</div>
+		<label class="field"><span>Description</span><textarea bind:value={form.description}></textarea></label>
+		<label class="check"><input type="checkbox" bind:checked={form.active} /> In the shop (active)</label>
+		<div class="row">
+			<button class="btn primary">{editing ? 'Save' : 'Create item'}</button>
+			{#if editing}<button type="button" class="btn ghost" onclick={() => { editing = null; form = blank(); }}>Cancel</button>{/if}
+		</div>
+	</form>
+</div>

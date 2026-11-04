@@ -17,14 +17,16 @@ import (
 	"github.com/scherepi/crossroads-backend/hackatime"
 	"github.com/scherepi/crossroads-backend/hca"
 	"github.com/scherepi/crossroads-backend/respond"
+	"github.com/scherepi/crossroads-backend/uploads"
 )
 
 type API struct {
 	Pool          *pgxpool.Pool
 	Queries       *db.Queries
 	Hackatime     *hackatime.Client
-	HCA           *hca.Client // for checking verification before purchases
-	StampsPerHour int         // paid for each approved hour
+	HCA           *hca.Client    // for checking verification before purchases
+	StampsPerHour int            // paid for each approved hour
+	Uploads       *uploads.Store // project screenshots; nil turns uploading off
 }
 
 func (a *API) Routes() chi.Router {
@@ -32,6 +34,9 @@ func (a *API) Routes() chi.Router {
 	r.Use(auth.RequireUser)
 	r.Get("/me", auth.Me)
 	r.Get("/hackatime/projects", a.listHackatimeProjects)
+	if a.Uploads != nil {
+		r.Post("/uploads", a.Uploads.Upload)
+	}
 	r.Route("/projects", func(r chi.Router) {
 		r.Get("/", a.listProjects)
 		r.Post("/", a.createProject)

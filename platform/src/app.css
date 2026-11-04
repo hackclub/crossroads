@@ -1,0 +1,432 @@
+/* Crossroads platform styles, from the crossroads-draft Figma frames
+   "home", "project edit" and "project main": black ground, warm greys,
+   Cute Font throughout, grey header bars over dark field bodies. */
+
+:root {
+	--bg: #000;
+	--head: #8c8c8c; /* header bars, project rows, hero card */
+	--body: #5b5656; /* field bodies, pills, value boxes */
+	--deep: #474242; /* image wells, nested value boxes */
+	--deepest: #2d2929;
+	--light: #d9d9d9; /* devlog cards, bar track */
+	--text: #fff;
+	--muted: rgba(255, 255, 255, 0.68);
+	--faint: rgba(255, 255, 255, 0.4);
+	--ink: #000; /* text on light cards */
+
+	/* Status, borrowed from the film strip's light leak. */
+	--good: #8ddf4b;
+	--good-bg: #26361b;
+	--warn: #ff7a2f;
+	--warn-bg: #45261a;
+	--info: #6aa6f5;
+	--info-bg: #1d2a3d;
+	--danger: #ff6b55;
+
+	--radius: 24px;
+	--content: 1162px; /* the frames' content column, out of 1728 */
+	--gap: 16px;
+
+	color-scheme: dark;
+	font-family: 'Cute Font', system-ui, sans-serif;
+	font-size: 22px;
+	line-height: 1.3;
+	color: var(--text);
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; background: var(--bg); color: var(--text); }
+
+h1, h2, h3 { margin: 0; font-weight: 400; line-height: 1.1; }
+/* Cute Font has one weight; a faked bold smears it. */
+strong, b, th { font-weight: 400; }
+h1 { font-size: clamp(48px, 5.6vw, 96px); }
+h2 { font-size: clamp(32px, 3.4vw, 48px); }
+p { margin: 0; }
+ul, ol { margin: 0; padding-left: 22px; }
+a { color: inherit; }
+hr { border: 0; border-top: 1px solid var(--deep); margin: 4px 0; width: 100%; }
+code { background: var(--deep); padding: 1px 6px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 0.75em; }
+img { max-width: 100%; }
+
+/* ---------- Top bar: the baked film strip from the Figma nav ---------- */
+
+.topbar {
+	--u: calc(min(100vw, 2200px) / 1728);
+	position: relative;
+	width: 100%;
+	aspect-ratio: 1728 / 167;
+	min-height: 96px;
+	/* background-image is set in TopBar.svelte, from the imported asset */
+	background: var(--bg) left top / 100% auto no-repeat;
+}
+/* The strip's top band has three dark windows; things sit inside them. */
+.topbar .window {
+	position: absolute;
+	top: 0;
+	height: 47.9%;
+	display: flex;
+	align-items: center;
+}
+.topbar .w-left { left: 0.9%; width: 23%; gap: calc(38 * var(--u)); }
+.topbar .w-mid { left: 31.1%; width: 35.8%; justify-content: center; gap: clamp(14px, calc(56 * var(--u)), 56px); }
+.topbar .w-right { left: 72.6%; width: 26.4%; justify-content: flex-end; padding-right: 1.4%; gap: 14px; }
+.topbar .brand {
+	display: flex;
+	align-items: center;
+	gap: calc(38 * var(--u));
+	font-size: max(26px, calc(64 * var(--u)));
+	text-decoration: none;
+	white-space: nowrap;
+}
+.topbar .brand img { width: max(34px, calc(60 * var(--u))); height: auto; border-radius: 22%; }
+.topbar .nav {
+	font-size: max(20px, calc(48 * var(--u)));
+	text-decoration: none;
+	white-space: nowrap;
+	opacity: 0.86;
+}
+.topbar .nav:hover, .topbar .nav.active { opacity: 1; text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 2px; }
+.topbar .who { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.05; font-size: max(17px, calc(28 * var(--u))); }
+.topbar .who .links { display: flex; gap: 12px; font-size: 0.85em; }
+.topbar .who a, .topbar .who button { color: var(--muted); }
+
+/* ---------- Page frame ---------- */
+
+.main {
+	width: 100%;
+	max-width: calc(var(--content) + 64px);
+	margin: 0 auto;
+	padding: 24px 32px 96px;
+}
+.main.narrow, .narrow { max-width: calc(960px + 64px); margin-inline: auto; }
+.page-title { text-align: center; margin: 8px 0 28px; }
+
+.centered-screen {
+	min-height: 100vh;
+	display: grid;
+	place-items: center;
+	padding: 32px 16px;
+}
+.centered-screen > .card { width: 100%; max-width: 620px; }
+
+/* ---------- Layout helpers ---------- */
+
+.stack, .stack-sm, .stack-lg { display: flex; flex-direction: column; }
+.stack-sm { gap: 4px; }
+.stack { gap: var(--gap); }
+.stack-lg { gap: 36px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.between { justify-content: space-between; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--gap); }
+.grid-2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 24px; align-items: start; }
+.grid-halves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 24px; }
+.crumbs { font-size: 21px; color: var(--muted); margin-bottom: 8px; }
+
+/* ---------- Text ---------- */
+
+.small { font-size: 21px; }
+.muted { color: var(--muted); }
+.big { font-size: 48px; line-height: 1; }
+.ok { color: var(--good); }
+.no { color: var(--muted); }
+.error { color: var(--danger); }
+
+/* ---------- Cards and panels ---------- */
+
+.card {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 20px 24px;
+	background: var(--body);
+	border-radius: var(--radius);
+	text-decoration: none;
+	color: inherit;
+}
+.card.dashed { background: transparent; border: 2px dashed var(--body); }
+.card-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+
+/* A grey header bar over a dark body, as in "Description". */
+.panel { display: flex; flex-direction: column; border-radius: var(--radius); overflow: hidden; background: var(--body); }
+.panel > .panel-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 14px 32px;
+	background: var(--head);
+	font-size: 32px;
+}
+.panel > .panel-body { display: flex; flex-direction: column; gap: 12px; padding: 20px 32px 26px; }
+
+/* Project rows on home. */
+.project-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 18px 32px;
+	background: var(--head);
+	border-radius: var(--radius);
+	text-decoration: none;
+}
+.project-row:hover { background: #979797; }
+.project-row .name { font-size: clamp(30px, 2.8vw, 48px); line-height: 1.05; }
+.project-row .meta { font-size: 24px; }
+
+/* Light cards, as in the Figma devlog card. */
+.light-card {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 18px;
+	background: var(--light);
+	color: var(--ink);
+	border-radius: var(--radius);
+}
+.light-card .well {
+	background: var(--body);
+	color: var(--text);
+	border-radius: var(--radius);
+	padding: 18px 22px;
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 6px 20px;
+	font: inherit;
+	font-size: 28px;
+	line-height: 1.2;
+	text-decoration: none;
+	color: var(--text);
+	background: var(--body);
+	border: 0;
+	border-radius: 6px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+.btn:hover { filter: brightness(1.15); }
+.btn.primary { background: var(--head); border-radius: 12px; }
+.btn.ghost { background: transparent; box-shadow: inset 0 0 0 2px var(--body); }
+.btn.danger { background: transparent; color: var(--danger); box-shadow: inset 0 0 0 2px currentColor; }
+.btn.small { padding: 3px 14px; font-size: 22px; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+
+.link-btn {
+	padding: 0;
+	font: inherit;
+	color: inherit;
+	background: none;
+	border: 0;
+	text-decoration: underline;
+	cursor: pointer;
+	align-self: flex-start;
+}
+
+/* Pills, as Demo / Repo / Edit on the project page. */
+.chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 2px 18px;
+	font-size: 28px;
+	background: var(--body);
+	border-radius: 24px;
+	text-decoration: none;
+	color: var(--text);
+	border: 0;
+	font-family: inherit;
+	cursor: pointer;
+}
+.chip:hover { filter: brightness(1.2); }
+.pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---------- Badges and callouts ---------- */
+
+.badge {
+	display: inline-block;
+	padding: 1px 12px;
+	font-size: 22px;
+	border-radius: 999px;
+	background: var(--deep);
+	color: var(--muted);
+	white-space: nowrap;
+}
+.badge.good { background: var(--good-bg); color: var(--good); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+.badge.info { background: var(--info-bg); color: var(--info); }
+.light-card .badge { background: var(--body); color: var(--text); }
+
+.callout {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 14px 22px;
+	border-radius: 16px;
+	background: var(--deep);
+	border: 2px solid var(--body);
+}
+.callout.good { background: var(--good-bg); border-color: #3e5a2a; }
+.callout.warn { background: var(--warn-bg); border-color: #6e3a24; }
+.callout.info { background: var(--info-bg); border-color: #2f4566; }
+
+/* ---------- Lists ---------- */
+
+.list { list-style: none; padding: 0; display: flex; flex-direction: column; }
+.list li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--deep); }
+.list li:last-child { border-bottom: 0; }
+.list li.stack-sm { align-items: flex-start; gap: 2px; }
+
+/* ---------- Tabs ---------- */
+
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.tabs button {
+	padding: 4px 18px;
+	font: inherit;
+	font-size: 26px;
+	color: var(--text);
+	background: var(--deep);
+	border: 0;
+	border-radius: 24px;
+	cursor: pointer;
+}
+.tabs button:hover { background: var(--body); }
+.tabs button.active { background: var(--head); }
+
+/* ---------- Hours bar (home) ---------- */
+
+.hours-bar { position: relative; height: 23px; border-radius: 24px; background: var(--light); }
+.hours-bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 24px; }
+.hours-bar .unsubmitted { background: var(--body); }
+.hours-bar .pending { background: var(--deep); }
+.hours-bar .approved { background: var(--deepest); }
+.hours-ticks { position: relative; height: 26px; font-size: 22px; }
+.hours-ticks span { position: absolute; bottom: 0; transform: translateX(-50%); white-space: nowrap; }
+.hours-ticks span::after { content: ''; position: absolute; left: 50%; bottom: -6px; height: 7px; border-left: 1px solid var(--text); }
+.hours-ticks .goal { right: 0; left: auto; transform: none; font-size: 28px; bottom: -2px; }
+.hours-ticks .goal::after { display: none; }
+
+/* Ticket progress (any bar) */
+.bar { display: flex; width: 100%; height: 16px; background: var(--light); border-radius: 999px; overflow: hidden; }
+.seg { height: 100%; }
+.seg.approved { background: var(--deepest); }
+
+/* Small labelled value boxes, as "Daily Streak: [2]" and the hour tiles. */
+.stat { display: flex; align-items: center; gap: 14px; padding: 8px 10px 8px 18px; background: var(--body); border-radius: 10px; font-size: 32px; }
+.stat b { font-weight: 400; min-width: 72px; padding: 4px 14px; text-align: center; background: var(--deep); border-radius: 10px; }
+.tile { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.tile .label { font-size: 24px; }
+.tile .value { width: 100%; padding: 14px 8px; text-align: center; font-size: 44px; line-height: 1; background: var(--body); border-radius: 10px; }
+
+/* ---------- Forms: grey label bar over a dark input, as in "Project Info" ---------- */
+
+input, select, textarea {
+	width: 100%;
+	padding: 10px 14px;
+	font: inherit;
+	font-size: 26px;
+	color: var(--text);
+	background: var(--body);
+	border: 0;
+	border-radius: 6px;
+}
+input::placeholder, textarea::placeholder { color: var(--faint); }
+textarea { min-height: 140px; resize: vertical; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, .btn:focus-visible, .chip:focus-visible, .link-btn:focus-visible, .tabs button:focus-visible, a:focus-visible {
+	outline: 3px solid var(--info);
+	outline-offset: 2px;
+}
+input[type='checkbox'], input[type='radio'] { width: 20px; height: 20px; margin: 0; padding: 0; accent-color: var(--head); flex: none; }
+
+.field { display: flex; flex-direction: column; }
+.field > span {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 10px 24px;
+	background: var(--head);
+	font-size: 30px;
+}
+.field em { font-style: normal; color: rgba(255, 255, 255, 0.8); font-size: 20px; align-self: center; }
+.field input, .field select, .field textarea { border-radius: 0; padding: 14px 24px; }
+.field small, fieldset > small { color: var(--muted); font-size: 21px; padding: 6px 4px 0; }
+/* Compact fields (admin, review): rounded, smaller label bar. */
+.compact .field > span, .card .field > span { padding: 6px 16px; font-size: 24px; border-radius: 10px 10px 0 0; }
+.compact .field input, .compact .field select, .compact .field textarea,
+.card .field input, .card .field select, .card .field textarea { border-radius: 0 0 10px 10px; padding: 10px 16px; font-size: 22px; background: var(--deep); }
+
+fieldset { display: flex; flex-direction: column; gap: 18px; margin: 0; padding: 0; border: 0; min-width: 0; }
+legend { padding: 0; font-size: 36px; margin-bottom: 4px; }
+
+.check { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+
+/* The tall block under Project Name: the screenshot. */
+.screenshot-well {
+	display: grid;
+	place-items: center;
+	min-height: 240px;
+	background: var(--deep);
+	overflow: hidden;
+}
+.screenshot-well img { width: 100%; max-height: 420px; object-fit: contain; display: block; }
+
+/* ---------- Tables ---------- */
+
+.table-wrap { padding: 0; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 23px; }
+th, td { padding: 10px 16px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--deep); }
+thead th { background: var(--head); font-weight: 400; font-size: 25px; }
+tbody tr:last-child td { border-bottom: 0; }
+tr.you { background: var(--deep); }
+.card table thead th { background: var(--deep); }
+td input, td select { font-size: 20px; padding: 4px 10px; background: var(--deep); }
+
+/* ---------- FAQ ---------- */
+
+details { border-bottom: 1px solid var(--deep); }
+details:last-child { border-bottom: 0; }
+summary { padding: 12px 0; cursor: pointer; font-size: 28px; }
+
+/* ---------- Dev mode (remove with DEV_MODE, see planning/DEV_MODE.md) ---------- */
+
+.devpanel {
+	position: fixed;
+	left: 16px;
+	bottom: 16px;
+	z-index: 20;
+	max-width: min(760px, calc(100vw - 32px));
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px 16px;
+	font-family: system-ui, sans-serif;
+	font-size: 13px;
+	background: #251b38;
+	border: 1px dashed #a58bea;
+	border-radius: 12px;
+	color: #eee;
+}
+.devpanel .small { font-size: 13px; }
+.devpanel input { width: auto; padding: 3px 6px; font-size: 13px; border-radius: 4px; background: #3a2f52; }
+.devpanel .btn { font-size: 13px; padding: 3px 10px; }
+
+/* ---------- Narrow screens ---------- */
+
+@media (max-width: 820px) {
+	.topbar { aspect-ratio: auto; height: auto; min-height: 0; background-size: auto 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 10px 16px 44px; }
+	.topbar .window { position: static; height: auto; width: auto; padding: 0; }
+	.topbar .w-mid { order: 3; width: 100%; justify-content: flex-start; }
+	.topbar .w-right { margin-left: auto; }
+	.main { padding: 16px 16px 72px; }
+	.grid-2, .grid-halves { grid-template-columns: 1fr; }
+	.panel > .panel-head, .panel > .panel-body, .project-row { padding-inline: 18px; }
+	.field > span, .field input, .field select, .field textarea { padding-inline: 16px; }
+}

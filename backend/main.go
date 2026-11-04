@@ -5,6 +5,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -19,8 +20,10 @@ import (
 	"github.com/scherepi/crossroads-backend/api"
 	"github.com/scherepi/crossroads-backend/auth"
 	"github.com/scherepi/crossroads-backend/db"
+	"github.com/scherepi/crossroads-backend/devhackatime"
 	"github.com/scherepi/crossroads-backend/hackatime"
 	"github.com/scherepi/crossroads-backend/hca"
+	"github.com/scherepi/crossroads-backend/uploads"
 )
 
 // Only Hackatime time from here on counts toward Crossroads.
@@ -56,16 +59,47 @@ func main() {
 		SecureCookies: strings.HasPrefix(redirectURL, "https://"),
 	}
 
+	// DEV_MODE=1 adds a sign-in that skips Hack Club Auth and a fake Hackatime,
+	// for trying the whole flow locally. Anyone could sign in as anyone, so it
+	// refuses to run anywhere that looks deployed.
+	addr := ":" + cmp.Or(os.Getenv("PORT"), "8080")
+	devMode := os.Getenv("DEV_MODE") == "1"
+	hackatimeConfig := hackatime.Config{Start: hoursStart}
+	if devMode {
+		if strings.HasPrefix(redirectURL, "https://") {
+			log.Fatal("DEV_MODE can't be on with an https:// HCA_REDIRECT_URL; it lets anyone sign in as anyone")
+		}
+		hackatimeConfig.BaseURL = "http://localhost" + addr + "/dev/hackatime"
+		log.Print("DEV_MODE is on: /dev/login signs in without Hack Club Auth, and Hackatime is faked")
+	}
+
 	stampsPerHour, err := strconv.Atoi(os.Getenv("STAMPS_PER_HOUR"))
 	if err != nil || stampsPerHour <= 0 {
 		log.Fatal("STAMPS_PER_HOUR has to be set to a whole number above 0")
 	}
+	// Uploaded screenshots are stored on disk and served at /uploads/. Their
+	// URLs are absolute (project links have to be), built from PUBLIC_URL,
+	// which defaults to the site the sign-in redirect points at.
+	publicURL := os.Getenv("PUBLIC_URL")
+	if publicURL == "" {
+		u, err := url.Parse(redirectURL)
+		if err != nil || u.Host == "" {
+			log.Fatal("HCA_REDIRECT_URL has to be a full URL, or set PUBLIC_URL")
+		}
+		publicURL = u.Scheme + "://" + u.Host
+	}
+	uploadStore := &uploads.Store{
+		Dir:     cmp.Or(os.Getenv("UPLOADS_DIR"), "data/uploads"),
+		BaseURL: strings.TrimSuffix(publicURL, "/") + "/uploads/",
+	}
+
 	apiRoutes := &api.API{
 		Pool:          pool,
 		Queries:       db.New(pool),
-		Hackatime:     hackatime.New(hackatime.Config{Start: hoursStart}),
+		Hackatime:     hackatime.New(hackatimeConfig),
 		HCA:           hcaClient,
 		StampsPerHour: stampsPerHour,
+		Uploads:       uploadStore,
 	}
 
 	// Off unless there's a token, so a dev server doesn't write test data into
@@ -89,6 +123,11 @@ func main() {
 	r.Use(middleware.Logger, middleware.Recoverer, a.LoadSession)
 	r.Mount("/auth", a.Routes())
 	r.Mount("/api", apiRoutes.Routes())
+	r.Handle("/uploads/*", http.StripPrefix("/uploads", uploadStore.Files()))
+	if devMode {
+		r.Get("/dev/login", a.DevLogin)
+		r.Mount("/dev/hackatime", devhackatime.New().Routes())
+	}
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := pool.Ping(r.Context()); err != nil {
@@ -98,7 +137,6 @@ func main() {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	addr := ":" + cmp.Or(os.Getenv("PORT"), "8080")
 	log.Printf("listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
 }

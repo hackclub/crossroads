@@ -180,6 +180,8 @@ Reviewer and admin shapes are listed with their routes below.
 | PATCH | `/api/projects/{id}` | owner | Edit a project |
 | DELETE | `/api/projects/{id}` | owner | Delete a never-submitted project |
 | POST | `/api/projects/{id}/submissions` | owner | Submit for review |
+| POST | `/api/uploads` | signed in | Upload a screenshot image |
+| GET | `/uploads/{file}` | anyone | An uploaded image |
 | GET | `/api/boxes` | signed in | Their boxes |
 | POST | `/api/boxes/{id}/open` | owner | Open a box |
 | GET | `/api/box-types` | signed in | Box types and their current odds |
@@ -335,6 +337,24 @@ The submission claims the project's Hackatime time that nobody has claimed yet. 
 | 404 | The special stamp isn't theirs |
 | 409 | The special stamp has already been used |
 | 422 | The special stamp has no effect (it's only a collectible) |
+
+## Uploads
+
+### `POST /api/uploads`
+
+A `multipart/form-data` body with one image in a field called `file`: PNG, JPEG, GIF or WebP, up to 5 MB. The type is judged from the file's bytes, not its name.
+
+`201` → `{"url": "https://…/uploads/<sha256>.png"}`. Put the URL in a project's `screenshot_url`. Uploading the same image twice gives the same URL.
+
+| Status | When |
+|---|---|
+| 400 | No `file` field |
+| 413 | Over 5 MB |
+| 422 | Not a PNG, JPEG, GIF or WebP |
+
+### `GET /uploads/{file}`
+
+Serves an uploaded image, cached for a year (names are content hashes). Mounted outside `/api`, so the frontend's proxy has to route `/uploads` to the backend too. Files live in `UPLOADS_DIR` (default `data/uploads`), and URLs are built from `PUBLIC_URL` (default: the origin of `HCA_REDIRECT_URL`).
 
 ## Boxes and special stamps
 
