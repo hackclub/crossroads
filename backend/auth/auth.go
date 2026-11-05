@@ -275,5 +275,15 @@ func Me(w http.ResponseWriter, r *http.Request) {
 		Stamps             int32       `json:"stamps"`
 		VerificationStatus string      `json:"verification_status"`
 		YSWSEligible       bool        `json:"ysws_eligible"`
-	}{user.ID, user.Name, user.Email, user.SlackID, user.Role, user.Stamps, user.VerificationStatus, user.YswsEligible})
+		// Where physical items ship by default; null if Hack Club Auth has none.
+		Address json.RawMessage `json:"address"`
+	}{user.ID, user.Name, user.Email, user.SlackID, user.Role, user.Stamps, user.VerificationStatus, user.YswsEligible, nullableJSON(user.Address)})
+}
+
+// nullableJSON turns a missing jsonb value into a JSON null.
+func nullableJSON(b []byte) json.RawMessage {
+	if len(b) == 0 {
+		return json.RawMessage("null")
+	}
+	return b
 }

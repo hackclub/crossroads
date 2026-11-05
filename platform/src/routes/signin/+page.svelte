@@ -22,6 +22,7 @@
 	});
 </script>
 
+<div class="app-shell">
 <TopBar />
 <main class="main narrow stack-lg">
 	<div class="stack" style="align-items: center; text-align: center">
@@ -40,8 +41,8 @@
 			<div class="panel-body">
 				<span class="small muted">The backend is in DEV_MODE, so you can sign in as a test user without Hack Club Auth. Each name is its own account.</span>
 				<div class="row">
-					<input bind:value={name} pattern="[a-z0-9-]+" required style="max-width: 200px; background: var(--deep)" aria-label="Test user name" />
-					<select bind:value={role} style="max-width: 200px; background: var(--deep)" aria-label="Role">
+					<input bind:value={name} pattern="[a-z0-9-]+" required style="max-width: 200px" aria-label="Test user name" />
+					<select bind:value={role} style="max-width: 200px" aria-label="Role">
 						<option>participant</option><option>reviewer</option><option>admin</option>
 					</select>
 					<button class="btn primary">Sign in</button>
@@ -50,3 +51,4 @@
 		</form>
 	{/if}
 </main>
+</div>

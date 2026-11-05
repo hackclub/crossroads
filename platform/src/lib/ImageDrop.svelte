@@ -4,7 +4,7 @@
 	// sets `value` to the image's URL. A link can still be typed below it.
 	import { uploadImage } from './api.js';
 
-	let { value = $bindable(''), id = 'screenshot', disabled = false } = $props();
+	let { value = $bindable(''), id = 'screenshot', disabled = false, label = 'Drop a screenshot here' } = $props();
 
 	const MAX = 5 * 1024 * 1024;
 	const TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
@@ -65,7 +65,7 @@
 			<img src={value} alt="Screenshot" onerror={() => (broken = true)} />
 		{:else}
 			<span class="prompt">
-				<span class="big-text">{busy ? 'Uploading…' : over ? 'Drop it!' : 'Drop a screenshot here'}</span>
+				<span class="big-text">{busy ? 'Uploading…' : over ? 'Drop it!' : label}</span>
 				<span class="small muted">{broken ? "That link didn't load as an image. " : ''}or click to choose one, or paste it. PNG, JPEG, GIF or WebP, up to 5 MB.</span>
 			</span>
 		{/if}
@@ -93,7 +93,7 @@
 		outline-offset: -4px;
 		transition: background-color 120ms ease-out;
 	}
-	.drop:hover, .drop.over { background: #524c4c; }
+	.drop:hover, .drop.over { background: #1c2238; }
 	.drop.over { outline: 3px dashed var(--head); }
 	.drop.busy { cursor: progress; }
 	.drop:disabled { cursor: not-allowed; }

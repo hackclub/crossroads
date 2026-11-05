@@ -50,6 +50,7 @@ interface Me {
   stamps: number; // current balance; can be negative after an admin clawback
   verification_status: string; // "needs_submission" | "pending" | "verified" | "ineligible"
   ysws_eligible: boolean;
+  address: Address | null; // from Hack Club Auth; where physical items ship by default
 }
 
 interface Project {

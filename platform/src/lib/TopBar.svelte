@@ -1,5 +1,5 @@
 <script>
-	// The nav from the Figma "project main" frame: a baked film strip with the
+	// The nav from the Figma "home" frame: a baked film strip (node 110:371) with the
 	// flag and name in its left window, links in the middle window, and the
 	// signed-in person in the right one.
 	import { page } from '$app/state';

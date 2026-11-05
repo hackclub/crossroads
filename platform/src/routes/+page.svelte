@@ -19,6 +19,30 @@
 	import arrowUp from '#lib/assets/landing/arrow-up.svg';
 	import arrowDown from '#lib/assets/landing/arrow-down.svg';
 	import fadeLine from '#lib/assets/landing/fade-line.svg';
+	import { goto } from '$app/navigation';
+	import { signIn, isDevMode } from '#lib/api.js';
+	import { refresh } from '#lib/session.svelte.js';
+
+	// "Get Started": signed in goes home; signed out goes straight into Hack Club
+	// sign-in and comes back home. With the backend in DEV_MODE the real sign-in
+	// has no credentials, so it goes to /signin for the dev sign-in instead. The
+	// href stays /signin so the link still works without JavaScript.
+	let starting = false;
+	async function getStarted(event) {
+		if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+		event.preventDefault();
+		if (starting) return;
+		starting = true;
+		try {
+			if (await refresh()) return goto('/home');
+			if (await isDevMode()) return goto('/signin?next=%2Fhome');
+			signIn('/home');
+		} catch {
+			goto('/signin');
+		} finally {
+			starting = false;
+		}
+	}
 
 	// How far the ticket can rotate on each axis, in degrees.
 	const MAX_TILT = 7;
@@ -139,7 +163,7 @@
 		</p>
 
 		<img class="line abs" src={arrowUp} alt="" style="--x: 841.113; --y: 664.17; --w: 29.887; --h: 5.774; --angle: 90deg" />
-		<a class="button abs" href="/signin" style="--x: 742; --y: 688; --w: 228; --h: 67">
+		<a class="button abs" href="/signin" onclick={getStarted} style="--x: 742; --y: 688; --w: 228; --h: 67">
 			<span class="doto centered" style="--x: 114; --y: 15; --size: 32">Get Started</span>
 		</a>
 		<img class="line abs" src={fadeLine} alt="" style="--x: 685.25; --y: 933.743; --w: 343.5; --h: 1; --angle: 90deg" />
@@ -154,7 +178,7 @@
 		<h2 class="doto centered" style="--x: 888.5; --y: 1765; --w: 803; --size: 32">What is Hack Club Crossroads?</h2>
 
 		<img class="line abs" src={arrowDown} alt="" style="--x: 772.056; --y: 2705.057; --w: 169.887; --h: 5.774; --angle: -90deg" />
-		<a class="button abs" href="/signin" style="--x: 742; --y: 2813; --w: 228; --h: 67">
+		<a class="button abs" href="/signin" onclick={getStarted} style="--x: 742; --y: 2813; --w: 228; --h: 67">
 			<span class="doto centered" style="--x: 114; --y: 15; --size: 32">Get Started</span>
 		</a>
 

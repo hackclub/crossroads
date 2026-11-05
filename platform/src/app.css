@@ -1,6 +1,8 @@
-/* Crossroads platform styles, from the crossroads-draft Figma frames
-   "home", "project edit" and "project main": black ground, warm greys,
-   Cute Font throughout, grey header bars over dark field bodies. */
+/* Crossroads platform styles, from the crossroads-draft Figma frames.
+   The updated "home" frame sets the world: a dim photo of a railway
+   viaduct behind everything, black "train car" panels washed with a film
+   light leak, riding on wooden-tie tracks; navy tiles inside the cars;
+   textured #373737 rows; Cute Font throughout. */
 
 :root {
 	--bg: #000;
@@ -13,6 +15,16 @@
 	--muted: rgba(255, 255, 255, 0.8); /* ≥4.5:1 on --body */
 	--faint: rgba(255, 255, 255, 0.72); /* placeholders, ≥4.5:1 on --body */
 	--ink: #000; /* text on light cards */
+
+	/* From the updated home frame. */
+	--row: #373737; /* project rows and cards, under 20% light leak */
+	--navy: #272e45; /* tiles, stat boxes, field labels */
+	--navy-deep: #131828; /* values inside navy tiles, inputs */
+	/* Surfaces: a flat colour at 80% over the light-leak texture. */
+	--leak: url('./lib/assets/rail/leak.webp') center / cover;
+	--car-bg: linear-gradient(rgb(0 0 0 / 0.8), rgb(0 0 0 / 0.8)), var(--leak);
+	--row-bg: linear-gradient(rgb(55 55 55 / 0.8), rgb(55 55 55 / 0.8)), var(--leak);
+	--row-hover-bg: linear-gradient(rgb(72 72 72 / 0.8), rgb(72 72 72 / 0.8)), var(--leak);
 
 	/* Status, borrowed from the film strip's light leak. */
 	--good: #8ddf4b;
@@ -37,6 +49,39 @@
 * { box-sizing: border-box; }
 
 body { margin: 0; background: var(--bg); color: var(--text); }
+::selection { background: var(--head); color: var(--ink); }
+html { scrollbar-color: var(--body) var(--bg); }
+
+/* Signed-in pages: the viaduct photo, baked from the Figma's three blended
+   layers. The tracks reach past the content column,
+   so the shell clips sideways overflow. */
+/* The platform's type is Crimson Pro (the landing page keeps its own fonts).
+   Every size in this file was set for Cute Font, which runs about 25%
+   narrower; scaling Crimson's x-height to 0.32em renders it at ~0.76x, so
+   text keeps the width and line heights it was laid out with. */
+.app-shell {
+	font-family: 'Crimson Pro', Georgia, serif;
+	font-size-adjust: ex-height 0.32;
+	min-height: 100vh;
+	overflow-x: clip;
+	/* The image fades to black at its own foot, so long pages carry on in black. */
+	background: var(--bg) url('./lib/assets/rail/backdrop.webp') top center / max(100%, 1100px) auto no-repeat;
+}
+/* Text that sits straight on the photo keeps a soft shadow under it. */
+.main { text-shadow: 0 1px 3px rgb(0 0 0 / 0.75); }
+.light-card, .polaroid, dialog, input, textarea, select { text-shadow: none; }
+
+/* A run of track: wooden ties under two grey rails, as in the Figma
+   "track" groups. Everything scales with the track's height: each rail is
+   3.1% of it, sitting 8.9% in from the top and bottom. The rail colours are
+   sampled from the Figma render (#514b4b under its 20% light-leak multiply). */
+.track {
+	--rail-line: linear-gradient(#383536 0 15%, #493e40 15% 85%, #3d3a3b 85%);
+	background:
+		var(--rail-line) 0 9.2% / 100% 3.125% no-repeat,
+		var(--rail-line) 0 89.8% / 100% 3.125% no-repeat,
+		url('./lib/assets/rail/tie.webp') 0 0 / auto 100% repeat-x;
+}
 
 h1, h2, h3 { margin: 0; font-weight: 400; line-height: 1.1; }
 /* Cute Font has one weight; a faked bold smears it. */
@@ -47,7 +92,7 @@ p { margin: 0; }
 ul, ol { margin: 0; padding-left: 22px; }
 a { color: inherit; }
 hr { border: 0; border-top: 1px solid var(--deep); margin: 4px 0; width: 100%; }
-code { background: var(--deep); padding: 1px 6px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 0.75em; }
+code { background: var(--deep); padding: 1px 6px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 0.75em; font-size-adjust: none; }
 img { max-width: 100%; }
 
 /* ---------- Top bar: the baked film strip from the Figma nav ---------- */
@@ -56,16 +101,18 @@ img { max-width: 100%; }
 	--u: calc(min(100vw, 2200px) / 1728);
 	position: relative;
 	width: 100%;
-	aspect-ratio: 1728 / 167;
+	aspect-ratio: 1728 / 144.5;
 	min-height: 96px;
-	/* background-image is set in TopBar.svelte, from the imported asset */
-	background: var(--bg) left top / 100% auto no-repeat;
+	/* background-image is set in TopBar.svelte, from the imported asset. The
+	   strip's brush-stroke foot is see-through, so the page photo shows under
+	   its rough edge, as in the Figma home frame. */
+	background: transparent left top / 100% auto no-repeat;
 }
 /* The strip's top band has three dark windows; things sit inside them. */
 .topbar .window {
 	position: absolute;
 	top: 0;
-	height: 47.9%;
+	height: 53.6%;
 	display: flex;
 	align-items: center;
 }
@@ -85,9 +132,11 @@ img { max-width: 100%; }
 	font-size: max(20px, calc(48 * var(--u)));
 	text-decoration: none;
 	white-space: nowrap;
-	opacity: 0.86;
+	opacity: 0.72;
 }
-.topbar .nav:hover, .topbar .nav.active { opacity: 1; text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 2px; }
+/* Plain white words, as in the Figma; the current page is the bright one. */
+.topbar .nav.active { opacity: 1; }
+.topbar .nav:hover { opacity: 1; text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 1px; }
 .topbar .who { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.05; font-size: max(17px, calc(28 * var(--u))); }
 .topbar .who .links { display: flex; gap: 12px; font-size: 0.85em; }
 .topbar .who a, .topbar .who button { color: var(--muted); }
@@ -141,23 +190,23 @@ img { max-width: 100%; }
 	flex-direction: column;
 	gap: 12px;
 	padding: 20px 24px;
-	background: var(--body);
+	background: var(--row-bg);
 	border-radius: var(--radius);
 	text-decoration: none;
 	color: inherit;
 }
-.card.dashed { background: transparent; border: 2px dashed var(--body); }
+.card.dashed { background: rgb(0 0 0 / 0.55); border: 2px dashed var(--head); }
 .card-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 
-/* A grey header bar over a dark body, as in "Description". */
-.panel { display: flex; flex-direction: column; border-radius: var(--radius); overflow: hidden; background: var(--body); }
+/* A black train car with a navy name band, as the home hero. */
+.panel { display: flex; flex-direction: column; border-radius: var(--radius); overflow: hidden; background: var(--car-bg); }
 .panel > .panel-head {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 12px;
 	padding: 14px 32px;
-	background: var(--head);
+	background: var(--navy);
 	font-size: 32px;
 }
 .panel > .panel-body { display: flex; flex-direction: column; gap: 12px; padding: 20px 32px 26px; }
@@ -169,11 +218,11 @@ img { max-width: 100%; }
 	justify-content: space-between;
 	gap: 16px;
 	padding: 18px 32px;
-	background: var(--head);
+	background: var(--row-bg);
 	border-radius: var(--radius);
 	text-decoration: none;
 }
-.project-row:hover { background: #7a7a7a; } /* darker, so white text keeps its contrast */
+.project-row:hover { background: var(--row-hover-bg); }
 .project-row .name { font-size: clamp(30px, 2.8vw, 48px); line-height: 1.05; }
 .project-row .meta { font-size: 24px; }
 
@@ -188,7 +237,7 @@ img { max-width: 100%; }
 	border-radius: var(--radius);
 }
 .light-card .well {
-	background: var(--body);
+	background: var(--car-bg);
 	color: var(--text);
 	border-radius: var(--radius);
 	padding: 18px 22px;
@@ -215,7 +264,7 @@ img { max-width: 100%; }
 }
 .btn:hover { filter: brightness(1.15); }
 .btn.primary { background: var(--head); border-radius: 12px; }
-.btn.ghost { background: transparent; box-shadow: inset 0 0 0 2px var(--body); }
+.btn.ghost { background: rgb(0 0 0 / 0.35); box-shadow: inset 0 0 0 2px var(--head); }
 .btn.danger { background: transparent; color: var(--danger); box-shadow: inset 0 0 0 2px currentColor; }
 .btn.small { padding: 3px 14px; font-size: 22px; }
 /* Solid colours instead of opacity: disabled labels often carry information ("Need 77 more stamps"). */
@@ -239,7 +288,7 @@ img { max-width: 100%; }
 	gap: 6px;
 	padding: 2px 18px;
 	font-size: 28px;
-	background: var(--body);
+	background: var(--navy);
 	border-radius: 24px;
 	text-decoration: none;
 	color: var(--text);
@@ -306,8 +355,8 @@ img { max-width: 100%; }
 
 .hours-bar { position: relative; height: 23px; border-radius: 24px; background: var(--light); }
 .hours-bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 24px; }
-.hours-bar .unshipped { background: var(--body); }
-.hours-bar .review { background: var(--deep); }
+.hours-bar .unshipped { background: var(--navy); }
+.hours-bar .review { background: var(--navy-deep); }
 .hours-bar .approved { background: var(--deepest); }
 .hours-ticks { position: relative; height: 26px; font-size: 22px; }
 .hours-ticks span { position: absolute; bottom: 0; transform: translateX(-50%); white-space: nowrap; }
@@ -321,11 +370,11 @@ img { max-width: 100%; }
 .seg.approved { background: var(--deepest); }
 
 /* Small labelled value boxes, as "Daily Streak: [2]" and the hour tiles. */
-.stat { display: flex; align-items: center; gap: 14px; padding: 8px 10px 8px 18px; background: var(--body); border-radius: 10px; font-size: 32px; }
-.stat b { font-weight: 400; min-width: 72px; padding: 4px 14px; text-align: center; background: var(--deep); border-radius: 10px; }
+.stat { display: flex; align-items: center; gap: 14px; padding: 8px 10px 8px 18px; background: var(--navy); border-radius: 10px; font-size: 32px; }
+.stat b { font-weight: 400; min-width: 72px; padding: 4px 14px; text-align: center; background: var(--navy-deep); border-radius: 10px; }
 .tile { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .tile .label { font-size: 24px; }
-.tile .value { width: 100%; padding: 14px 8px; text-align: center; font-size: 44px; line-height: 1; background: var(--body); border-radius: 10px; }
+.tile .value { width: 100%; padding: 14px 8px; text-align: center; font-size: 44px; line-height: 1; background: var(--navy); border-radius: 10px; }
 
 /* ---------- Forms: grey label bar over a dark input, as in "Project Info" ---------- */
 
@@ -335,10 +384,13 @@ input, select, textarea {
 	font: inherit;
 	font-size: 26px;
 	color: var(--text);
-	background: var(--body);
+	background: var(--navy-deep);
 	border: 0;
 	border-radius: 6px;
+	box-shadow: inset 0 0 0 1px var(--navy);
+	caret-color: var(--text);
 }
+input[type='checkbox'], input[type='radio'] { box-shadow: none; }
 input::placeholder, textarea::placeholder { color: var(--faint); }
 textarea { min-height: 140px; resize: vertical; }
 /* White ring with a black gap: visible on black, the warm greys and #8c8c8c alike. */
@@ -355,16 +407,16 @@ input[type='checkbox'], input[type='radio'] { width: 20px; height: 20px; margin:
 	justify-content: space-between;
 	gap: 8px;
 	padding: 10px 24px;
-	background: var(--head);
+	background: var(--navy);
 	font-size: 30px;
 }
-.field em { font-style: normal; color: var(--text); font-size: 20px; align-self: center; padding: 0 10px; background: var(--deep); border-radius: 999px; }
+.field em { font-style: normal; color: var(--text); font-size: 20px; align-self: center; padding: 0 10px; background: var(--navy-deep); border-radius: 999px; }
 .field input, .field select, .field textarea { border-radius: 0; padding: 14px 24px; }
 .field small, fieldset > small { color: var(--muted); font-size: 21px; padding: 6px 4px 0; }
 /* Compact fields (admin, review): rounded, smaller label bar. */
 .compact .field > span, .card .field > span { padding: 6px 16px; font-size: 24px; border-radius: 10px 10px 0 0; }
 .compact .field input, .compact .field select, .compact .field textarea,
-.card .field input, .card .field select, .card .field textarea { border-radius: 0 0 10px 10px; padding: 10px 16px; font-size: 22px; background: var(--deep); }
+.card .field input, .card .field select, .card .field textarea { border-radius: 0 0 10px 10px; padding: 10px 16px; font-size: 22px; }
 
 fieldset { display: flex; flex-direction: column; gap: 18px; margin: 0; padding: 0; border: 0; min-width: 0; }
 legend { padding: 0; font-size: 36px; margin-bottom: 4px; }
@@ -376,7 +428,7 @@ legend { padding: 0; font-size: 36px; margin-bottom: 4px; }
 	display: grid;
 	place-items: center;
 	min-height: 240px;
-	background: var(--deep);
+	background: var(--navy-deep);
 	overflow: hidden;
 }
 .screenshot-well img { width: 100%; max-height: 420px; object-fit: contain; display: block; }
@@ -386,11 +438,11 @@ legend { padding: 0; font-size: 36px; margin-bottom: 4px; }
 .table-wrap { padding: 0; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 23px; }
 th, td { padding: 10px 16px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--deep); }
-thead th { background: var(--head); font-weight: 400; font-size: 25px; }
+thead th { background: var(--navy); font-weight: 400; font-size: 25px; }
 tbody tr:last-child td { border-bottom: 0; }
 tr.you { background: var(--deep); }
-.card table thead th { background: var(--deep); }
-td input, td select { font-size: 20px; padding: 4px 10px; background: var(--deep); }
+.card table thead th { background: var(--navy); }
+td input, td select { font-size: 20px; padding: 4px 10px; }
 
 /* ---------- FAQ ---------- */
 
@@ -411,6 +463,7 @@ summary { padding: 12px 0; cursor: pointer; font-size: 28px; }
 	gap: 8px;
 	padding: 10px 16px;
 	font-family: system-ui, sans-serif;
+	font-size-adjust: none;
 	font-size: 13px;
 	background: #251b38;
 	border: 1px dashed #a58bea;

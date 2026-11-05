@@ -1,4 +1,5 @@
 <script>
+	import Train from '#lib/Train.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -80,7 +81,8 @@
 		</div>
 
 		<div class="stack">
-			<section class="hero-well">
+			<Train label="Screenshot and links">
+			<div class="hero-well">
 				{#if project.screenshot_url && !shotFailed}
 					<img src={project.screenshot_url} alt="Screenshot of {project.name}" onerror={() => (shotFailed = true)} />
 				{:else}
@@ -92,7 +94,8 @@
 					<a class="chip" href="/projects/{project.id}/edit">Edit</a>
 					{#if !project.submissions.length}<button class="chip" onclick={remove}>Delete</button>{/if}
 				</div>
-			</section>
+			</div>
+			</Train>
 
 			<section class="panel">
 				<div class="panel-head">Description</div>
@@ -117,7 +120,7 @@
 							{#if usable.length}
 								<label class="row small">
 									Use a special stamp:
-									<select bind:value={stampId} style="width: auto; background: var(--deep)">
+									<select bind:value={stampId} style="width: auto">
 										<option value="">None</option>
 										{#each usable as st}<option value={st.id}>{st.type.name} ({st.type.effect.replace('_', ' ')})</option>{/each}
 									</select>
@@ -134,8 +137,8 @@
 					<div class="panel-head">Hours</div>
 					<div class="panel-body">
 						<div class="grid-halves" style="gap: 12px">
-							<div class="tile"><span class="label">Tracked</span><span class="value" style="background: var(--deep)">{hours(project.hackatime_seconds ?? 0)}</span></div>
-							<div class="tile"><span class="label">Approved</span><span class="value" style="background: var(--deep)">{hours(project.approved_seconds)}</span></div>
+							<div class="tile"><span class="label">Tracked</span><span class="value">{hours(project.hackatime_seconds ?? 0)}</span></div>
+							<div class="tile"><span class="label">Approved</span><span class="value">{hours(project.approved_seconds)}</span></div>
 						</div>
 						{#if project.unsubmitted_seconds != null}<span class="small">{hours(project.unsubmitted_seconds)} not shipped yet.</span>{/if}
 						<div class="pill-row">
@@ -167,17 +170,18 @@
 {/if}
 
 <style>
-	/* The tall #474242 block from "project main", with the pills on it. */
+	/* The screenshot block from "project main", now a car on the track,
+	   with the pills on it. Train draws the car. */
 	.hero-well {
 		position: relative;
 		display: grid;
 		place-items: center;
 		min-height: 290px;
-		padding-bottom: 64px;
-		background: var(--deep);
+		padding: 16px 16px 64px;
 		border-radius: var(--radius);
 		overflow: hidden;
 	}
+	.hero-well img { border-radius: 12px; }
 	.hero-well img { width: 100%; max-height: 520px; object-fit: contain; }
 	.pills { position: absolute; left: 14px; bottom: 14px; }
 	.ship { width: min(560px, 100%); }

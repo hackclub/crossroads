@@ -19,12 +19,14 @@
 	});
 </script>
 
-{#if error}
-	<main class="main"><p class="callout warn">Couldn't reach the backend: {error} Is it running on :8080?</p></main>
-{:else if session.me}
-	<TopBar />
-	<main class="main">
-		{@render children()}
-	</main>
-	<DevPanel onchange={refresh} />
-{/if}
+<div class="app-shell">
+	{#if error}
+		<main class="main"><p class="callout warn">Couldn't reach the backend: {error} Is it running on :8080?</p></main>
+	{:else if session.me}
+		<TopBar />
+		<main class="main">
+			{@render children()}
+		</main>
+		<DevPanel onchange={refresh} />
+	{/if}
+</div>

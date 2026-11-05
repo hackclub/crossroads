@@ -1,4 +1,5 @@
 <script>
+	import ImageDrop from '../ImageDrop.svelte';
 	import { onMount } from 'svelte';
 	import { api, get } from '../api.js';
 	import { money } from '../format.js';
@@ -98,7 +99,11 @@
 			{#if form.kind !== 'ticket'}
 				<label class="field"><span>Max per person <em>empty = unlimited</em></span><input type="number" min="1" bind:value={form.max_per_user} /></label>
 			{/if}
-			<label class="field"><span>Image link <em>optional</em></span><input type="url" bind:value={form.image_url} /></label>
+		</div>
+		<div class="field">
+			<span>Image <em>optional</em></span>
+			<ImageDrop id="item-image" label="Drop an image here" bind:value={form.image_url} />
+			<input type="url" aria-label="Image link" placeholder="or paste an image link" bind:value={form.image_url} />
 		</div>
 		<label class="field"><span>Description</span><textarea bind:value={form.description}></textarea></label>
 		<label class="check"><input type="checkbox" bind:checked={form.active} /> In the shop (active)</label>
