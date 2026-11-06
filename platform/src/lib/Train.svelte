@@ -62,6 +62,17 @@
 	.joint .bar { flex: 1; min-width: 4px; margin-inline: -3px; }
 	.joint .knob { position: relative; z-index: 1; margin-inline: -11px; }
 
+	/* When the page opens the train is already on screen, a quarter of the
+	   window to the left, and rolls right into place, slowing to a stop; the
+	   track stays put. Cars and couplers share one timing so they move as one. */
+	.car, .coupler { animation: roll-in 1.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+	@keyframes roll-in {
+		from { translate: -25vw 0; }
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.car, .coupler { animation: none; }
+	}
+
 	@media (max-width: 820px) {
 		.train { --couple: 16px; }
 	}

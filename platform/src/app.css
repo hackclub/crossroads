@@ -71,15 +71,15 @@ html { scrollbar-color: var(--body) var(--bg); }
 .main { text-shadow: 0 1px 3px rgb(0 0 0 / 0.75); }
 .light-card, dialog, input, textarea, select { text-shadow: none; }
 
-/* A run of track: wooden ties under two grey rails, as in the Figma
-   "track" groups. Everything scales with the track's height: each rail is
-   3.1% of it, sitting 8.9% in from the top and bottom. The rail colours are
-   sampled from the Figma render (#514b4b under its 20% light-leak multiply). */
+/* A run of track: wooden ties under two steel rails, laid out as in the
+   Figma "track" groups and scaled with the track's height (each rail is
+   3.1% of it, 8.9% in from the top and bottom). The textures are baked:
+   eight different weathered sleepers with grain and rough ends, and a worn
+   rail with a bright running surface and some rust. */
 .track {
-	--rail-line: linear-gradient(#383536 0 15%, #493e40 15% 85%, #3d3a3b 85%);
 	background:
-		var(--rail-line) 0 9.2% / 100% 3.125% no-repeat,
-		var(--rail-line) 0 89.8% / 100% 3.125% no-repeat,
+		url('./lib/assets/rail/rail.webp') 0 9.2% / auto 3.125% repeat-x,
+		url('./lib/assets/rail/rail.webp') 0 89.8% / auto 3.125% repeat-x,
 		url('./lib/assets/rail/tie.webp') 0 0 / auto 100% repeat-x;
 }
 
