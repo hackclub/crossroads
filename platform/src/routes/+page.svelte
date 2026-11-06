@@ -187,6 +187,26 @@
 	// one's middle in design pixels, evenly spaced across the left half.
 	// Cars carrying event details will run on them.
 	const tracks = [108, 324, 540, 756];
+
+	// People riding cars on the three left tracks (the fourth runs behind the
+	// ticket). Their pictures come from Cachet, Hack Club's cache of Slack
+	// avatars, by Slack ID; a rider without one yet gets an empty window.
+	const riders = [
+		{ name: 'Joaquin', slack: 'U083W5CCFDG' },
+		{ name: 'Max H', slack: null },
+		{ name: 'Barnav', slack: null },
+		{ name: 'Selena', slack: null }
+	];
+	const avatar = (slack) => `https://cachet.dunkirk.sh/users/${slack}/r`;
+
+	// A train on each of those tracks, carrying every third rider: `time` is
+	// how many seconds it takes to cross the screen, `start` how far across it
+	// is when the page loads, and `up` which way it runs.
+	const trains = [
+		{ time: 40, start: 0.2, up: false },
+		{ time: 52, start: 0.65, up: true },
+		{ time: 46, start: 0.4, up: false }
+	].map((train, t) => ({ ...train, x: tracks[t], cars: riders.filter((_, i) => i % 3 === t) }));
 </script>
 
 <svelte:head>
@@ -206,6 +226,15 @@
 		<!-- Above the film strip, the first screen splits: tracks on the left, the route's photos on the right. -->
 		<div class="yard" aria-hidden="true">
 			{#each tracks as x}<div class="yard-track" style="--x: {x}"></div>{/each}
+			{#each trains as train}
+				<div class="yard-train" class:up={train.up} style="--x: {train.x}; --time: {train.time}s; --start: {-train.start * train.time}s">
+					{#each train.cars as rider}
+						<div class="car">
+							<div class="window">{#if rider.slack}<img src={avatar(rider.slack)} alt="" />{/if}</div>
+						</div>
+					{/each}
+				</div>
+			{/each}
 		</div>
 		<div class="route" aria-hidden="true">
 			{#key photo}
@@ -333,6 +362,8 @@
 		/* How far the strip, and everything below it, moves from where Figma
 		   put it: its top at 1111, its middle at 1258.75. */
 		--shift: calc(var(--screen) - 1258.75 * var(--u));
+		/* Where the top film strip starts, and the first screen's halves end. */
+		--strip-top: calc(var(--screen) - 147.75 * var(--u));
 		position: relative;
 		width: calc(1728 * var(--u));
 		height: calc(3060 * var(--u) + var(--shift));
@@ -500,7 +531,7 @@
 	.route {
 		position: absolute;
 		top: 0;
-		height: calc(var(--screen) - 147.75 * var(--u));
+		height: var(--strip-top);
 		overflow: hidden;
 	}
 
@@ -524,6 +555,78 @@
 			linear-gradient(#262626 0 0) right calc(11 * var(--u)) top 0 / calc(5 * var(--u)) 100% no-repeat,
 			linear-gradient(transparent calc(7 * var(--u)), #262626 0 calc(24 * var(--u)), transparent 0)
 				top / 100% calc(31 * var(--u)) repeat-y;
+	}
+
+	/* Trains loop from just above the top of the screen to just below the
+	   film strip, starting part of the way along so there are cars on screen
+	   from the start. With reduced motion they stay where they start. */
+	.yard-train {
+		position: absolute;
+		top: 0;
+		left: calc(var(--x) * var(--u));
+		display: flex;
+		flex-direction: column;
+		gap: calc(12 * var(--u));
+		animation: run var(--time) linear var(--start) infinite;
+	}
+
+	.yard-train.up {
+		animation-direction: reverse;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.yard-train {
+			animation-play-state: paused;
+		}
+	}
+
+	@keyframes run {
+		from {
+			translate: -50% -100%;
+		}
+		to {
+			translate: -50% var(--strip-top);
+		}
+	}
+
+	/* A car seen from above: black with a faint edge, like the boards, and a
+	   window with its rider's Slack picture. Couplers join it to the car in
+	   front. */
+	.car {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: calc(80 * var(--u));
+		height: calc(112 * var(--u));
+		background: #0a0a0a;
+		border: var(--u) solid rgba(255, 255, 255, 0.06);
+		box-shadow: 0 calc(8 * var(--u)) calc(20 * var(--u)) rgba(0, 0, 0, 0.5);
+	}
+
+	.car + .car::before {
+		content: '';
+		position: absolute;
+		bottom: 100%;
+		left: 50%;
+		translate: -50% 0;
+		width: calc(10 * var(--u));
+		height: calc(12 * var(--u));
+		background: #262626;
+	}
+
+	/* Empty, it's the colour of the boards' tiles. */
+	.window {
+		width: calc(56 * var(--u));
+		height: calc(56 * var(--u));
+		background: #1b1b1b;
+		overflow: hidden;
+	}
+
+	.window img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
 	}
 
 	/* A soft left edge: the photos fade in over 240, centred on the middle of
