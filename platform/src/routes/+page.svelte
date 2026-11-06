@@ -101,6 +101,31 @@
 		setTarget(-clamp(py) * 2 * MAX_TILT * strength, clamp(px) * 2 * MAX_TILT * strength);
 	}
 
+	// The first film strip speeds up to its pace when hovered and slows to a stop
+	// when left, over a short ease instead of snapping on and off. CSS starts the
+	// strip paused; play() takes it over, and its playbackRate is what eases.
+	const REEL_EASE = 0.25; // seconds
+	let reelFrame = 0;
+	function easeReel(node, speed) {
+		const anim = node.querySelector('.reel')?.getAnimations()[0];
+		if (!anim) return; // reduced motion: no animation to drive
+		if (anim.playState !== 'running') {
+			anim.playbackRate = 0;
+			anim.play();
+		}
+		cancelAnimationFrame(reelFrame);
+		const from = anim.playbackRate;
+		const start = performance.now();
+		const tick = (now) => {
+			// A frame's timestamp can be a little before `start`; clamp so the speed
+			// never dips below where it began.
+			const t = Math.min(Math.max((now - start) / 1000 / REEL_EASE, 0), 1);
+			anim.playbackRate = from + (speed - from) * (1 - (1 - t) ** 3);
+			if (t < 1) reelFrame = requestAnimationFrame(tick);
+		};
+		reelFrame = requestAnimationFrame(tick);
+	}
+
 	function resetPostcard() {
 		if (target.x || target.y) setTarget(0, 0);
 	}
@@ -262,7 +287,14 @@
 		<!-- Film strips: this first one along the bottom of the first screen
 		     (.below moves it with that screen's height), and the second further down. -->
 		{#snippet film(reel, y, scroll = false)}
-			<div class="film abs" class:below={y > 0} class:scroll style="--x: 0; --y: {y}; --w: 1728; --h: 295.5">
+			<div
+				class="film abs"
+				class:below={y > 0}
+				class:scroll
+				style="--x: 0; --y: {y}; --w: 1728; --h: 295.5"
+				onpointerenter={scroll ? (e) => easeReel(e.currentTarget, 1) : undefined}
+				onpointerleave={scroll ? (e) => easeReel(e.currentTarget, 0) : undefined}
+			>
 				<!-- A strip that scrolls carries its frames twice, so it can loop. -->
 				<div class="reel" style:--frames={reel.length}>
 					{#each scroll ? [...reel, ...reel] : reel as shot, i}
@@ -590,16 +622,15 @@
 	}
 
 	/* The first strip runs right to left while it's hovered, a frame every 2.5
-	   seconds, and stops where it is when it isn't. Its reel is long enough to
-	   move one set of frames along, then starts over, which looks the same. */
+	   seconds, and stops where it is when it isn't; easeReel() eases it up to
+	   speed and back down. Its reel is long enough to move one set of frames
+	   along, then starts over, which looks the same. */
 	.film.scroll .reel {
 		width: calc((1728 + var(--frames) * 404) * var(--u));
 		animation: film-scroll calc(var(--frames) * 2.5s) linear infinite paused;
 	}
 
-	.film.scroll:hover .reel {
-		animation-play-state: running;
-	}
+	
 
 	@keyframes film-scroll {
 		to {

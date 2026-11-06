@@ -24,7 +24,9 @@
 
 <header class="topbar" style="background-image: url({film})">
 	<div class="window w-left">
-		<a class="brand" href="/"><img src={logo} alt="Hack Club" width="60" height="60" />Crossroads</a>
+		<!-- The logo goes to Hack Club; the name goes back to the landing page. -->
+		<a class="brand-logo" href="https://hackclub.com"><img src={logo} alt="Hack Club" width="60" height="60" /></a>
+		<a class="brand" href="/">Crossroads</a>
 	</div>
 	<nav class="window w-mid" aria-label="Main">
 		{#each links as [href, label]}
