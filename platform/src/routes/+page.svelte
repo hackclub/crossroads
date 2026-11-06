@@ -280,6 +280,7 @@
 				<Postcard />
 			</div>
 		</div>
+		<p class="crimson centered" style="--x:645; --y: 450; transform: rotateZ(-90deg); opacity: 50%">click me!</p>
 
 		<p class="crimson centered" style="--x: 852; --y: 70; --size: 40; letter-spacing: 0.3em;"><a href="https://hackclub.com" target="_blank" style="text-decoration: none;">hack club</a></p>
 
@@ -336,7 +337,7 @@
 				</div>
 				<div class="qa">
 					<h2 class="crimson" style="--size: 32">- What about visas? -</h2>
-					<p class="crimson" style="--size: 24">We can't make any definitive promises, but we'll do our very best to support you through the process of applying for a Schengen visa once you've met a minimum hour requirement.</p>
+					<p class="crimson" style="--size: 24">We can't make any definitive promises, but we'll do our very best to support you through the process of applying for a Schengen visa for the EU once you've met a minimum hour requirement.</p>
 				</div>
 			</section>
 
