@@ -13,7 +13,7 @@
 		[7, '7 days'],
 		[30, '30 days'],
 		[90, '90 days'],
-		[366, 'All time'] // the backend starts at Nov 3 anyway
+		[366, 'All time'] // the backend starts at Oct 30 anyway
 	];
 	const THRESHOLDS = [
 		[0, 'any time'],
@@ -41,7 +41,7 @@
 
 	const today = $derived(data?.days.at(-1));
 	const sum = (key) => data.days.reduce((total, d) => total + d[key], 0);
-	// "in the last 30 days", or "since Nov 3" when there's less history than that.
+	// "in the last 30 days", or "since Oct 30" when there's less history than that.
 	const span = $derived(!data ? '' : data.days.length === range ? `in the last ${range} days` : `since ${utcDay(data.days[0].day)}`);
 	const hoursOf = (d) => d.seconds / 3600;
 	const formatHours = (h) => (Number.isInteger(h) ? h : h.toFixed(1)) + 'h';

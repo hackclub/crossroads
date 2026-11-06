@@ -27,8 +27,9 @@ import (
 	"github.com/scherepi/crossroads-backend/uploads"
 )
 
-// Only Hackatime time from here on counts toward Crossroads.
-var hoursStart = time.Date(2026, time.November, 3, 0, 0, 0, 0, time.UTC)
+// Only Hackatime time from here on counts toward Crossroads: the day the RSVP
+// page first went up.
+var hoursStart = time.Date(2026, time.October, 30, 0, 0, 0, 0, time.UTC)
 
 // The home page's community goal: 200 hours together by 11:59 PM Eastern on
 // November 15 (EST, UTC-5).

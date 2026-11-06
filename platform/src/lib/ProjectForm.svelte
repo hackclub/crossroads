@@ -104,7 +104,7 @@
 			{:else if hackatime === null}
 				<p class="note">Loading your Hackatime…</p>
 			{:else if hackatime.length === 0}
-				<p class="note">No Hackatime time since Nov 3 yet. Code a bit with Hackatime running, then come back.</p>
+				<p class="note">No Hackatime time since Oct 30 yet. Code a bit with Hackatime running, then come back.</p>
 			{:else}
 				<ul class="ht">
 					{#each hackatime as h}

@@ -280,7 +280,7 @@ Ends the session and clears the cookie. `204`. Safe to call when already signed 
 
 ### `GET /api/hackatime/projects`
 
-`200` → `HackatimeProject[]`: every Hackatime project they've worked on since the event started (Nov 3 2026, midnight UTC), with which Crossroads project each counts toward. Use it to build the project-linking picker.
+`200` → `HackatimeProject[]`: every Hackatime project they've worked on since Hackatime time started counting (Oct 30 2026, midnight UTC), with which Crossroads project each counts toward. Use it to build the project-linking picker.
 
 | Status | When |
 |---|---|
