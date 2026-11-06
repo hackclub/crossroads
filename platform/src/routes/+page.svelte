@@ -259,15 +259,17 @@
 			<a href={route[photo].licenseUrl} target="_blank" rel="noopener">{route[photo].license}</a>
 		</p>
 
-		<!-- Film strips. .below moves them, and everything after them, with the height of the first screen. -->
-		{#each reels as reel, r}
-			<div class="film abs below" style="--x: 0; --y: {[1111, 2326][r]}; --w: 1728; --h: 295.5">
+		<!-- Film strips: this first one along the bottom of the first screen
+		     (.below moves it with that screen's height), and the second further down. -->
+		{#snippet film(reel, y)}
+			<div class="film abs" class:below={y > 0} style="--x: 0; --y: {y}; --w: 1728; --h: 295.5">
 				{#each reel as shot, i}
 					<!-- The cut-off frames at the ends repeat photos, so only the whole ones are described. -->
 					<img class="shot" src={shot.src} alt={i === 0 || i === 4 ? '' : shot.alt} style="--x: {691 + 404 * (i - 2)}" />
 				{/each}
 			</div>
-		{/each}
+		{/snippet}
+		{@render film(reels[0], 1111)}
 
 		<!-- The postcard, 390 wide (900 Figma pixels, so --pc is 390/900 of a design
 		     pixel), centred between the board and the tagline. It tilts toward the
@@ -301,19 +303,51 @@
 		<a class="button centered" href="/signin" onclick={getStarted} style="--x: 856; --y: 688"><span>Get Started</span></a>
 		<img class="drop-line" src={fadeLine} alt="" />
 
-		<h2 class="doto centered below" style="--x: 875.5; --y: 1450; --w: 803; --size: 32">What is Hack Club Crossroads?</h2>
-		<p class="doto centered below" style="--x: 877.5; --y: 1510; --w: 803; --size: 24">
-			Crossroads is a <a href="https://hackclub.com" target="_blank" rel="noopener">Hack Club</a> event running in February 2027
-			where a group of 30 teens build projects for 65 hours, then travel by train across Europe together.
-			Everything (including train passes, food and accommodation) is totally free for teenagers who qualify by building a
-			project. Can't come? We're also providing funding and prizes for every teen who ships a technical project.
-		</p>
-		<h2 class="doto centered below" style="--x: 888.5; --y: 1765; --w: 803; --size: 32">What is Hack Club Crossroads?</h2>
+		<!-- Everything under the first film strip flows down the page, so as the
+		     questions grow they push the second strip and everything after it down. -->
+		<div class="lower">
+			<section class="faq">
+				<div class="qa">
+					<h2 class="crimson" style="--size: 32">- What is Hack Club Crossroads? -</h2>
+					<p class="crimson" style="--size: 24">
+						Crossroads is a <a href="https://hackclub.com" target="_blank" rel="noopener">Hack Club</a> event running in February 2027
+						where a group of 30 teens build projects for 65 hours, then travel by train across Europe together.
+						Everything (including train passes, food and accommodation) is totally free for teenagers who qualify by building a
+						project. Can't come? We're also providing funding and prizes for every teen who ships a technical project.
+					</p>
+				</div>
+				<div class="qa">
+					<h2 class="crimson" style="--size: 32">- Who can participate? -</h2>
+					<p class="crimson" style="--size: 24">
+						Anyone 13 to 18 years old (including both ends), whether it's your first time writing code or the 300th graphics API you've written from scratch. Hack Club is about wanting and trying to make things, not about being the best programmer in the world.
+					</p>
+				</div>
+				<div class="qa">
+					<h2 class="crimson" style="--size: 32">- What can I make? -</h2>
+					<p class="crimson" style="--size: 24">
+						Any kind of software project, it just has to be open source!
+					</p>
+				</div>
+				<div class="qa">
+					<h2 class="crimson" style="--size: 32">- What's the trip going to be like? -</h2>
+					<p class="crimson" style="--size: 24">
+						There's always a chance that our plans change, but the current route would start us in Berlin and take us through Paris, Brussels, and down to Italy, where we'd end in Milan. Make sure you're in our Slack channel (<a href="https://hackclub.enterprise.slack.com/archives/C0CDHHFABAR" target="_blank">#crossroads</a>) for the latest updates on the route and plan.
+					</p>
+				</div>
+				<div class="qa">
+					<h2 class="crimson" style="--size: 32">- What about visas? -</h2>
+					<p class="crimson" style="--size: 24">We can't make any definitive promises, but we'll do our very best to support you through the process of applying for a Schengen visa once you've met a minimum hour requirement.</p>
+				</div>
+			</section>
 
-		<img class="line abs below" src={arrowDown} alt="" style="--x: 772.056; --y: 2705.057; --w: 169.887; --h: 5.774; --angle: -90deg" />
-		<a class="button centered below" href="/signin" onclick={getStarted} style="--x: 856; --y: 2813"><span>Get Started</span></a>
-
-		<p class="doto centered nowrap below" style="--x: 856.5; --y: 3010; --size: 16"><a href="https://forms.hackclub.com/bounty" target="_blank">Fulfillment Bounty</a> + <a href="https://hackclub.com/privacy-and-terms" target="_blank">Privacy and Terms</a></p>
+			<!-- Positions in here are from the second strip's top, 2326 in Figma. -->
+			<div class="tail">
+				{@render film(reels[1], 0)}
+				<img class="line abs" src={arrowDown} alt="" style="--x: 772.056; --y: 379.057; --w: 169.887; --h: 5.774; --angle: -90deg" />
+				<a class="button centered" href="/signin" onclick={getStarted} style="--x: 856; --y: 487"><span>Get Started</span></a>
+				<p class="doto centered nowrap" style="--x: 856.5; --y: 684; --size: 16"><a href="https://forms.hackclub.com/bounty" target="_blank">Fulfillment Bounty</a> + <a href="https://hackclub.com/privacy-and-terms" target="_blank">Privacy and Terms</a></p>
+			</div>
+		</div>
 	</div>
 </main>
 
@@ -357,7 +391,8 @@
 		--strip-top: calc(var(--screen) - 147.75 * var(--u));
 		position: relative;
 		width: calc(1728 * var(--u));
-		height: calc(3060 * var(--u) + var(--shift));
+		/* No height: .lower, in the page's flow, sets it, so the frame grows
+		   with the questions. Unstretched it's 3060 + --shift, as in Figma. */
 		margin-left: calc(50cqw - 864 * var(--u));
 		overflow: hidden;
 		color: #fff;
@@ -412,6 +447,44 @@
 		font-size: calc(var(--size) * var(--u));
 		line-height: normal;
 		overflow-wrap: break-word;
+	}
+
+	/* Everything under the first film strip, in the page's flow: it starts
+	   where that strip ends (1406.5, plus --shift). A margin, not padding, so
+	   the box itself starts there and doesn't cover the first screen's
+	   postcard and links; the frame's overflow keeps it from collapsing. */
+	.lower {
+		position: relative;
+		margin-top: calc(1406.5 * var(--u) + var(--shift));
+	}
+
+	/* The questions, 803 wide and centred on 877.5 as in Figma: 16 between a
+	   question and its answer, 48 between one answer and the next question.
+	   The column fills at least Figma's 919.5 between the strips, centred in
+	   it, and grows past that when it needs to, moving the second strip down
+	   but keeping 56 above and below. */
+	.faq {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: calc(48 * var(--u));
+		width: calc(803 * var(--u));
+		min-height: calc(919.5 * var(--u));
+		margin-left: calc(476 * var(--u));
+		padding-block: calc(56 * var(--u));
+		text-align: center;
+	}
+
+	/* The second film strip and what's under it, 734 tall as in Figma. */
+	.tail {
+		position: relative;
+		height: calc(734 * var(--u));
+	}
+
+	.qa {
+		display: flex;
+		flex-direction: column;
+		gap: calc(16 * var(--u));
 	}
 
 	.crimson {
