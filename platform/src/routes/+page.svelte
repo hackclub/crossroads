@@ -556,6 +556,7 @@
 		top: calc(var(--screen) - 171.75 * var(--u));
 		translate: 0 -100%;
 		display: flex;
+		--split-flap-padding: 4;
 	}
 
 	/* The photo's credit, which its licence asks for: sitting on the top of

@@ -7,6 +7,8 @@
 	//
 	// Sizes are design pixels: inside an element that sets --u, like the
 	// landing page's frame, the board scales with it. Elsewhere one is 1px.
+	// Set --split-flap-padding on a parent to change the frame round the
+	// tiles (16 for one line of text, 20 for rows).
 	//
 	//   <SplitFlapDisplay text="Next stop Paris" columns={16} size="lg" centered />
 	//   <SplitFlapDisplay rows={[{ label: 'Hours', value: '42' }]} columns={12} />
@@ -62,11 +64,11 @@
 		display: inline-flex;
 		flex-direction: column;
 		gap: calc(8 * var(--px));
-		padding: calc(20 * var(--px));
+		padding: calc(var(--split-flap-padding, 20) * var(--px));
 		background: #0a0a0a;
 		border: var(--px) solid rgba(255, 255, 255, 0.06);
 		box-shadow: 0 calc(16 * var(--px)) calc(40 * var(--px)) rgba(0, 0, 0, 0.5);
 	}
-	.single { padding: calc(16 * var(--px)); }
+	.single { padding: calc(var(--split-flap-padding, 16) * var(--px)); }
 	.line { display: flex; gap: calc(3 * var(--px)); }
 </style>
