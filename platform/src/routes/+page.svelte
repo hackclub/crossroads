@@ -19,6 +19,11 @@
 	import arrowUp from '#lib/assets/landing/arrow-up.svg';
 	import arrowDown from '#lib/assets/landing/arrow-down.svg';
 	import fadeLine from '#lib/assets/landing/fade-line.svg';
+	import paris from '#lib/assets/landing/route/paris.webp';
+	import berlin from '#lib/assets/landing/route/berlin.webp';
+	import genoa from '#lib/assets/landing/route/genoa.webp';
+	import sanSalvatore from '#lib/assets/landing/route/san-salvatore.webp';
+	import brussels from '#lib/assets/landing/route/brussels.webp';
 	import SplitFlapDisplay from '#lib/SplitFlapDisplay.svelte';
 	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
@@ -111,13 +116,54 @@
 	}
 
 	// Photos of places on the route fade from one to the next on the right of
-	// the first screen, with the place's name on a small board in the corner.
-	// Stand-ins until the real photos arrive; give each one its `place` and a
-	// `src` (an imported image).
+	// the first screen, with the place's name on a small board in the corner
+	// and the photo's credit under it. They're from Wikimedia Commons, resized
+	// to 1800px and converted to WebP, and their licences need that credit
+	// shown. `position` is an object-position, where a photo's subject would
+	// otherwise be cropped or faded out.
+	const BY_SA = 'https://creativecommons.org/licenses/by-sa/4.0/';
 	const route = [
-		{ place: 'Stop 1', src: null },
-		{ place: 'Stop 2', src: null },
-		{ place: 'Stop 3', src: null }
+		{
+			place: 'Paris',
+			src: paris,
+			author: 'Fabien Barrau',
+			license: 'CC BY-SA 4.0',
+			licenseUrl: BY_SA,
+			page: 'https://commons.wikimedia.org/wiki/File:Tour_Saint-Jacques_au_cr%C3%A9puscule.jpg'
+		},
+		{
+			place: 'Berlin',
+			src: berlin,
+			author: 'Diego Delso',
+			license: 'CC BY-SA 4.0',
+			licenseUrl: BY_SA,
+			page: 'https://commons.wikimedia.org/wiki/File:Fernsehturm,_Berl%C3%ADn,_Alemania,_2016-04-22,_DD_40-42_HDR.jpg'
+		},
+		{
+			place: 'Genoa',
+			src: genoa,
+			author: 'Abldecn',
+			license: 'CC BY 4.0',
+			licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+			page: 'https://commons.wikimedia.org/wiki/File:Pier_of_Boccadasse.jpg'
+		},
+		{
+			place: 'San Salvatore',
+			src: sanSalvatore,
+			position: 'left center',
+			author: 'JoachimKohler-HB',
+			license: 'CC BY-SA 4.0',
+			licenseUrl: BY_SA,
+			page: 'https://commons.wikimedia.org/wiki/File:Lugano_-_Luganersee_%26_Monte_San_Salvatore_(2013).jpg'
+		},
+		{
+			place: 'Brussels',
+			src: brussels,
+			author: 'Diego Delso',
+			license: 'CC BY-SA 4.0',
+			licenseUrl: BY_SA,
+			page: 'https://commons.wikimedia.org/wiki/File:Edificios_en_la_Grand-Place,_Bruselas,_B%C3%A9lgica,_2021-12-15,_DD_184-186_HDR.jpg'
+		}
 	];
 
 	// How long each photo stays, and how long the fade to the next takes, in ms.
@@ -129,6 +175,11 @@
 		if (route.length < 2 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 		const timer = setInterval(() => (photo = (photo + 1) % route.length), PHOTO_TIME);
 		return () => clearInterval(timer);
+	});
+
+	// Load the next photo while this one shows, so it's ready to fade in.
+	$effect(() => {
+		new Image().src = route[(photo + 1) % route.length].src;
 	});
 
 	// Straight tracks down the left of the first screen, under the logo's
@@ -159,16 +210,18 @@
 		<div class="route" aria-hidden="true">
 			{#key photo}
 				<div class="photo" transition:fade={{ duration: FADE_TIME }}>
-					{#if route[photo].src}
-						<img src={route[photo].src} alt="" />
-					{:else}
-						<div class="stand-in" style:--hue={photo * 110 + 20}></div>
-					{/if}
+					<img src={route[photo].src} alt="" style:object-position={route[photo].position} />
 				</div>
 			{/key}
 		</div>
-		<div class="destination" aria-hidden="true">
-			<SplitFlapDisplay text={route[photo].place} columns={12} size="sm" centered lowercase />
+		<div class="destination">
+			<div aria-hidden="true">
+				<SplitFlapDisplay text={route[photo].place} columns={13} size="sm" centered lowercase />
+			</div>
+			<p class="doto credit" style="--size: 14">
+				Photo: <a href={route[photo].page} target="_blank" rel="noopener">{route[photo].author}</a>,
+				<a href={route[photo].licenseUrl} target="_blank" rel="noopener">{route[photo].license}</a>
+			</p>
 		</div>
 
 		<!-- Film strips are baked from Figma's shader; the left ones include the effect's bleed past the strip. -->
@@ -496,21 +549,23 @@
 		object-fit: cover;
 	}
 
-	/* Until the real photos arrive. */
-	.stand-in {
-		height: 100%;
-		background: linear-gradient(135deg, hsl(var(--hue) 55% 55%), hsl(calc(var(--hue) + 40) 55% 25%));
-	}
-
 	/* The current photo's place, on a small board in the panel's bottom right
-	   corner: 48 in from the edge and 32 above the film strip. Not inside the
-	   panel, so it's at full strength. */
+	   corner, with its credit underneath: 48 in from the edge and 32 above the
+	   film strip. Not inside the panel, so it's at full strength. */
 	.destination {
 		position: absolute;
 		right: calc(48 * var(--u));
 		top: calc(var(--screen) - 179.75 * var(--u));
 		translate: 0 -100%;
 		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: calc(8 * var(--u));
+	}
+
+	.credit {
+		opacity: 0.7;
+		white-space: nowrap;
 	}
 
 	.button {
