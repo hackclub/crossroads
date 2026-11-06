@@ -13,11 +13,23 @@ func TestAdminActivity(t *testing.T) {
 	e := newEnv(t)
 	admin := e.newAdmin(t)
 	participant := e.newUser(t, "U1")
+	lapsed := e.newUser(t, "U2")
 	p := e.createProject(t, participant, completeProject("racer"))
 	today := activity.Day(time.Now())
 	for daysAgo, seconds := range map[int]int{0: 1800, 2: 7200, 10: 600} {
 		if _, err := e.pool.Exec(context.Background(), "insert into project_activity (project_id, day, seconds) values ($1, $2, $3)",
 			p.ID, today.AddDate(0, 0, -daysAgo), seconds); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The admin's visit doesn't count, and the lapsed participant's is only in
+	// the last 30 days.
+	for _, v := range []struct {
+		user    int64
+		daysAgo int
+	}{{participant.ID, 0}, {admin.ID, 0}, {lapsed.ID, 9}} {
+		if _, err := e.pool.Exec(context.Background(), "insert into platform_activity (user_id, day) values ($1, $2)",
+			v.user, today.AddDate(0, 0, -v.daysAgo)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -27,13 +39,17 @@ func TestAdminActivity(t *testing.T) {
 		ActiveParticipants int    `json:"active_participants"`
 		ActiveProjects     int    `json:"active_projects"`
 		Seconds            int    `json:"seconds"`
+		Visitors           int    `json:"visitors"`
+		SignUps            int    `json:"sign_ups"`
 	}
 	var out struct {
-		Days       []day      `json:"days"`
-		Last7Days  int        `json:"last_7_days"`
-		Last30Days int        `json:"last_30_days"`
-		MinMinutes int        `json:"min_minutes"`
-		UpdatedAt  *time.Time `json:"updated_at"`
+		Days               []day      `json:"days"`
+		Last7Days          int        `json:"last_7_days"`
+		Last30Days         int        `json:"last_30_days"`
+		VisitorsLast7Days  int        `json:"visitors_last_7_days"`
+		VisitorsLast30Days int        `json:"visitors_last_30_days"`
+		MinMinutes         int        `json:"min_minutes"`
+		UpdatedAt          *time.Time `json:"updated_at"`
 	}
 	e.mustCall(t, admin, http.StatusOK, "GET", "/api/admin/activity?days=7", nil, &out)
 	if len(out.Days) != 7 {
@@ -48,6 +64,13 @@ func TestAdminActivity(t *testing.T) {
 	}
 	if out.Last7Days != 1 || out.Last30Days != 1 || out.UpdatedAt == nil {
 		t.Errorf("totals: got %+v", out)
+	}
+	// Both participants signed up today; the admin isn't one.
+	if last.Visitors != 1 || last.SignUps != 2 || out.Days[5].Visitors != 0 || out.Days[5].SignUps != 0 {
+		t.Errorf("platform today and yesterday: got %+v, %+v", last, out.Days[5])
+	}
+	if out.VisitorsLast7Days != 1 || out.VisitorsLast30Days != 2 {
+		t.Errorf("visitors: got %d in 7 days and %d in 30, want 1 and 2", out.VisitorsLast7Days, out.VisitorsLast30Days)
 	}
 
 	// With an hour minimum, only the day with two hours counts.

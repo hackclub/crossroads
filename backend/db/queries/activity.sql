@@ -18,10 +18,11 @@ where project_id = $1 and day between sqlc.arg(from_day)::date and sqlc.arg(to_d
 insert into project_activity (project_id, day, seconds) values ($1, $2, $3)
 on conflict (project_id, day) do update set seconds = excluded.seconds, updated_at = now();
 
--- name: DailyProjectActivity :many
+-- name: DailyActivity :many
 -- Each day from start_day to end_day, including empty ones: how many
 -- participants spent at least min_seconds on their projects, how many of
--- their projects got any time, and the total.
+-- their projects got any time, and the total; and how many participants
+-- used the platform, and how many signed up.
 with per_user as (
     select project_activity.day, projects.user_id,
         count(*) as projects, sum(project_activity.seconds) as seconds
@@ -35,7 +36,12 @@ with per_user as (
 select days.day::date as day,
     count(per_user.user_id) filter (where per_user.seconds >= sqlc.arg(min_seconds)::integer)::integer as active_participants,
     coalesce(sum(per_user.projects), 0)::integer as active_projects,
-    coalesce(sum(per_user.seconds), 0)::bigint as seconds
+    coalesce(sum(per_user.seconds), 0)::bigint as seconds,
+    (select count(*) from platform_activity
+        join users on users.id = platform_activity.user_id
+        where platform_activity.day = days.day::date and users.role = 'participant')::integer as visitors,
+    (select count(*) from users
+        where (users.created_at at time zone 'UTC')::date = days.day::date and users.role = 'participant')::integer as sign_ups
 from generate_series(sqlc.arg(start_day)::date, sqlc.arg(end_day)::date, interval '1 day') as days (day)
 left join per_user on per_user.day = days.day::date
 group by days.day
@@ -57,3 +63,16 @@ select count(distinct active.user_id)::integer from (
 
 -- name: LastProjectActivityUpdate :one
 select updated_at from project_activity order by updated_at desc limit 1;
+
+-- name: RecordVisit :exec
+insert into platform_activity (user_id, day) values ($1, $2)
+on conflict do nothing;
+
+-- name: CountVisitors :one
+-- Participants who used the platform on at least one day from start_day to
+-- end_day.
+select count(distinct platform_activity.user_id)::integer
+from platform_activity
+join users on users.id = platform_activity.user_id
+where users.role = 'participant'
+    and platform_activity.day between sqlc.arg(start_day)::date and sqlc.arg(end_day)::date;

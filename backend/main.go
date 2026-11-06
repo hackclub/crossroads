@@ -126,7 +126,9 @@ func main() {
 	}
 
 	r := chi.NewRouter()
-	r.Use(middleware.Logger, middleware.Recoverer, a.LoadSession)
+	// Which days each person uses the platform, for the admin activity page.
+	visits := &activity.Visits{Queries: db.New(pool)}
+	r.Use(middleware.Logger, middleware.Recoverer, a.LoadSession, visits.Record)
 	r.Mount("/auth", a.Routes())
 	r.Mount("/api", apiRoutes.Routes())
 	r.Handle("/uploads/*", http.StripPrefix("/uploads", uploadStore.Files()))

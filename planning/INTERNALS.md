@@ -12,7 +12,7 @@ The backend is a Go server (chi router) on Postgres. Postgres is the source of t
 
 ```
 backend/
-  main.go           reads config, connects, migrates, wires everything, starts the activity poller and Airtable sync
+  main.go           reads config, connects, migrates, wires everything, starts the activity poller and Airtable sync, records visits
   auth/             sign-in with Hack Club Auth, sessions, RequireUser / RequireRole, GET /api/me
   api/              every /api handler
     api.go            the routes, decode(), idParam()
@@ -25,7 +25,7 @@ backend/
   hca/              Hack Club Auth client: OAuth, GET /api/v1/me, the public verification check
   hackatime/        Hackatime client: user stats and heartbeat spans, filtered to some projects
   airtable/         small Airtable REST client: create, update, list
-  activity/         the background poll of each project's Hackatime time per day
+  activity/         the background poll of each project's Hackatime time per day, and recording visits
   airtablesync/     the background copy into Airtable, and picking up fulfilled orders
   respond/          JSON, error and 500 responses
   db/
@@ -69,6 +69,7 @@ Responses always use explicit JSON structs with `snake_case` tags. Never return 
 | `special_stamps` | Stamps people have, from a box or an admin; `submission_id` once used. |
 | `shop_items` | `kind` (`ticket`, `physical`, `stipend`), `price`, optional `stock` and `max_per_user`, `stipend_cents`, `active`. |
 | `project_activity` | Each project's Hackatime `seconds` per UTC `day`, written by the activity poller. Only days with time have rows. |
+| `platform_activity` | `(user_id, day)` for each UTC day a person made a signed-in request, written by `activity.Visits`. |
 | `orders` | `price` as paid, `status` (`pending`, `fulfilled`, `cancelled`), `shipping_address`, admin `notes`, Airtable bookkeeping. |
 
 ### Where each rule is enforced
@@ -201,6 +202,8 @@ Details:
 4. In one transaction per project, deletes its rows for the days covered and writes the new ones, so time that moves between projects (relinking) or disappears ends up right.
 
 The first pass each UTC day covers everything since Hackatime time starts counting (Nov 3), which picks up relinked projects and late heartbeats. The rest cover yesterday and today. Private or missing Hackatime accounts are skipped; other errors are logged and retried next pass.
+
+`activity.Visits` is middleware, right after `auth.LoadSession`, that records platform use. A signed-in person's first request each UTC day adds a `platform_activity` row; the server then remembers that day in memory, so their later requests don't touch the database. Several instances each remember on their own, which only costs an insert that does nothing. A failed insert is logged and retried on the person's next request. Migration 10 filled in earlier days from existing sessions' sign-in times. Sign-ups per day come from `users.created_at`.
 
 ## Locking
 

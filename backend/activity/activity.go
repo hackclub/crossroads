@@ -1,7 +1,8 @@
-// Package activity tracks how much people work on their Crossroads projects
-// each day: the time Hackatime saw on each project's linked Hackatime
-// projects, split into UTC days and kept in project_activity. The admin
-// activity page counts daily active participants from it.
+// Package activity tracks, for the admin activity page, how much people work
+// on their Crossroads projects each day and which days they use the
+// platform. Poller keeps project_activity: the time Hackatime saw on each
+// project's linked Hackatime projects, split into UTC days. Visits keeps
+// platform_activity: the days each person made a signed-in request.
 package activity
 
 import (

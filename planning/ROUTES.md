@@ -194,7 +194,7 @@ Reviewer and admin shapes are listed with their routes below.
 | GET | `/api/review/queue` | reviewer | Pending submissions |
 | GET | `/api/review/submissions/{id}` | reviewer | Everything about one submission |
 | POST | `/api/review/submissions/{id}` | reviewer | Approve or reject |
-| GET | `/api/admin/activity?days=&min_minutes=` | admin | Active participants per day |
+| GET | `/api/admin/activity?days=&min_minutes=` | admin | Participants on the platform and working on projects, per day |
 | GET | `/api/admin/users?q=` | admin | Find people |
 | PATCH | `/api/admin/users/{id}` | admin | Change someone's role |
 | POST | `/api/admin/users/{id}/stamp-adjustments` | admin | Add or take away stamps |
@@ -625,12 +625,16 @@ interface Activity {
     active_participants: number; // participants whose projects got at least min_minutes between them
     active_projects: number;     // projects with any time, participants' only
     seconds: number;             // participants' total project time
+    visitors: number;            // participants who made a signed-in request
+    sign_ups: number;            // participants who signed up
   }[];
   last_7_days: number;   // participants active on at least one of the last 7 days
   last_30_days: number;  // and the last 30
+  visitors_last_7_days: number;  // participants who used the platform on at least one of the last 7 days
+  visitors_last_30_days: number; // and the last 30
   min_minutes: number;
   updated_at: string | null; // when the poller last recorded anything
 }
 ```
 
-Counts Hackatime time on the Hackatime projects linked to a project, recorded per UTC day by the activity poller (see INTERNALS.md, "Activity"). Reviewers and admins aren't counted, and nor is time on Hackatime projects nobody has linked. `days` is 1 to 366 (default 30) and doesn't go back before Hackatime time starts counting; `min_minutes` is 0 to 1440 (default 0, any time). `422` for anything else.
+Project numbers count Hackatime time on the Hackatime projects linked to a project, recorded per UTC day by the activity poller. Visitors are recorded on each person's first signed-in request of the UTC day (see INTERNALS.md, "Activity"). `min_minutes` only affects the project numbers. Reviewers and admins aren't counted, and nor is time on Hackatime projects nobody has linked. `days` is 1 to 366 (default 30) and doesn't go back before Hackatime time starts counting; `min_minutes` is 0 to 1440 (default 0, any time). `422` for anything else.

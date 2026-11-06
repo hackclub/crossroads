@@ -490,6 +490,11 @@ type Order struct {
 	AirtableSyncedAt *time.Time
 }
 
+type PlatformActivity struct {
+	UserID int64
+	Day    time.Time
+}
+
 type Project struct {
 	ID            int64
 	UserID        int64

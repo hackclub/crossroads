@@ -203,7 +203,7 @@ func TestPoll(t *testing.T) {
 	// time makes someone active.
 	daily := func(minSeconds int32) map[string][3]int64 {
 		t.Helper()
-		rows, err := e.queries.DailyProjectActivity(ctx, db.DailyProjectActivityParams{StartDay: at(3, 0, 0), EndDay: at(6, 0, 0), MinSeconds: minSeconds})
+		rows, err := e.queries.DailyActivity(ctx, db.DailyActivityParams{StartDay: at(3, 0, 0), EndDay: at(6, 0, 0), MinSeconds: minSeconds})
 		if err != nil {
 			t.Fatal(err)
 		}

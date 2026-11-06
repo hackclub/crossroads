@@ -54,7 +54,29 @@ func (q *Queries) CountActiveParticipants(ctx context.Context, arg CountActivePa
 	return column_1, err
 }
 
-const dailyProjectActivity = `-- name: DailyProjectActivity :many
+const countVisitors = `-- name: CountVisitors :one
+select count(distinct platform_activity.user_id)::integer
+from platform_activity
+join users on users.id = platform_activity.user_id
+where users.role = 'participant'
+    and platform_activity.day between $1::date and $2::date
+`
+
+type CountVisitorsParams struct {
+	StartDay time.Time
+	EndDay   time.Time
+}
+
+// Participants who used the platform on at least one day from start_day to
+// end_day.
+func (q *Queries) CountVisitors(ctx context.Context, arg CountVisitorsParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countVisitors, arg.StartDay, arg.EndDay)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const dailyActivity = `-- name: DailyActivity :many
 with per_user as (
     select project_activity.day, projects.user_id,
         count(*) as projects, sum(project_activity.seconds) as seconds
@@ -68,43 +90,53 @@ with per_user as (
 select days.day::date as day,
     count(per_user.user_id) filter (where per_user.seconds >= $1::integer)::integer as active_participants,
     coalesce(sum(per_user.projects), 0)::integer as active_projects,
-    coalesce(sum(per_user.seconds), 0)::bigint as seconds
+    coalesce(sum(per_user.seconds), 0)::bigint as seconds,
+    (select count(*) from platform_activity
+        join users on users.id = platform_activity.user_id
+        where platform_activity.day = days.day::date and users.role = 'participant')::integer as visitors,
+    (select count(*) from users
+        where (users.created_at at time zone 'UTC')::date = days.day::date and users.role = 'participant')::integer as sign_ups
 from generate_series($2::date, $3::date, interval '1 day') as days (day)
 left join per_user on per_user.day = days.day::date
 group by days.day
 order by days.day
 `
 
-type DailyProjectActivityParams struct {
+type DailyActivityParams struct {
 	MinSeconds int32
 	StartDay   time.Time
 	EndDay     time.Time
 }
 
-type DailyProjectActivityRow struct {
+type DailyActivityRow struct {
 	Day                time.Time
 	ActiveParticipants int32
 	ActiveProjects     int32
 	Seconds            int64
+	Visitors           int32
+	SignUps            int32
 }
 
 // Each day from start_day to end_day, including empty ones: how many
 // participants spent at least min_seconds on their projects, how many of
-// their projects got any time, and the total.
-func (q *Queries) DailyProjectActivity(ctx context.Context, arg DailyProjectActivityParams) ([]DailyProjectActivityRow, error) {
-	rows, err := q.db.Query(ctx, dailyProjectActivity, arg.MinSeconds, arg.StartDay, arg.EndDay)
+// their projects got any time, and the total; and how many participants
+// used the platform, and how many signed up.
+func (q *Queries) DailyActivity(ctx context.Context, arg DailyActivityParams) ([]DailyActivityRow, error) {
+	rows, err := q.db.Query(ctx, dailyActivity, arg.MinSeconds, arg.StartDay, arg.EndDay)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []DailyProjectActivityRow
+	var items []DailyActivityRow
 	for rows.Next() {
-		var i DailyProjectActivityRow
+		var i DailyActivityRow
 		if err := rows.Scan(
 			&i.Day,
 			&i.ActiveParticipants,
 			&i.ActiveProjects,
 			&i.Seconds,
+			&i.Visitors,
+			&i.SignUps,
 		); err != nil {
 			return nil, err
 		}
@@ -164,6 +196,21 @@ func (q *Queries) ListTrackedProjects(ctx context.Context) ([]ListTrackedProject
 		return nil, err
 	}
 	return items, nil
+}
+
+const recordVisit = `-- name: RecordVisit :exec
+insert into platform_activity (user_id, day) values ($1, $2)
+on conflict do nothing
+`
+
+type RecordVisitParams struct {
+	UserID int64
+	Day    time.Time
+}
+
+func (q *Queries) RecordVisit(ctx context.Context, arg RecordVisitParams) error {
+	_, err := q.db.Exec(ctx, recordVisit, arg.UserID, arg.Day)
+	return err
 }
 
 const setProjectActivity = `-- name: SetProjectActivity :exec
