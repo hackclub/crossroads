@@ -1,18 +1,12 @@
 <script>
 	// Create or edit a project. The details are a postcard: the screenshot is
 	// the picture on the left, and the name, description and links are written
-	// on ruled lines on the right, under a stamp. Hackatime and Save follow.
+	// on ruled lines on the right, under a postmark. Hackatime and Save follow.
 	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, get } from './api.js';
 	import { hours } from './format.js';
 	import ImageDrop from './ImageDrop.svelte';
-	import olive from './assets/stamps/olive.webp';
-	import vanitas from './assets/stamps/vanitas.webp';
-	import monet from './assets/stamps/monet.webp';
-
-	// Postage for the card: one of the stamps, picked when the page opens.
-	const postage = [olive, vanitas, monet][Math.floor(Math.random() * 3)];
 
 	let { project: projectProp = null } = $props();
 	// The form starts from the project once; edits live in the fields below.
@@ -82,10 +76,7 @@
 
 			<!-- The writing side: name, message and links on ruled lines. -->
 			<div class="writing">
-				<div class="franking" aria-hidden="true">
-					<img class="stamp" src={postage} alt="" />
-					<span class="postmark">Crossroads<br />Paris</span>
-				</div>
+				<span class="postmark" aria-hidden="true">Crossroads<br />Paris</span>
 				<label class="line name-line">
 					<span>Project</span>
 					<input required maxlength="100" bind:value={name} placeholder="My cool project" />
@@ -194,12 +185,10 @@
 		padding-left: 32px;
 		border-left: 1px solid var(--rule);
 	}
-	.franking { position: relative; align-self: flex-end; height: 120px; margin-bottom: -6px; }
-	.stamp { display: block; height: 116px; width: auto; max-width: 160px; rotate: 3deg; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.3)); }
+	/* No stamp on it: you stick your own special stamps on the project once it exists. */
 	.postmark {
-		position: absolute;
-		top: 26px;
-		left: -66px;
+		align-self: flex-end;
+		margin: 4px 8px -6px 0;
 		display: grid;
 		place-content: center;
 		width: 96px;
