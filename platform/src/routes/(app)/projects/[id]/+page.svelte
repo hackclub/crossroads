@@ -1,5 +1,5 @@
 <script>
-	import Train from '#lib/Train.svelte';
+	
 	import StampBox from '#lib/StampBox.svelte';
 	import papua from '#lib/assets/stamps/papua.webp';
 	import divan from '#lib/assets/stamps/divan.webp';
@@ -10,6 +10,9 @@
 	import { api, get } from '#lib/api.js';
 	import { refresh } from '#lib/session.svelte.js';
 	import { hours, date, projectStatus, EFFECTS, effectShort } from '#lib/format.js';
+
+	// A link as it's written on the card: no https:// or trailing slash.
+	const shortUrl = (url) => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
 	// "NOV 4" for the postmark.
 	const shortDate = (iso) => new Date(iso).toLocaleDateString('en', { month: 'short', day: 'numeric' }).toUpperCase();
@@ -68,7 +71,7 @@
 	let innerWidth = $state(1440);
 	let boxOpen = $state(false);
 	let boxTouched = false;
-	let board = $state(); // the screenshot card stamps sit on
+	let board = $state(); // the postcard stamps stick on
 	let drag = $state(null); // a stamp being dragged out of the box
 	let toPlace = $state(null); // { stamp, x, y, rotation } waiting for the warning popup
 	let placeDialog = $state();
@@ -236,24 +239,30 @@
 {:else}
 	{@const s = projectStatus(project)}
 	<div class="stack-lg">
-		<div class="stack-sm" style="align-items: center">
-			<h1 class="page-title" style="margin-bottom: 4px">{project.name}</h1>
-			<span class="badge {s.tone}">{s.label}</span>
-		</div>
-
 		<div class="stack">
-			<Train label="Screenshot and links">
-			<div class="hero-well" bind:this={board} class:receiving={drag?.moved} class:over={drag?.over}>
-				{#if project.screenshot_url && !shotFailed}
-					<img src={project.screenshot_url} alt="Screenshot of {project.name}" onerror={() => (shotFailed = true)} />
-				{:else}
-					<span class="muted small">{project.screenshot_url ? "The screenshot didn't load." : 'No screenshot yet.'}</span>
-				{/if}
-				<div class="pill-row pills">
-					{#if project.demo_url}<a class="chip" href={project.demo_url} target="_blank" rel="noreferrer">Demo</a>{/if}
-					{#if project.repo_url}<a class="chip" href={project.repo_url} target="_blank" rel="noreferrer">Repo</a>{/if}
-					<a class="chip" href="/projects/{project.id}/edit">Edit</a>
-					{#if !project.submissions.length}<button class="chip" onclick={remove}>Delete</button>{/if}
+			<!-- The project as a postcard: the screenshot on the left, the name,
+			     description and links written on the right. Special stamps stick
+			     anywhere on it. -->
+			<article class="project-card" bind:this={board} class:receiving={drag?.moved} class:over={drag?.over} aria-labelledby="project-name">
+				<div class="picture">
+					{#if project.screenshot_url && !shotFailed}
+						<img class="photo" src={project.screenshot_url} alt="Screenshot of {project.name}" onerror={() => (shotFailed = true)} />
+					{:else}
+						<div class="photo empty"><span>{project.screenshot_url ? "The screenshot didn't load." : 'No screenshot yet.'}</span></div>
+					{/if}
+				</div>
+				<div class="writing">
+					<span class="status-mark {s.tone}">Crossroads<br />{s.label}</span>
+					<h1 id="project-name" class="name">{project.name}</h1>
+					<p class="message">{project.description || 'No description yet.'}</p>
+					<div class="line">
+						<span class="label">Demo</span>
+						{#if project.demo_url}<a href={project.demo_url} target="_blank" rel="noreferrer">{shortUrl(project.demo_url)}</a>{:else}<span class="none">Not added yet</span>{/if}
+					</div>
+					<div class="line">
+						<span class="label">Repo</span>
+						{#if project.repo_url}<a href={project.repo_url} target="_blank" rel="noreferrer">{shortUrl(project.repo_url)}</a>{:else}<span class="none">Not added yet</span>{/if}
+					</div>
 				</div>
 				<!-- Special stamps stuck on the project. -->
 				{#each placed as st (st.id)}
@@ -273,13 +282,11 @@
 						</span>
 					{/if}
 				{/each}
+			</article>
+			<div class="row card-actions">
+				<a class="btn ghost" href="/projects/{project.id}/edit">Edit project</a>
+				{#if !project.submissions.length}<button class="btn danger" onclick={remove}>Delete</button>{/if}
 			</div>
-			</Train>
-
-			<section class="panel">
-				<div class="panel-head">Description</div>
-				<div class="panel-body"><p style="white-space: pre-wrap">{project.description || 'No description yet.'}</p></div>
-			</section>
 
 			<div class="grid-halves">
 				<section class="panel">
@@ -396,19 +403,97 @@
 {/if}
 
 <style>
-	/* The screenshot block from "project main", now a car on the track,
-	   with the pills on it. Train draws the car. */
-	.hero-well {
+	/* ---- The project postcard (same card stock as the ships below) ---- */
+	.project-card {
+		--paper: #efe9dc;
+		--ink: #2b2522;
+		--ink-soft: #5c524c;
+		--rule: rgb(43 37 34 / 0.32);
+		--mark: #2f4566;
 		position: relative;
 		display: grid;
-		place-items: center;
-		min-height: 290px;
-		padding: 16px 16px 64px;
-		border-radius: var(--radius);
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		grid-template-rows: minmax(0, 1fr);
+		/* The same shape as the edit postcard, whatever the screenshot's shape:
+		   min-height 0 stops a tall screenshot from stretching it. */
+		aspect-ratio: var(--postcard-ratio);
+		min-height: 0;
+		gap: 28px 32px;
+		padding: 28px 32px 32px;
+		color: var(--ink);
+		text-shadow: none;
+		background: linear-gradient(rgb(239 233 220 / 0.94), rgb(239 233 220 / 0.94)), var(--leak);
+		border-radius: 6px;
+		box-shadow: 0 2px 4px rgb(0 0 0 / 0.3), 0 18px 40px rgb(0 0 0 / 0.5);
 	}
-	.hero-well img { border-radius: 12px; }
-	.hero-well img { width: 100%; max-height: 520px; object-fit: contain; }
-	.pills { position: absolute; left: 14px; bottom: 14px; }
+	.project-card.receiving { outline: 3px dashed var(--ink-soft); outline-offset: 6px; }
+	.project-card.over { outline: 3px solid var(--text); outline-offset: 6px; }
+	.picture { display: flex; align-items: center; justify-content: center; min-height: 0; }
+	/* The screenshot, printed on the card with a white border. The border
+	   hugs the picture, so its holder takes the screenshot's shape and the
+	   card keeps its own. */
+	.photo {
+		display: block;
+		width: auto;
+		height: auto;
+		max-width: 100%;
+		max-height: 100%;
+		border: 10px solid #fbf8f1;
+		box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+	}
+	.photo.empty { display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 3; background: var(--navy-deep); color: rgb(255 255 255 / 0.8); font-size: 22px; }
+	.writing {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+		min-width: 0;
+		min-height: 0;
+		padding: 8px 0 0 32px;
+		border-left: 1px solid var(--rule);
+	}
+	.name { padding-right: 130px; font-size: clamp(40px, 4vw, 60px); line-height: 1.05; overflow-wrap: anywhere; }
+	/* The description, written across ruled lines 40px apart. */
+	/* It scrolls on the card if it's longer than the card has room for. */
+	.message {
+		flex: 1;
+		min-height: 80px;
+		overflow-y: auto;
+		font-size: 24px;
+		line-height: 40px;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		background: repeating-linear-gradient(transparent 0 39px, var(--rule) 39px 40px);
+		background-attachment: local; /* the lines scroll with the writing */
+	}
+	.line { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: baseline; column-gap: 12px; padding: 6px 0 4px; border-bottom: 1px solid var(--rule); }
+	.line .label { font-size: 22px; color: var(--ink-soft); }
+	.line a { font-size: 24px; color: var(--ink); overflow-wrap: anywhere; text-underline-offset: 4px; }
+	.line .none { font-size: 22px; font-style: italic; color: var(--ink-soft); }
+	/* The status as a postmark in the corner. */
+	.status-mark {
+		position: absolute;
+		top: 0;
+		right: 4px;
+		display: grid;
+		place-content: center;
+		width: 112px;
+		height: 112px;
+		font-size: 16px;
+		line-height: 1.2;
+		letter-spacing: 0.08em;
+		text-align: center;
+		text-transform: uppercase;
+		color: var(--mark);
+		border: 3px solid var(--mark);
+		border-radius: 50%;
+		rotate: -14deg;
+		opacity: 0.85;
+	}
+	.status-mark.good { --mark: #3d6b2c; }
+	.status-mark.warn { --mark: #9a3b26; }
+	.card-actions { justify-content: flex-end; }
+	.card-actions .btn.ghost { box-shadow: inset 0 0 0 2px var(--head); }
 
 	/* ---- Ships as postcards ---- */
 	.ships { align-items: center; }
@@ -481,14 +566,20 @@
 	.lines dt { flex: none; width: 96px; color: var(--ink-soft); }
 	.lines dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 	@media (max-width: 640px) {
+		.placed img { height: 64px; max-width: 86px; }
+		.placed .blank { width: 54px; height: 64px; }
+		.project-card { grid-template-columns: 1fr; grid-template-rows: auto; aspect-ratio: auto; padding: 20px 18px 24px; }
+		.photo { max-height: 70vh; }
+		.message { overflow: visible; }
+		.writing { padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--rule); }
+		.name { padding-right: 100px; }
+		.status-mark { top: 14px; width: 92px; height: 92px; font-size: 14px; }
 		.postcard { grid-template-columns: 1fr; padding: 22px 20px; }
 		.back { padding: 20px 0 0; border-left: 0; border-top: 1px solid rgb(43 37 34 / 0.3); }
 		.postmark { top: 20px; }
 	}
 
-	/* ---- The stamp board (the screenshot card) and stamps on it ---- */
-	.hero-well.receiving { box-shadow: inset 0 0 0 3px rgb(255 255 255 / 0.35); }
-	.hero-well.over { box-shadow: inset 0 0 0 3px rgb(255 255 255 / 0.9); background: rgb(255 255 255 / 0.05); }
+	/* ---- Special stamps stuck on the postcard ---- */
 	.placed {
 		position: absolute;
 		z-index: 2;

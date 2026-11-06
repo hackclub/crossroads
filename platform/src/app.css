@@ -36,6 +36,8 @@
 	--danger: #ff6b55;
 
 	--radius: 24px;
+	/* One shape for the project postcard, shown and being edited. */
+	--postcard-ratio: 1162 / 635;
 	--content: 1162px; /* the frames' content column, out of 1728 */
 	--gap: 16px;
 

@@ -10,6 +10,7 @@
 	// live content (handed over with <Station>); the others show a preview and
 	// can't be focused while they're off to the side.
 	import { untrack } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { rail, STATIONS } from './rail.svelte.js';
 	import StampCar from './cars/StampCar.svelte';
 	import HomePreview from './cars/HomePreview.svelte';
@@ -29,6 +30,51 @@
 			duration = 0.9 + 0.6 * Math.abs(target - shown);
 			shown = target;
 		});
+	});
+
+	// A two-finger sideways scroll (a trackpad swipe) goes to the next car:
+	// scrolling right goes toward the front (Boxes → Shop → Home), left toward
+	// the back. One swipe moves one car, however long the scroll's momentum
+	// keeps going, and it doesn't steal sideways scrolls from things that
+	// scroll sideways themselves, like the stamp tray.
+	const SWIPE = 80; // px of sideways scroll that count as a swipe
+	let swiped = 0;
+	let locked = false;
+	let quiet; // timer: the gesture has ended once the wheel goes quiet
+
+	function scrollsSideways(el, dx) {
+		for (; el && el !== document.body; el = el.parentElement) {
+			const { overflowX } = getComputedStyle(el);
+			if ((overflowX === 'auto' || overflowX === 'scroll') && el.scrollWidth > el.clientWidth) {
+				if (dx > 0 ? el.scrollLeft + el.clientWidth < el.scrollWidth - 1 : el.scrollLeft > 0) return true;
+			}
+		}
+		return false;
+	}
+
+	function onWheel(e) {
+		if (e.ctrlKey || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // pinch zoom, or mostly up/down
+		if (document.querySelector('dialog[open]') || scrollsSideways(e.target, e.deltaX)) return;
+		e.preventDefault(); // also stops the browser's swipe-to-go-back
+		clearTimeout(quiet);
+		quiet = setTimeout(() => {
+			swiped = 0;
+			locked = false;
+		}, 250);
+		if (locked) return;
+		swiped += e.deltaX * (e.deltaMode === 1 ? 16 : 1);
+		if (Math.abs(swiped) < SWIPE) return;
+		const next = STATIONS.indexOf(at) + Math.sign(swiped);
+		locked = true;
+		if (next >= 0 && next < STATIONS.length) goto(STATIONS[next]);
+	}
+
+	$effect(() => {
+		window.addEventListener('wheel', onWheel, { passive: false });
+		return () => {
+			window.removeEventListener('wheel', onWheel);
+			clearTimeout(quiet);
+		};
 	});
 </script>
 

@@ -1,11 +1,18 @@
 <script>
-	// Create or edit a project. Laid out like the home page: a centered title,
-	// grey cards holding the fields, and a "Next"-style bar with Save.
+	// Create or edit a project. The details are a postcard: the screenshot is
+	// the picture on the left, and the name, description and links are written
+	// on ruled lines on the right, under a stamp. Hackatime and Save follow.
 	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, get } from './api.js';
 	import { hours } from './format.js';
 	import ImageDrop from './ImageDrop.svelte';
+	import papua from './assets/stamps/papua.webp';
+	import divan from './assets/stamps/divan.webp';
+	import monet from './assets/stamps/monet.webp';
+
+	// Postage for the card: one of the stamps, picked when the page opens.
+	const postage = [papua, divan, monet][Math.floor(Math.random() * 3)];
 
 	let { project: projectProp = null } = $props();
 	// The form starts from the project once; edits live in the fields below.
@@ -63,30 +70,39 @@
 	{/if}
 
 	<fieldset class="stack-lg" disabled={locked}>
-		<section class="card-grey details">
-			<div class="stack">
-				<label class="f">
-					<span class="f-label">Project Name <em>{name.length}/100</em></span>
-					<input required maxlength="100" bind:value={name} placeholder="My cool project" />
+		<section class="postcard" aria-label="Project details">
+			<!-- The picture side: the screenshot. -->
+			<div class="picture">
+				<ImageDrop bind:value={screenshot_url} disabled={locked} />
+				<label class="line small-line">
+					<span>or link to a screenshot</span>
+					<input type="url" bind:value={screenshot_url} placeholder="https://" />
 				</label>
-				<label class="f">
-					<span class="f-label">Description</span>
+			</div>
+
+			<!-- The writing side: name, message and links on ruled lines. -->
+			<div class="writing">
+				<div class="franking" aria-hidden="true">
+					<img class="stamp" src={postage} alt="" />
+					<span class="postmark">Crossroads<br />Paris</span>
+				</div>
+				<label class="line name-line">
+					<span>Project</span>
+					<input required maxlength="100" bind:value={name} placeholder="My cool project" />
+					<em>{name.length}/100</em>
+				</label>
+				<label class="message">
+					<span>Description</span>
 					<textarea maxlength="5000" bind:value={description} placeholder="What it does, who it's for, and what you built it with."></textarea>
 				</label>
-				<div class="halves">
-					<label class="f"><span class="f-label">Demo link</span><input type="url" bind:value={demo_url} placeholder="https://" /></label>
-					<label class="f"><span class="f-label">Repo link</span><input type="url" bind:value={repo_url} placeholder="https://" /></label>
-				</div>
-			</div>
-			<div class="f">
-				<span class="f-label">Screenshot</span>
-				<div class="shot">
-					<ImageDrop bind:value={screenshot_url} disabled={locked} />
-					<label class="link-row">
-						<span>or link to one:</span>
-						<input type="url" bind:value={screenshot_url} placeholder="https://" />
-					</label>
-				</div>
+				<label class="line">
+					<span>Demo</span>
+					<input type="url" bind:value={demo_url} placeholder="https://" />
+				</label>
+				<label class="line">
+					<span>Repo</span>
+					<input type="url" bind:value={repo_url} placeholder="https://" />
+				</label>
 			</div>
 		</section>
 
@@ -140,24 +156,97 @@
 	.crumb { align-self: flex-start; font-size: 24px; color: var(--text); }
 
 	fieldset { gap: 32px; }
-	.details {
+	.f-label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 28px; }
+
+	/* ---- The postcard, in the ship postcards' card stock ---- */
+	.postcard {
+		--paper: #efe9dc;
+		--ink: #2b2522;
+		--ink-soft: #5c524c;
+		--rule: rgb(43 37 34 / 0.32);
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-		gap: 24px 40px;
-		align-items: start;
+		/* The same shape as the project page's postcard. */
+		aspect-ratio: var(--postcard-ratio);
+		gap: 28px 32px;
+		padding: 28px 32px 32px;
+		color: var(--ink);
+		text-shadow: none;
+		background: linear-gradient(rgb(239 233 220 / 0.94), rgb(239 233 220 / 0.94)), var(--leak);
+		border-radius: 6px;
+		box-shadow: 0 2px 4px rgb(0 0 0 / 0.3), 0 18px 40px rgb(0 0 0 / 0.5);
 	}
-	.halves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-	.f { display: flex; flex-direction: column; gap: 8px; }
-	.f-label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 28px; }
-	.f-label em { font-style: normal; font-size: 20px; padding: 0 10px; background: var(--navy); border-radius: 999px; }
-	.f input, .f textarea { padding: 12px 18px; border-radius: 10px; }
-	.f textarea { min-height: 220px; }
+	/* The screenshot, printed on the card with a white border. */
+	.picture { display: flex; flex-direction: column; gap: 12px; }
+	/* The picture fills the side, down to the link line. */
+	.picture :global(.drop-wrap) { flex: 1; display: flex; flex-direction: column; }
+	.picture :global(.screenshot-well) {
+		flex: 1;
+		min-height: 360px;
+		border: 10px solid #fbf8f1;
+		box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+	}
+	.writing {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		gap: 18px;
+		padding-left: 32px;
+		border-left: 1px solid var(--rule);
+	}
+	.franking { position: relative; align-self: flex-end; height: 120px; margin-bottom: -6px; }
+	.stamp { display: block; height: 116px; width: auto; max-width: 160px; rotate: 3deg; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.3)); }
+	.postmark {
+		position: absolute;
+		top: 26px;
+		left: -66px;
+		display: grid;
+		place-content: center;
+		width: 96px;
+		height: 96px;
+		font-size: 15px;
+		line-height: 1.15;
+		letter-spacing: 0.08em;
+		text-align: center;
+		text-transform: uppercase;
+		color: #2f4566;
+		border: 3px solid #2f4566;
+		border-radius: 50%;
+		rotate: -14deg;
+		opacity: 0.8;
+	}
 
-	.shot { overflow: hidden; border-radius: 10px; background: var(--navy); }
-	.shot :global(.screenshot-well) { min-height: 300px; }
-	.link-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px 10px 18px; }
-	.link-row span { white-space: nowrap; font-size: 24px; }
-	.link-row input { padding: 6px 12px; font-size: 22px; border-radius: 6px; }
+	/* A field written on a ruled line, with its name at the start of it. */
+	/* Names share one width, so what's written on every line starts together. */
+	.line { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; align-items: baseline; column-gap: 12px; border-bottom: 1px solid var(--rule); }
+	.line span, .message span { font-size: 22px; color: var(--ink-soft); }
+	.line em { font-style: normal; font-size: 17px; color: var(--ink-soft); }
+	.postcard input, .postcard textarea {
+		padding: 8px 0 6px;
+		font-size: 26px;
+		color: var(--ink);
+		caret-color: var(--ink);
+		background: transparent;
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+	}
+	.postcard input::placeholder, .postcard textarea::placeholder { color: var(--ink-soft); font-style: italic; }
+	.postcard :focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; box-shadow: none; }
+	.name-line input { font-size: 34px; }
+	.small-line { grid-template-columns: auto minmax(0, 1fr); }
+	.small-line span { font-size: 19px; }
+	.small-line input { font-size: 21px; }
+	/* The message, written across ruled lines 40px apart. */
+	.message { display: flex; flex-direction: column; gap: 4px; }
+	.message textarea {
+		min-height: 200px;
+		padding: 0;
+		font-size: 24px;
+		line-height: 40px;
+		background: repeating-linear-gradient(transparent 0 39px, var(--rule) 39px 40px);
+		background-attachment: local;
+	}
 
 	.ht { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 	.ht li {
@@ -189,9 +278,10 @@
 	.savebar .btn.ghost { box-shadow: inset 0 0 0 2px var(--head); }
 
 	@media (max-width: 820px) {
-		.details { grid-template-columns: 1fr; }
+		.postcard { grid-template-columns: 1fr; aspect-ratio: auto; padding: 20px 18px 24px; }
+		.writing { padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--rule); }
+		.picture :global(.screenshot-well) { min-height: 220px; }
 		.card-grey { padding-inline: 18px; }
-		.halves { grid-template-columns: 1fr; }
 		.ht li { flex-wrap: wrap; row-gap: 4px; }
 		.ht a { order: 3; flex-basis: 100%; padding-left: 36px; }
 	}
