@@ -193,9 +193,9 @@
 	// avatars, by Slack ID; a rider without one yet gets an empty window.
 	const riders = [
 		{ name: 'Joaquin', slack: 'U083W5CCFDG' },
-		{ name: 'Max H', slack: null },
-		{ name: 'Barnav', slack: null },
-		{ name: 'Selena', slack: null }
+		{ name: 'Max H', slack: 'U078ZJHUKFW' },
+		{ name: 'Barnav', slack: 'U08RVF1BAN4' },
+		{ name: 'Selena', slack: 'U06U1CBK589' }
 	];
 	const avatar = (slack) => `https://cachet.dunkirk.sh/users/${slack}/r`;
 
