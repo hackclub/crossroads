@@ -208,7 +208,7 @@
 
 <svelte:head>
 	<title>Hack Club Crossroads</title>
-	<meta name="description" content="Travel across Europe with 30 other teenage builders" />
+	<meta name="description" content="Hack across Europe. 6 cities. 5 days. 30 teenagers." />
 </svelte:head>
 
 <svelte:window onpointermove={tiltTicket} onpointerout={leaveWindow} />
@@ -285,8 +285,12 @@
 			<SplitFlapDisplay text="Crossroads" columns={14} size="lg" centered />
 		</div>
 
-		<p class="doto centered" style="--x: 852; --y: 550; --w: 842; --size: 40">
-			Travel across Europe with 30 other teenage builders
+		<p class="crimson centered" style="--x: 852; --y: 550; --w: 842; --size: 40">
+			Hack across Europe.
+		</p>
+
+		<p class="doto centered" style="--x: 852; --y: 610; --w: 842; --size: 30">
+			5 days. 6 cities. 30 teenagers.
 		</p>
 
 		<img class="line abs" src={arrowUp} alt="" style="--x: 841.113; --y: 664.17; --w: 29.887; --h: 5.774; --angle: 90deg" />
@@ -297,9 +301,9 @@
 
 		<h2 class="doto centered below" style="--x: 875.5; --y: 1450; --w: 803; --size: 32">What is Hack Club Crossroads?</h2>
 		<p class="doto centered below" style="--x: 877.5; --y: 1510; --w: 803; --size: 24">
-			Crossroads is a <a href="https://hackclub.com" target="_blank" rel="noopener">Hack Club</a> Event running January
-			8–12 where a group of 30 teens build projects for 60 hours, then travel by train across Europe together.
-			Everything (including flights, food and accommodation) is totally free for teenagers who qualify by building a
+			Crossroads is a <a href="https://hackclub.com" target="_blank" rel="noopener">Hack Club</a> Event running in February 2027
+			where a group of 30 teens build projects for 65 hours, then travel by train across Europe together.
+			Everything (including train passes, food and accommodation) is totally free for teenagers who qualify by building a
 			project. Can't come? We're also providing funding and prizes for every teen who ships a technical project.
 		</p>
 		<h2 class="doto centered below" style="--x: 888.5; --y: 1765; --w: 803; --size: 32">What is Hack Club Crossroads?</h2>
@@ -463,6 +467,14 @@
 		font-family: Doto, monospace;
 		font-weight: 400;
 		font-variation-settings: 'ROND' 0;
+		font-size: calc(var(--size) * var(--u));
+		line-height: normal;
+		overflow-wrap: break-word;
+	}
+
+	.crimson {
+		font-family: "Crimson Text", serif;
+		font-weight: 400;
 		font-size: calc(var(--size) * var(--u));
 		line-height: normal;
 		overflow-wrap: break-word;
