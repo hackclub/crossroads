@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,12 +28,13 @@ type API struct {
 	HCA           *hca.Client    // for checking verification before purchases
 	StampsPerHour int            // paid for each approved hour
 	Uploads       *uploads.Store // project screenshots; nil turns uploading off
+	HoursStart    time.Time      // when Hackatime time starts counting; activity before it isn't shown
 }
 
 func (a *API) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Use(auth.RequireUser)
-	r.Get("/me", auth.Me)
+	r.Get("/me", a.me)
 	r.Get("/hackatime/projects", a.listHackatimeProjects)
 	if a.Uploads != nil {
 		r.Post("/uploads", a.Uploads.Upload)
@@ -63,6 +65,7 @@ func (a *API) Routes() chi.Router {
 	})
 	r.Route("/admin", func(r chi.Router) {
 		r.Use(auth.RequireRole(db.UserRoleAdmin))
+		r.Get("/activity", a.adminActivity)
 		r.Get("/users", a.adminListUsers)
 		r.Patch("/users/{userID}", a.adminUpdateUser)
 		r.Post("/users/{userID}/boxes", a.adminGrantBox)
@@ -84,6 +87,15 @@ func (a *API) Routes() chi.Router {
 		r.Patch("/orders/{orderID}", a.adminUpdateOrder)
 	})
 	return r
+}
+
+// me is auth.Me plus the stamps paid per approved hour, so prices can be
+// shown in hours.
+func (a *API) me(w http.ResponseWriter, r *http.Request) {
+	respond.JSON(w, http.StatusOK, struct {
+		auth.MeJSON
+		StampsPerHour int `json:"stamps_per_hour"`
+	}{auth.ToMeJSON(auth.User(r.Context())), a.StampsPerHour})
 }
 
 // decode reads a JSON request body into v and rejects fields v doesn't have.

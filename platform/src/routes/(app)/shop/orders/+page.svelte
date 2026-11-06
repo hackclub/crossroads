@@ -12,6 +12,8 @@
 			error = e.message;
 		}
 	});
+	// A price lock is done once it's bought, so it reads as locked rather than fulfilled.
+	const statusLabel = (o) => (o.item.kind === 'price_lock' ? (o.status === 'cancelled' ? 'refunded' : 'locked') : o.status);
 	const address = (a) => (a ? [a.name, a.line_1, a.line_2, a.city, a.state, a.postal_code, a.country].filter(Boolean).join(', ') : '–');
 </script>
 
@@ -27,10 +29,10 @@
 				{#each orders as o}
 					<tr>
 						<td class="muted">#{o.id}</td>
-						<td>{o.item.name}</td>
+						<td>{o.item.name}{#if o.locked_price}<span class="small muted"> at {o.locked_price} stamps</span>{/if}</td>
 						<td>{o.price}</td>
 						<td>{date(o.created_at)}</td>
-						<td><span class="badge {o.status === 'fulfilled' ? 'good' : o.status === 'cancelled' ? '' : 'info'}">{o.status}</span></td>
+						<td><span class="badge {o.status === 'fulfilled' ? 'good' : o.status === 'cancelled' ? '' : 'info'}">{statusLabel(o)}</span></td>
 						<td class="small">{address(o.shipping_address)}</td>
 					</tr>
 				{/each}

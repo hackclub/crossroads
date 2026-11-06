@@ -24,11 +24,12 @@ func (q *Queries) FulfillOrderFromAirtable(ctx context.Context, airtableRecordID
 }
 
 const listOrdersToSync = `-- name: ListOrdersToSync :many
-select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address
+select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, shop_items.batch_size, shop_items.batch_step, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address
 from orders
 join shop_items on shop_items.id = orders.shop_item_id
 join users on users.id = orders.user_id
-where orders.airtable_synced_at is null or orders.updated_at > orders.airtable_synced_at
+where (orders.airtable_synced_at is null or orders.updated_at > orders.airtable_synced_at)
+    and shop_items.kind <> 'price_lock'
 order by orders.id
 limit 100
 `
@@ -39,7 +40,9 @@ type ListOrdersToSyncRow struct {
 	User     User
 }
 
-// Orders that are new or have changed since they were last copied.
+// Orders that are new or have changed since they were last copied. Price
+// locks stay out: there's nothing to send, and the ticket order says what
+// was paid.
 func (q *Queries) ListOrdersToSync(ctx context.Context) ([]ListOrdersToSyncRow, error) {
 	rows, err := q.db.Query(ctx, listOrdersToSync)
 	if err != nil {
@@ -61,6 +64,7 @@ func (q *Queries) ListOrdersToSync(ctx context.Context) ([]ListOrdersToSyncRow, 
 			&i.Order.UpdatedAt,
 			&i.Order.AirtableRecordID,
 			&i.Order.AirtableSyncedAt,
+			&i.Order.LockedPrice,
 			&i.ShopItem.ID,
 			&i.ShopItem.Kind,
 			&i.ShopItem.Name,
@@ -74,6 +78,8 @@ func (q *Queries) ListOrdersToSync(ctx context.Context) ([]ListOrdersToSyncRow, 
 			&i.ShopItem.CreatedAt,
 			&i.ShopItem.UpdatedAt,
 			&i.ShopItem.Position,
+			&i.ShopItem.BatchSize,
+			&i.ShopItem.BatchStep,
 			&i.User.ID,
 			&i.User.HcaID,
 			&i.User.SlackID,

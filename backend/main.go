@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/scherepi/crossroads-backend/activity"
 	"github.com/scherepi/crossroads-backend/airtable"
 	"github.com/scherepi/crossroads-backend/airtablesync"
 	"github.com/scherepi/crossroads-backend/api"
@@ -100,7 +101,15 @@ func main() {
 		HCA:           hcaClient,
 		StampsPerHour: stampsPerHour,
 		Uploads:       uploadStore,
+		HoursStart:    hoursStart,
 	}
+
+	// Price locks are refunded if the tickets sell out before they're used.
+	go apiRoutes.RunPriceLockRefunds(ctx, 10*time.Minute)
+
+	// Each project's Hackatime time per day, for the admin activity page.
+	poller := &activity.Poller{Pool: pool, Queries: db.New(pool), Hackatime: apiRoutes.Hackatime, Start: hoursStart}
+	go poller.Run(ctx, 30*time.Minute)
 
 	// Off unless there's a token, so a dev server doesn't write test data into
 	// the real base.
@@ -120,7 +129,9 @@ func main() {
 	}
 
 	r := chi.NewRouter()
-	r.Use(middleware.Logger, middleware.Recoverer, a.LoadSession)
+	// Which days each person uses the platform, for the admin activity page.
+	visits := &activity.Visits{Queries: db.New(pool)}
+	r.Use(middleware.Logger, middleware.Recoverer, a.LoadSession, visits.Record)
 	r.Mount("/auth", a.Routes())
 	r.Mount("/api", apiRoutes.Routes())
 	r.Handle("/uploads/*", http.StripPrefix("/uploads", uploadStore.Files()))

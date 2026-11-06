@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { api, get } from '#lib/api.js';
 	import { session, refresh } from '#lib/session.svelte.js';
-	import { stampsPerHour } from '#lib/format.js';
+	import { stampHours } from '#lib/format.js';
 	import Train from '#lib/Train.svelte';
 	import StampIcon from '#lib/StampIcon.svelte';
 
@@ -27,11 +27,18 @@
 	}
 	onMount(load);
 
-	// The ticket is the point of the shop, so it gets its own card first.
+	// The ticket is the point of the shop, so it gets its own card first, with
+	// the price lock for it.
 	const ticket = $derived(items.find((i) => i.kind === 'ticket'));
+	const lock = $derived(items.find((i) => i.kind === 'price_lock'));
 	// Everything else, in the order the API gives: by each item's position (most wanted first).
-	const others = $derived(items.filter((i) => i.kind !== 'ticket'));
-	const rate = $derived(stampsPerHour(ticket));
+	const others = $derived(items.filter((i) => i.kind !== 'ticket' && i.kind !== 'price_lock'));
+	const rate = $derived(session.me.stamps_per_hour);
+	const inHours = (n) => stampHours(n, rate);
+	// Tickets sold in batches: which one is on sale, and whether a lock would help.
+	const batches = $derived(ticket?.batches);
+	const lastBatch = $derived(!!batches && batches.current === batches.prices.length - 1);
+	const canLock = $derived(!!lock && !!batches && !ticket.locked_price && ticket.bought === 0 && ticket.stock > 0 && !lastBatch);
 	const stamps = $derived(session.me.stamps);
 	const hasTicket = $derived(!!ticket && ticket.bought > 0);
 	const address = $derived(session.me.address);
@@ -69,7 +76,12 @@
 			const order = await api('POST', `/shop/items/${item.id}/orders`, body);
 			message = {
 				tone: 'good',
-				text: item.kind === 'ticket' ? `You have your ticket (order #${order.id}). You've qualified for the trip!` : `Ordered ${item.name} (order #${order.id}). Track it in My orders.`
+				text:
+					item.kind === 'ticket'
+						? `You have your ticket (order #${order.id}). You've qualified for the trip!`
+						: item.kind === 'price_lock'
+							? `Your ticket is locked at ${inHours(order.locked_price)} (${order.locked_price} stamps), whenever you buy it.`
+							: `Ordered ${item.name} (order #${order.id}). Track it in My orders.`
 			};
 			dialog.close();
 			await Promise.all([load(), refresh()]);
@@ -125,6 +137,28 @@
 						<p class="big-line">You have your ticket. See you in Paris!</p>
 						<a class="btn ghost" href="/shop/orders">See your order</a>
 					{:else}
+						{#if batches}
+							<div class="stack-sm">
+								<ol class="batches" aria-label="Ticket batches, {batches.size} tickets each">
+									{#each batches.prices as price, i}
+										<li class:sold={i < batches.current} class:now={i === batches.current} aria-current={i === batches.current ? 'step' : undefined}>
+											{inHours(price)}<span class="visually-hidden">{i < batches.current ? ', sold out' : i === batches.current ? ', on sale now' : ''}</span>
+										</li>
+									{/each}
+								</ol>
+								<span class="small">
+									{#if ticket.stock === 0}
+										Every batch has sold out.
+									{:else}
+										Batch {batches.current + 1} of {batches.prices.length}: {batches.left_in_batch} left at {inHours(batches.prices[batches.current])}.
+										{lastBatch ? 'This is the last batch.' : `Then ${inHours(batches.prices[batches.current + 1])}.`}
+									{/if}
+								</span>
+							</div>
+						{/if}
+						{#if ticket.locked_price}
+							<p class="callout info small">Your price is locked at {inHours(ticket.locked_price)} ({ticket.locked_price} stamps).</p>
+						{/if}
 						<div class="row between"><span>{Math.max(stamps, 0)} / {ticket.price} stamps</span><span>{short > 0 ? `${short} to go · about ${hoursFor(short)}h` : 'You can buy it now'}</span></div>
 						<div class="bar" role="img" aria-label="{Math.round(pct)}% of the way to your ticket"><span class="seg approved" style="width: {pct}%"></span></div>
 						{#if soldOutReason(ticket)}
@@ -135,6 +169,20 @@
 							<button class="btn primary" disabled={buying === ticket.id} onclick={() => ask(ticket)}>{buying === ticket.id ? 'Buying…' : `Buy your ticket for ${ticket.price}`}</button>
 						{/if}
 						<span class="small">Buying the ticket is how you qualify. Everything else here spends stamps the ticket needs.</span>
+						{#if canLock}
+							<div class="lock">
+								<span>Lock in {inHours(batches.prices[batches.current])} for {inHours(lock.price)}</span>
+								<span class="small">
+									Keeps this price however many batches sell before you're ready. It's on top of the ticket, and if the tickets sell out
+									before you buy one, you get the {lock.price} stamps back.
+								</span>
+								{#if stamps < lock.price}
+									<button class="btn" disabled>Need {lock.price - stamps} more stamps to lock</button>
+								{:else}
+									<button class="btn ghost" disabled={buying === lock.id} onclick={() => ask(lock)}>{buying === lock.id ? 'Locking…' : `Lock for ${lock.price}`}</button>
+								{/if}
+							</div>
+						{/if}
 					{/if}
 				</div>
 		</div>
@@ -180,7 +228,7 @@
 		{@const left = stamps - pending.price}
 		{@const short = ticketAfter(pending)}
 		<form class="stack" method="dialog" onsubmit={buy}>
-			<h2 id="buy-title">Buy {pending.name}?</h2>
+			<h2 id="buy-title">{pending.kind === 'price_lock' ? `Lock your ticket at ${inHours(batches.prices[batches.current])}?` : `Buy ${pending.name}?`}</h2>
 			<dl class="sums">
 				<dt>Price</dt><dd>{pending.price} stamps</dd>
 				<dt>You have</dt><dd>{stamps} stamps</dd>
@@ -188,6 +236,11 @@
 			</dl>
 			{#if pending.kind === 'ticket'}
 				<p>Buying the ticket is how you qualify for the trip.</p>
+			{:else if pending.kind === 'price_lock'}
+				<p>
+					Your ticket will cost {batches.prices[batches.current]} stamps whenever you buy it, even after later batches cost more. The
+					lock doesn't hold a ticket for you: if they sell out before you buy one, you get these {pending.price} stamps back.
+				</p>
 			{:else if short}
 				<p class="callout warn">Your ticket costs {ticket.price}. After this you'd need {short} more stamps (about {hoursFor(short)} approved hours) to buy it.</p>
 			{/if}
@@ -212,7 +265,7 @@
 			{#if dialogError}<p class="callout warn" role="alert">{dialogError}</p>{/if}
 			<div class="row" style="justify-content: flex-end">
 				<button type="button" class="btn ghost" onclick={() => dialog.close()}>Cancel</button>
-				<button class="btn primary" disabled={buying === pending.id}>{buying === pending.id ? 'Buying…' : `Buy for ${pending.price}`}</button>
+				<button class="btn primary" disabled={buying === pending.id}>{buying === pending.id ? 'Buying…' : `${pending.kind === 'price_lock' ? 'Lock' : 'Buy'} for ${pending.price}`}</button>
 			</div>
 		</form>
 	{/if}
@@ -292,6 +345,15 @@
 	.ticket .bar { height: 20px; }
 	.ticket .btn.ghost { box-shadow: inset 0 0 0 2px var(--head); align-self: flex-start; }
 	.big-line { font-size: 36px; }
+	/* The batch ladder: sold ones crossed out, the one on sale filled. */
+	.batches { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+	.batches li { padding: 2px 12px; font-size: 22px; background: var(--navy-deep); border-radius: 8px; }
+	.batches li.sold { color: var(--muted); text-decoration: line-through; }
+	.batches li.now { background: var(--head); color: var(--ink); text-shadow: none; }
+	.lock { display: flex; flex-direction: column; gap: 6px; padding: 14px 18px; background: rgb(0 0 0 / 0.35); border-radius: 14px; }
+	.lock > span:first-child { font-size: 28px; }
+	.lock .btn { align-self: flex-start; }
+	.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 	.card-foot { margin-top: auto; padding-top: 8px; display: flex; }
 	.card-foot .btn { width: 100%; white-space: normal; }
 	@media (max-width: 820px) {

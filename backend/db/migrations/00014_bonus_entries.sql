@@ -1,7 +1,7 @@
 -- +goose Up
 
 -- Golden Spike bonuses are ledger entries tied to the ship they were paid
--- for, alongside its payout. (A separate migration from 00009 because a new
+-- for, alongside its payout. (A separate migration from 00013 because a new
 -- enum value can't be used in the transaction that adds it.)
 alter table stamp_ledger
     drop constraint stamp_ledger_check,

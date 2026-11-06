@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -53,6 +54,7 @@ func (f *Fake) Routes() chi.Router {
 	r := chi.NewRouter()
 	// What the real hackatime client calls (BaseURL is pointed here).
 	r.Get("/api/v1/users/{slackID}/stats", f.stats)
+	r.Get("/api/v1/users/{slackID}/heartbeats/spans", f.spans)
 	// For the frontend's dev panel. Acts on the signed-in person.
 	r.Get("/mine", f.mine)
 	r.Post("/mine", f.add)
@@ -95,6 +97,29 @@ func (f *Fake) stats(w http.ResponseWriter, r *http.Request) {
 	body.TrustFactor.TrustLevel = "green"
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(body)
+}
+
+// spans has no record of when the time happened, so each project's time is
+// one span that ends now. Only filter_by_project is honored.
+func (f *Fake) spans(w http.ResponseWriter, r *http.Request) {
+	slackID := chi.URLParam(r, "slackID")
+	filter := strings.Split(r.URL.Query().Get("filter_by_project"), ",")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	type span struct {
+		StartTime float64 `json:"start_time"`
+		EndTime   float64 `json:"end_time"`
+		Duration  float64 `json:"duration"`
+	}
+	now := float64(time.Now().Unix())
+	out := []span{}
+	for name, s := range f.projects(slackID) {
+		if slices.Contains(filter, name) {
+			out = append(out, span{now - float64(s), now, float64(s)})
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string][]span{"spans": out})
 }
 
 type mineProject struct {

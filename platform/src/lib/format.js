@@ -10,15 +10,24 @@ export function date(iso) {
 	return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
+// A UTC day from the API ("2026-11-06") as "Nov 6".
+export function utcDay(day) {
+	return new Date(day + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
 export function money(cents) {
 	return cents == null ? '' : '$' + (cents / 100).toFixed(cents % 100 ? 2 : 0);
 }
 
+// The ticket's first batch; later batches cost more (the ticket's price in
+// GET /shop/items says what it costs now).
 export const GOAL_HOURS = 60;
 
-// The stamps-per-hour rate isn't exposed by the API; INTEGRATING.md says to
-// derive it from the ticket, which costs 60 hours' worth.
-export const stampsPerHour = (ticket) => (ticket ? ticket.price / GOAL_HOURS : 30);
+// Stamps as approved hours at rate (session.me.stamps_per_hour): "65h".
+export function stampHours(stamps, rate) {
+	const h = Math.round((stamps / rate) * 10) / 10;
+	return h + 'h';
+}
 
 export const approvedSeconds = (projects) => projects.reduce((t, p) => t + p.approved_seconds, 0);
 

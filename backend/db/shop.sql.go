@@ -10,7 +10,7 @@ import (
 )
 
 const adminListOrders = `-- name: AdminListOrders :many
-select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address
+select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, shop_items.batch_size, shop_items.batch_step, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address
 from orders
 join shop_items on shop_items.id = orders.shop_item_id
 join users on users.id = orders.user_id
@@ -45,6 +45,7 @@ func (q *Queries) AdminListOrders(ctx context.Context, status *OrderStatus) ([]A
 			&i.Order.UpdatedAt,
 			&i.Order.AirtableRecordID,
 			&i.Order.AirtableSyncedAt,
+			&i.Order.LockedPrice,
 			&i.ShopItem.ID,
 			&i.ShopItem.Kind,
 			&i.ShopItem.Name,
@@ -58,6 +59,8 @@ func (q *Queries) AdminListOrders(ctx context.Context, status *OrderStatus) ([]A
 			&i.ShopItem.CreatedAt,
 			&i.ShopItem.UpdatedAt,
 			&i.ShopItem.Position,
+			&i.ShopItem.BatchSize,
+			&i.ShopItem.BatchStep,
 			&i.User.ID,
 			&i.User.HcaID,
 			&i.User.SlackID,
@@ -134,10 +137,53 @@ func (q *Queries) CountOrdersOfItem(ctx context.Context, arg CountOrdersOfItemPa
 	return count, err
 }
 
+const countSold = `-- name: CountSold :one
+select count(*) from orders where shop_item_id = $1 and status <> 'cancelled'
+`
+
+// How many of an item everyone has bought, not counting cancelled orders.
+func (q *Queries) CountSold(ctx context.Context, shopItemID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countSold, shopItemID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSoldByItem = `-- name: CountSoldByItem :many
+select shop_item_id, count(*) from orders
+where status <> 'cancelled'
+group by shop_item_id
+`
+
+type CountSoldByItemRow struct {
+	ShopItemID int64
+	Count      int64
+}
+
+func (q *Queries) CountSoldByItem(ctx context.Context) ([]CountSoldByItemRow, error) {
+	rows, err := q.db.Query(ctx, countSoldByItem)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountSoldByItemRow
+	for rows.Next() {
+		var i CountSoldByItemRow
+		if err := rows.Scan(&i.ShopItemID, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createOrder = `-- name: CreateOrder :one
-insert into orders (user_id, shop_item_id, price, shipping_address)
-values ($1, $2, $3, $4)
-returning id, user_id, shop_item_id, price, status, shipping_address, notes, created_at, updated_at, airtable_record_id, airtable_synced_at
+insert into orders (user_id, shop_item_id, price, shipping_address, status, locked_price)
+values ($1, $2, $3, $4, $5, $6)
+returning id, user_id, shop_item_id, price, status, shipping_address, notes, created_at, updated_at, airtable_record_id, airtable_synced_at, locked_price
 `
 
 type CreateOrderParams struct {
@@ -145,6 +191,8 @@ type CreateOrderParams struct {
 	ShopItemID      int64
 	Price           int32
 	ShippingAddress []byte
+	Status          OrderStatus
+	LockedPrice     *int32
 }
 
 func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error) {
@@ -153,6 +201,8 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		arg.ShopItemID,
 		arg.Price,
 		arg.ShippingAddress,
+		arg.Status,
+		arg.LockedPrice,
 	)
 	var i Order
 	err := row.Scan(
@@ -167,14 +217,15 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.UpdatedAt,
 		&i.AirtableRecordID,
 		&i.AirtableSyncedAt,
+		&i.LockedPrice,
 	)
 	return i, err
 }
 
 const createShopItem = `-- name: CreateShopItem :one
-insert into shop_items (kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, position)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-returning id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position
+insert into shop_items (kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, position, batch_size, batch_step)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+returning id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step
 `
 
 type CreateShopItemParams struct {
@@ -188,6 +239,8 @@ type CreateShopItemParams struct {
 	MaxPerUser   *int32
 	Active       bool
 	Position     int32
+	BatchSize    *int32
+	BatchStep    *int32
 }
 
 func (q *Queries) CreateShopItem(ctx context.Context, arg CreateShopItemParams) (ShopItem, error) {
@@ -202,6 +255,8 @@ func (q *Queries) CreateShopItem(ctx context.Context, arg CreateShopItemParams) 
 		arg.MaxPerUser,
 		arg.Active,
 		arg.Position,
+		arg.BatchSize,
+		arg.BatchStep,
 	)
 	var i ShopItem
 	err := row.Scan(
@@ -218,12 +273,42 @@ func (q *Queries) CreateShopItem(ctx context.Context, arg CreateShopItemParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Position,
+		&i.BatchSize,
+		&i.BatchStep,
+	)
+	return i, err
+}
+
+const getPriceLock = `-- name: GetPriceLock :one
+select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price from orders join shop_items on shop_items.id = orders.shop_item_id
+where orders.user_id = $1 and shop_items.kind = 'price_lock' and orders.status <> 'cancelled'
+order by orders.id desc
+limit 1
+`
+
+// Someone's price lock, if they have one that wasn't refunded.
+func (q *Queries) GetPriceLock(ctx context.Context, userID int64) (Order, error) {
+	row := q.db.QueryRow(ctx, getPriceLock, userID)
+	var i Order
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ShopItemID,
+		&i.Price,
+		&i.Status,
+		&i.ShippingAddress,
+		&i.Notes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AirtableRecordID,
+		&i.AirtableSyncedAt,
+		&i.LockedPrice,
 	)
 	return i, err
 }
 
 const getShopItem = `-- name: GetShopItem :one
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position from shop_items where id = $1
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step from shop_items where id = $1
 `
 
 func (q *Queries) GetShopItem(ctx context.Context, id int64) (ShopItem, error) {
@@ -243,12 +328,57 @@ func (q *Queries) GetShopItem(ctx context.Context, id int64) (ShopItem, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Position,
+		&i.BatchSize,
+		&i.BatchStep,
 	)
 	return i, err
 }
 
+const getTicket = `-- name: GetTicket :one
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step from shop_items where kind = 'ticket' and active order by position, id limit 1
+`
+
+// The ticket the shop sells, which price locks apply to: the first active
+// one, if there's more than one.
+func (q *Queries) GetTicket(ctx context.Context) (ShopItem, error) {
+	row := q.db.QueryRow(ctx, getTicket)
+	var i ShopItem
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Name,
+		&i.Description,
+		&i.ImageUrl,
+		&i.Price,
+		&i.StipendCents,
+		&i.Stock,
+		&i.MaxPerUser,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Position,
+		&i.BatchSize,
+		&i.BatchStep,
+	)
+	return i, err
+}
+
+const hasTicket = `-- name: HasTicket :one
+select exists (
+    select 1 from orders join shop_items on shop_items.id = orders.shop_item_id
+    where orders.user_id = $1 and shop_items.kind = 'ticket' and orders.status <> 'cancelled'
+)
+`
+
+func (q *Queries) HasTicket(ctx context.Context, userID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, hasTicket, userID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listAllShopItems = `-- name: ListAllShopItems :many
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position from shop_items order by position, price, id
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step from shop_items order by position, price, id
 `
 
 func (q *Queries) ListAllShopItems(ctx context.Context) ([]ShopItem, error) {
@@ -274,6 +404,8 @@ func (q *Queries) ListAllShopItems(ctx context.Context) ([]ShopItem, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Position,
+			&i.BatchSize,
+			&i.BatchStep,
 		); err != nil {
 			return nil, err
 		}
@@ -286,7 +418,7 @@ func (q *Queries) ListAllShopItems(ctx context.Context) ([]ShopItem, error) {
 }
 
 const listOrders = `-- name: ListOrders :many
-select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position
+select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, shop_items.batch_size, shop_items.batch_step
 from orders
 join shop_items on shop_items.id = orders.shop_item_id
 where orders.user_id = $1
@@ -319,6 +451,7 @@ func (q *Queries) ListOrders(ctx context.Context, userID int64) ([]ListOrdersRow
 			&i.Order.UpdatedAt,
 			&i.Order.AirtableRecordID,
 			&i.Order.AirtableSyncedAt,
+			&i.Order.LockedPrice,
 			&i.ShopItem.ID,
 			&i.ShopItem.Kind,
 			&i.ShopItem.Name,
@@ -332,6 +465,8 @@ func (q *Queries) ListOrders(ctx context.Context, userID int64) ([]ListOrdersRow
 			&i.ShopItem.CreatedAt,
 			&i.ShopItem.UpdatedAt,
 			&i.ShopItem.Position,
+			&i.ShopItem.BatchSize,
+			&i.ShopItem.BatchStep,
 		); err != nil {
 			return nil, err
 		}
@@ -344,7 +479,7 @@ func (q *Queries) ListOrders(ctx context.Context, userID int64) ([]ListOrdersRow
 }
 
 const listShopItems = `-- name: ListShopItems :many
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position from shop_items where active order by position, price, id
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step from shop_items where active order by position, price, id
 `
 
 func (q *Queries) ListShopItems(ctx context.Context) ([]ShopItem, error) {
@@ -370,6 +505,8 @@ func (q *Queries) ListShopItems(ctx context.Context) ([]ShopItem, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Position,
+			&i.BatchSize,
+			&i.BatchStep,
 		); err != nil {
 			return nil, err
 		}
@@ -381,8 +518,44 @@ func (q *Queries) ListShopItems(ctx context.Context) ([]ShopItem, error) {
 	return items, nil
 }
 
+const listUnusedPriceLocks = `-- name: ListUnusedPriceLocks :many
+select orders.id, orders.user_id from orders join shop_items on shop_items.id = orders.shop_item_id
+where shop_items.kind = 'price_lock' and orders.status <> 'cancelled'
+    and not exists (
+        select 1 from orders as tickets join shop_items as ticket_items on ticket_items.id = tickets.shop_item_id
+        where tickets.user_id = orders.user_id and ticket_items.kind = 'ticket' and tickets.status <> 'cancelled'
+    )
+order by orders.id
+`
+
+type ListUnusedPriceLocksRow struct {
+	ID     int64
+	UserID int64
+}
+
+// Price locks not refunded, held by people who haven't got a ticket.
+func (q *Queries) ListUnusedPriceLocks(ctx context.Context) ([]ListUnusedPriceLocksRow, error) {
+	rows, err := q.db.Query(ctx, listUnusedPriceLocks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUnusedPriceLocksRow
+	for rows.Next() {
+		var i ListUnusedPriceLocksRow
+		if err := rows.Scan(&i.ID, &i.UserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockOrder = `-- name: LockOrder :one
-select id, user_id, shop_item_id, price, status, shipping_address, notes, created_at, updated_at, airtable_record_id, airtable_synced_at from orders where id = $1 for update
+select id, user_id, shop_item_id, price, status, shipping_address, notes, created_at, updated_at, airtable_record_id, airtable_synced_at, locked_price from orders where id = $1 for update
 `
 
 func (q *Queries) LockOrder(ctx context.Context, id int64) (Order, error) {
@@ -400,12 +573,13 @@ func (q *Queries) LockOrder(ctx context.Context, id int64) (Order, error) {
 		&i.UpdatedAt,
 		&i.AirtableRecordID,
 		&i.AirtableSyncedAt,
+		&i.LockedPrice,
 	)
 	return i, err
 }
 
 const lockShopItem = `-- name: LockShopItem :one
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position from shop_items where id = $1 for update
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step from shop_items where id = $1 for update
 `
 
 func (q *Queries) LockShopItem(ctx context.Context, id int64) (ShopItem, error) {
@@ -425,6 +599,35 @@ func (q *Queries) LockShopItem(ctx context.Context, id int64) (ShopItem, error) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Position,
+		&i.BatchSize,
+		&i.BatchStep,
+	)
+	return i, err
+}
+
+const lockTicket = `-- name: LockTicket :one
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step from shop_items where kind = 'ticket' and active order by position, id limit 1 for update
+`
+
+func (q *Queries) LockTicket(ctx context.Context) (ShopItem, error) {
+	row := q.db.QueryRow(ctx, lockTicket)
+	var i ShopItem
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Name,
+		&i.Description,
+		&i.ImageUrl,
+		&i.Price,
+		&i.StipendCents,
+		&i.Stock,
+		&i.MaxPerUser,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Position,
+		&i.BatchSize,
+		&i.BatchStep,
 	)
 	return i, err
 }
@@ -440,7 +643,7 @@ func (q *Queries) ReturnShopItemStock(ctx context.Context, id int64) error {
 
 const setOrderStatus = `-- name: SetOrderStatus :one
 update orders set status = $2, notes = $3 where id = $1
-returning id, user_id, shop_item_id, price, status, shipping_address, notes, created_at, updated_at, airtable_record_id, airtable_synced_at
+returning id, user_id, shop_item_id, price, status, shipping_address, notes, created_at, updated_at, airtable_record_id, airtable_synced_at, locked_price
 `
 
 type SetOrderStatusParams struct {
@@ -464,6 +667,7 @@ func (q *Queries) SetOrderStatus(ctx context.Context, arg SetOrderStatusParams) 
 		&i.UpdatedAt,
 		&i.AirtableRecordID,
 		&i.AirtableSyncedAt,
+		&i.LockedPrice,
 	)
 	return i, err
 }
@@ -515,9 +719,10 @@ func (q *Queries) TakeShopItemStock(ctx context.Context, id int64) error {
 const updateShopItem = `-- name: UpdateShopItem :one
 update shop_items set
     kind = $2, name = $3, description = $4, image_url = $5, price = $6,
-    stipend_cents = $7, stock = $8, max_per_user = $9, active = $10, position = $11
+    stipend_cents = $7, stock = $8, max_per_user = $9, active = $10, position = $11,
+    batch_size = $12, batch_step = $13
 where id = $1
-returning id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position
+returning id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step
 `
 
 type UpdateShopItemParams struct {
@@ -532,6 +737,8 @@ type UpdateShopItemParams struct {
 	MaxPerUser   *int32
 	Active       bool
 	Position     int32
+	BatchSize    *int32
+	BatchStep    *int32
 }
 
 func (q *Queries) UpdateShopItem(ctx context.Context, arg UpdateShopItemParams) (ShopItem, error) {
@@ -547,6 +754,8 @@ func (q *Queries) UpdateShopItem(ctx context.Context, arg UpdateShopItemParams) 
 		arg.MaxPerUser,
 		arg.Active,
 		arg.Position,
+		arg.BatchSize,
+		arg.BatchStep,
 	)
 	var i ShopItem
 	err := row.Scan(
@@ -563,6 +772,8 @@ func (q *Queries) UpdateShopItem(ctx context.Context, arg UpdateShopItemParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Position,
+		&i.BatchSize,
+		&i.BatchStep,
 	)
 	return i, err
 }

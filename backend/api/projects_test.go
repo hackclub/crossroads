@@ -115,6 +115,7 @@ type env struct {
 	hackatime    *fakeHackatime
 	verification *fakeVerification
 	router       http.Handler
+	api          *api.API
 }
 
 // fakeVerification stands in for Hack Club Auth's verification check. It
@@ -160,7 +161,7 @@ func newEnv(t *testing.T) *env {
 	}
 	r := chi.NewRouter()
 	r.Mount("/api", a.Routes())
-	return &env{pool: pool, queries: db.New(pool), hackatime: fake, verification: verification, router: r}
+	return &env{pool: pool, queries: db.New(pool), hackatime: fake, verification: verification, router: r, api: a}
 }
 
 func (e *env) newUser(t *testing.T, slackID string) *db.User {

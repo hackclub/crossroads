@@ -1,9 +1,11 @@
 package api
 
-// The shop sells the event ticket, physical items and travel stipends for
-// stamps. Buying anything needs an identity verified by Hack Club Auth.
+// The shop sells the event ticket, price locks for it, physical items and
+// travel stipends for stamps. Buying anything needs an identity verified by
+// Hack Club Auth. tickets.go has ticket batches and price locks.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,10 +33,16 @@ type shopItemJSON struct {
 	Stock        *int32          `json:"stock"`         // how many are left; null is unlimited
 	MaxPerUser   *int32          `json:"max_per_user"`  // null is unlimited
 	Active       bool            `json:"active"`
-	Position     int32           `json:"position"` // lower shows first in the shop
+	Position     int32           `json:"position"`   // lower shows first in the shop
+	BatchSize    *int32          `json:"batch_size"` // tickets sold in batches only
+	BatchStep    *int32          `json:"batch_step"` // how much more each batch costs than the one before
+	Batches      *batchesJSON    `json:"batches"`    // tickets sold in batches only
 	// How many the signed-in person has bought, not counting cancelled
 	// orders. Not filled in for admins.
 	Bought int64 `json:"bought"`
+	// Tickets: the price the signed-in person locked in, if they bought a
+	// price lock. Not filled in for admins.
+	LockedPrice *int32 `json:"locked_price"`
 }
 
 func toShopItemJSON(item db.ShopItem, bought int64) shopItemJSON {
@@ -50,8 +58,24 @@ func toShopItemJSON(item db.ShopItem, bought int64) shopItemJSON {
 		MaxPerUser:   item.MaxPerUser,
 		Active:       item.Active,
 		Position:     item.Position,
+		BatchSize:    item.BatchSize,
+		BatchStep:    item.BatchStep,
 		Bought:       bought,
 	}
+}
+
+// soldByItem is how many of each shop item everyone has bought, not counting
+// cancelled orders.
+func (a *API) soldByItem(ctx context.Context) (map[int64]int64, error) {
+	rows, err := a.Queries.CountSoldByItem(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sold := map[int64]int64{}
+	for _, row := range rows {
+		sold[row.ShopItemID] = row.Count
+	}
+	return sold, nil
 }
 
 // cleanAddress trims every field and returns a problem to show them if the
@@ -83,6 +107,7 @@ type orderJSON struct {
 	Price           int32           `json:"price"` // what was paid
 	Status          db.OrderStatus  `json:"status"`
 	ShippingAddress json.RawMessage `json:"shipping_address"`
+	LockedPrice     *int32          `json:"locked_price"` // price locks: the ticket price locked in
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
 }
@@ -98,11 +123,15 @@ func toOrderJSON(order db.Order, item db.ShopItem) orderJSON {
 		Price:           order.Price,
 		Status:          order.Status,
 		ShippingAddress: address,
+		LockedPrice:     order.LockedPrice,
 		CreatedAt:       order.CreatedAt,
 		UpdatedAt:       order.UpdatedAt,
 	}
 }
 
+// listShopItems lists what's in the shop. A ticket's price is what the
+// signed-in person would pay for it now: the batch on sale, or the price
+// they locked in if that's lower.
 func (a *API) listShopItems(w http.ResponseWriter, r *http.Request) {
 	user := auth.User(r.Context())
 	items, err := a.Queries.ListShopItems(r.Context())
@@ -119,9 +148,31 @@ func (a *API) listShopItems(w http.ResponseWriter, r *http.Request) {
 	for _, c := range counts {
 		bought[c.ShopItemID] = c.Count
 	}
+	sold, err := a.soldByItem(r.Context())
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	var locked *int32
+	if lock, err := a.Queries.GetPriceLock(r.Context(), user.ID); err == nil {
+		locked = lock.LockedPrice
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		respond.ServerError(w, r, err)
+		return
+	}
 	out := []shopItemJSON{}
 	for _, item := range items {
-		out = append(out, toShopItemJSON(item, bought[item.ID]))
+		j := toShopItemJSON(item, bought[item.ID])
+		if item.Kind == db.ShopItemKindTicket {
+			if j.Batches = toBatchesJSON(item, sold[item.ID]); j.Batches != nil {
+				j.Price = j.Batches.Prices[j.Batches.Current]
+			}
+			j.LockedPrice = locked
+			if locked != nil && *locked < j.Price {
+				j.Price = *locked
+			}
+		}
+		out = append(out, j)
 	}
 	respond.JSON(w, http.StatusOK, out)
 }
@@ -141,7 +192,9 @@ func (a *API) listOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 // buy orders a shop item. Physical items ship to {"shipping_address": {...}},
-// or to the address they gave Hack Club Auth if that's left out.
+// or to the address they gave Hack Club Auth if that's left out. Tickets
+// cost the batch on sale, or the buyer's locked price if that's lower. A
+// price lock is done as soon as it's bought, so its order starts fulfilled.
 func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 	user := auth.User(r.Context())
 	id, ok := idParam(w, r, "itemID")
@@ -214,9 +267,12 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if bought >= int64(*item.MaxPerUser) {
-			if item.Kind == db.ShopItemKindTicket {
+			switch item.Kind {
+			case db.ShopItemKindTicket:
 				respond.Error(w, http.StatusConflict, "You've already got your ticket!")
-			} else {
+			case db.ShopItemKindPriceLock:
+				respond.Error(w, http.StatusConflict, "You've already locked your ticket price.")
+			default:
 				respond.Error(w, http.StatusConflict, fmt.Sprintf("You can only get %d of these.", *item.MaxPerUser))
 			}
 			return
@@ -226,17 +282,47 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusConflict, "That's sold out.")
 		return
 	}
-	if locked.Stamps < item.Price {
+
+	price, status, lockedPrice := item.Price, db.OrderStatusPending, (*int32)(nil)
+	switch item.Kind {
+	case db.ShopItemKindTicket:
+		sold, err := q.CountSold(r.Context(), item.ID)
+		if err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		price = ticketPrice(item, sold)
+		if lock, err := q.GetPriceLock(r.Context(), user.ID); err == nil && *lock.LockedPrice < price {
+			price = *lock.LockedPrice
+		} else if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			respond.ServerError(w, r, err)
+			return
+		}
+	case db.ShopItemKindPriceLock:
+		lockIn, problem, err := lockProblem(r.Context(), q, user.ID)
+		if err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		if problem != "" {
+			respond.Error(w, http.StatusConflict, problem)
+			return
+		}
+		status, lockedPrice = db.OrderStatusFulfilled, &lockIn
+	}
+	if locked.Stamps < price {
 		respond.Error(w, http.StatusUnprocessableEntity, fmt.Sprintf(
-			"That costs %d stamps and you have %d, so you need %d more.", item.Price, locked.Stamps, item.Price-locked.Stamps))
+			"That costs %d stamps and you have %d, so you need %d more.", price, locked.Stamps, price-locked.Stamps))
 		return
 	}
 
 	order, err := q.CreateOrder(r.Context(), db.CreateOrderParams{
 		UserID:          user.ID,
 		ShopItemID:      item.ID,
-		Price:           item.Price,
+		Price:           price,
 		ShippingAddress: address,
+		Status:          status,
+		LockedPrice:     lockedPrice,
 	})
 	if err != nil {
 		respond.ServerError(w, r, err)
@@ -247,7 +333,7 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 	if _, err := q.AddStampEntry(r.Context(), db.AddStampEntryParams{
 		UserID:  user.ID,
 		Kind:    db.StampEntryKindPurchase,
-		Amount:  -item.Price,
+		Amount:  -price,
 		OrderID: &order.ID,
 	}); db.IsNotEnoughStamps(err) {
 		respond.Error(w, http.StatusUnprocessableEntity, "You don't have enough stamps for that.")
@@ -263,6 +349,13 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 	if err := tx.Commit(r.Context()); err != nil {
 		respond.ServerError(w, r, err)
 		return
+	}
+	// That was the last ticket, so price locks nobody used get their stamps
+	// back. If this fails, RunPriceLockRefunds tries again.
+	if item.Kind == db.ShopItemKindTicket && item.Stock != nil && *item.Stock == 1 {
+		if err := a.RefundPriceLocks(context.WithoutCancel(r.Context())); err != nil {
+			log.Printf("refunding price locks: %v", err)
+		}
 	}
 	respond.JSON(w, http.StatusCreated, toOrderJSON(order, item))
 }
@@ -326,6 +419,8 @@ type shopItemFields struct {
 	MaxPerUser   optional[int32]  `json:"max_per_user"`
 	Active       *bool            `json:"active"`
 	Position     *int32           `json:"position"`
+	BatchSize    optional[int32]  `json:"batch_size"`
+	BatchStep    optional[int32]  `json:"batch_step"`
 }
 
 func (f shopItemFields) apply(item *db.ShopItem) string {
@@ -359,6 +454,12 @@ func (f shopItemFields) apply(item *db.ShopItem) string {
 	if f.Position != nil {
 		item.Position = *f.Position
 	}
+	if f.BatchSize.Set {
+		item.BatchSize = f.BatchSize.Value
+	}
+	if f.BatchStep.Set {
+		item.BatchStep = f.BatchStep.Value
+	}
 	switch {
 	case !item.Kind.Valid():
 		return fmt.Sprintf("kind has to be one of %v.", db.AllShopItemKindValues())
@@ -378,6 +479,16 @@ func (f shopItemFields) apply(item *db.ShopItem) string {
 		return "max_per_user has to be above 0."
 	case item.Kind == db.ShopItemKindTicket && (item.MaxPerUser == nil || *item.MaxPerUser != 1):
 		return "Tickets are one per person, so max_per_user has to be 1."
+	case item.Kind == db.ShopItemKindPriceLock && (item.MaxPerUser == nil || *item.MaxPerUser != 1):
+		return "Price locks are one per person, so max_per_user has to be 1."
+	case (item.BatchSize == nil) != (item.BatchStep == nil):
+		return "Set batch_size and batch_step together, or neither."
+	case item.BatchSize != nil && item.Kind != db.ShopItemKindTicket:
+		return "Only tickets sell in batches."
+	case item.BatchSize != nil && (*item.BatchSize <= 0 || *item.BatchStep <= 0):
+		return "batch_size and batch_step have to be above 0."
+	case item.BatchSize != nil && item.Stock == nil:
+		return "Tickets sold in batches need a stock: how many there are across every batch."
 	}
 	return ""
 }
@@ -388,21 +499,31 @@ func (a *API) adminListShopItems(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
+	sold, err := a.soldByItem(r.Context())
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
 	out := []shopItemJSON{}
 	for _, item := range items {
-		out = append(out, toShopItemJSON(item, 0))
+		j := toShopItemJSON(item, 0)
+		if item.Kind == db.ShopItemKindTicket {
+			j.Batches = toBatchesJSON(item, sold[item.ID])
+		}
+		out = append(out, j)
 	}
 	respond.JSON(w, http.StatusOK, out)
 }
 
-// adminCreateShopItem adds an item. Tickets default to one per person.
+// adminCreateShopItem adds an item. Tickets and price locks default to one
+// per person.
 func (a *API) adminCreateShopItem(w http.ResponseWriter, r *http.Request) {
 	var fields shopItemFields
 	if !decode(w, r, &fields) {
 		return
 	}
 	item := db.ShopItem{Active: true}
-	if fields.Kind != nil && *fields.Kind == db.ShopItemKindTicket && !fields.MaxPerUser.Set {
+	if fields.Kind != nil && (*fields.Kind == db.ShopItemKindTicket || *fields.Kind == db.ShopItemKindPriceLock) && !fields.MaxPerUser.Set {
 		one := int32(1)
 		item.MaxPerUser = &one
 	}
@@ -413,7 +534,7 @@ func (a *API) adminCreateShopItem(w http.ResponseWriter, r *http.Request) {
 	item, err := a.Queries.CreateShopItem(r.Context(), db.CreateShopItemParams{
 		Kind: item.Kind, Name: item.Name, Description: item.Description, ImageUrl: item.ImageUrl, Price: item.Price,
 		StipendCents: item.StipendCents, Stock: item.Stock, MaxPerUser: item.MaxPerUser, Active: item.Active,
-		Position: item.Position,
+		Position: item.Position, BatchSize: item.BatchSize, BatchStep: item.BatchStep,
 	})
 	if err != nil {
 		respond.ServerError(w, r, err)
@@ -457,7 +578,7 @@ func (a *API) adminUpdateShopItem(w http.ResponseWriter, r *http.Request) {
 	item, err = q.UpdateShopItem(r.Context(), db.UpdateShopItemParams{
 		ID: item.ID, Kind: item.Kind, Name: item.Name, Description: item.Description, ImageUrl: item.ImageUrl, Price: item.Price,
 		StipendCents: item.StipendCents, Stock: item.Stock, MaxPerUser: item.MaxPerUser, Active: item.Active,
-		Position: item.Position,
+		Position: item.Position, BatchSize: item.BatchSize, BatchStep: item.BatchStep,
 	})
 	if err != nil {
 		respond.ServerError(w, r, err)

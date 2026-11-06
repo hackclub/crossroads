@@ -2,17 +2,8 @@
 	// The public landing page, from the 1728x3060 Figma frame ("MacBook Pro 16\" - 6" in
 	// crossroads-draft). Positions are design pixels; --u scales them to the viewport, and
 	// below about 780px wide the page stops shrinking and crops the sides instead.
-	// The film-*.png strips are baked from Figma's film shader at 2x; re-export them from
-	// Figma if the design changes. "Get Started" goes to /signin.
-	import filmTopLeft from '#lib/assets/landing/film-top-left.png';
-	import filmTopRight from '#lib/assets/landing/film-top-right.png';
-	import filmBottomLeft from '#lib/assets/landing/film-bottom-left.png';
-	import filmBottomRight from '#lib/assets/landing/film-bottom-right.png';
-	import ticketShape from '#lib/assets/landing/ticket-shape.svg';
-	import ticketPerforation from '#lib/assets/landing/ticket-perforation.svg';
-	import ticketPhoto from '#lib/assets/landing/ticket-photo.jpg';
-	import bookdragonPattern from '#lib/assets/landing/bookdragon-pattern.png';
-	import ticketCode from '#lib/assets/landing/ticket-code.png';
+	// The film strips are film.svg, redrawn from the Figma strip without its colour bleed.
+	// "Get Started" goes to /signin.
 	import arrowUp from '#lib/assets/landing/arrow-up.svg';
 	import arrowDown from '#lib/assets/landing/arrow-down.svg';
 	import fadeLine from '#lib/assets/landing/fade-line.svg';
@@ -21,7 +12,14 @@
 	import genoa from '#lib/assets/landing/route/genoa.webp';
 	import sanSalvatore from '#lib/assets/landing/route/san-salvatore.webp';
 	import brussels from '#lib/assets/landing/route/brussels.webp';
+	import outernetCoding from '#lib/assets/landing/events/outernet-coding.webp';
+	import outernetFlamethrower from '#lib/assets/landing/events/outernet-flamethrower.webp';
+	import outernetGroup from '#lib/assets/landing/events/outernet-group.webp';
+	import flagshipHands from '#lib/assets/landing/events/flagship-hands.webp';
+	import assembleWorkshop from '#lib/assets/landing/events/assemble-workshop.webp';
+	import assembleGroup from '#lib/assets/landing/events/assemble-group.webp';
 	import SplitFlapDisplay from '#lib/SplitFlapDisplay.svelte';
+	import Postcard from '#lib/Postcard.svelte';
 	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import { signIn, isDevMode } from '#lib/api.js';
@@ -48,21 +46,21 @@
 		}
 	}
 
-	// How far the ticket can rotate on each axis, in degrees.
+	// How far the postcard can rotate on each axis, in degrees.
 	const MAX_TILT = 7;
 
-	// How far outside the ticket the cursor starts to tilt it, as a multiple of the ticket's height.
+	// How far outside the postcard the cursor starts to tilt it, as a multiple of the postcard's height.
 	const REACH = 0.6;
 
 	// How quickly the tilt catches up with the cursor, in seconds. Higher is smoother but laggier.
 	const SMOOTHING = 0.15;
 
-	// The pointer sets `target`; each frame `tilt` eases toward it so fast sweeps don't jolt the ticket.
+	// The pointer sets `target`; each frame `tilt` eases toward it so fast sweeps don't jolt the postcard.
 	let tilt = $state({ x: 0, y: 0 });
 	let target = { x: 0, y: 0 };
 	let frame = 0;
 	let lastTime = 0;
-	let ticketArea;
+	let postcardArea;
 
 	function setTarget(x, y) {
 		target = { x, y };
@@ -87,29 +85,29 @@
 	}
 
 	// Rotate so the point under the cursor tips away from the viewer. Outside the
-	// ticket the tilt aims at the nearest edge and fades out with distance, so it
+	// postcard the tilt aims at the nearest edge and fades out with distance, so it
 	// builds up as the cursor approaches instead of snapping on at the edge.
-	function tiltTicket(event) {
+	function tiltPostcard(event) {
 		if (event.pointerType !== 'mouse') return;
-		const box = ticketArea.getBoundingClientRect();
+		const box = postcardArea.getBoundingClientRect();
 		const px = (event.clientX - box.left) / box.width - 0.5;
 		const py = (event.clientY - box.top) / box.height - 0.5;
 		const dx = Math.max(box.left - event.clientX, 0, event.clientX - box.right);
 		const dy = Math.max(box.top - event.clientY, 0, event.clientY - box.bottom);
 		const t = Math.max(0, 1 - Math.hypot(dx, dy) / (box.height * REACH));
 		const strength = t * t * (3 - 2 * t);
-		if (strength === 0) return resetTicket();
+		if (strength === 0) return resetPostcard();
 		const clamp = (v) => Math.min(0.5, Math.max(-0.5, v));
 		setTarget(-clamp(py) * 2 * MAX_TILT * strength, clamp(px) * 2 * MAX_TILT * strength);
 	}
 
-	function resetTicket() {
+	function resetPostcard() {
 		if (target.x || target.y) setTarget(0, 0);
 	}
 
 	// relatedTarget is null when the pointer leaves the window entirely.
 	function leaveWindow(event) {
-		if (!event.relatedTarget) resetTicket();
+		if (!event.relatedTarget) resetPostcard();
 	}
 
 	// Photos of places on the route fade from one to the next on the right of
@@ -179,6 +177,23 @@
 		new Image().src = route[(photo + 1) % route.length].src;
 	});
 
+	// Photos of Hack Club events in the film strips' frames, from the press
+	// page (hackclub.com/press), cropped to the frames' shape. Each strip shows
+	// five frames, the first and last cut off by the screen's edges, so every
+	// photo gets a whole frame once and the cut-off ones repeat.
+	const shots = {
+		outernetCoding: { src: outernetCoding, alt: 'Teens coding at Outernet' },
+		outernetFlamethrower: { src: outernetFlamethrower, alt: 'Teens demonstrating a flame thrower at Outernet' },
+		outernetGroup: { src: outernetGroup, alt: 'Group photo at Outernet, our Summer 2023 hackathon' },
+		flagshipHands: { src: flagshipHands, alt: 'Teens with hands raised at Flagship' },
+		assembleWorkshop: { src: assembleWorkshop, alt: 'Teenager leading a workshop at Assemble' },
+		assembleGroup: { src: assembleGroup, alt: 'Group photo at Assemble, our Summer 2022 hackathon' }
+	};
+	const reels = [
+		[shots.assembleGroup, shots.outernetCoding, shots.flagshipHands, shots.assembleWorkshop, shots.outernetFlamethrower],
+		[shots.assembleWorkshop, shots.outernetFlamethrower, shots.outernetGroup, shots.assembleGroup, shots.outernetCoding]
+	];
+
 	// Straight tracks down the left of the first screen, under the logo's
 	// track, from the top of the window to the film strip: the x of each
 	// one's middle in design pixels, evenly spaced across the left half.
@@ -186,7 +201,7 @@
 	const tracks = [108, 324, 540, 756];
 
 	// People riding cars on the three left tracks (the fourth runs behind the
-	// ticket). Their pictures come from Cachet, Hack Club's cache of Slack
+	// postcard). Their pictures come from Cachet, Hack Club's cache of Slack
 	// avatars, by Slack ID; a rider without one yet gets an empty window.
 	const riders = [
 		{ name: 'Joaquin', slack: 'U083W5CCFDG' },
@@ -211,7 +226,7 @@
 	<meta name="description" content="Hack across Europe. 6 cities. 5 days. 30 teenagers." />
 </svelte:head>
 
-<svelte:window onpointermove={tiltTicket} onpointerout={leaveWindow} />
+<svelte:window onpointermove={tiltPostcard} onpointerout={leaveWindow} />
 
 <main class="page">
 	<!-- Positions are design pixels from the 1728x3060 Figma frame; --u scales them. -->
@@ -244,38 +259,30 @@
 			<a href={route[photo].licenseUrl} target="_blank" rel="noopener">{route[photo].license}</a>
 		</p>
 
-		<!-- Film strips are baked from Figma's shader; the left ones include the effect's bleed past the strip. -->
-		<!-- .below moves them, and everything after them, with the height of the first screen. -->
-		<img class="abs below" src={filmTopRight} alt="" style="--x: 640; --y: 1113; --w: 1088; --h: 295.5" />
-		<img class="abs below" src={filmBottomRight} alt="" style="--x: 637; --y: 2328; --w: 1091; --h: 295.5" />
-		<img class="abs below" src={filmTopLeft} alt="" style="--x: 0; --y: 1111; --w: 1094; --h: 295.5" />
-		<img class="abs below" src={filmBottomLeft} alt="" style="--x: 0; --y: 2326; --w: 1091; --h: 295.5" />
+		<!-- Film strips: this first one along the bottom of the first screen
+		     (.below moves it with that screen's height), and the second further down. -->
+		{#snippet film(reel, y)}
+			<div class="film abs" class:below={y > 0} style="--x: 0; --y: {y}; --w: 1728; --h: 295.5">
+				{#each reel as shot, i}
+					<!-- The cut-off frames at the ends repeat photos, so only the whole ones are described. -->
+					<img class="shot" src={shot.src} alt={i === 0 || i === 4 ? '' : shot.alt} style="--x: {691 + 404 * (i - 2)}" />
+				{/each}
+			</div>
+		{/snippet}
+		{@render film(reels[0], 1111)}
 
-		<!-- Everything on the ticket is placed relative to the ticket so it can tilt as one piece. -->
-		<!-- The tilt is measured against this untransformed box, so the tilting ticket doesn't feed back into it. -->
-		<div class="abs" style="--x: 648.105; --y: 312.961; --w: 399.012; --h: 164.139" bind:this={ticketArea}>
-			<div
-				class="ticket abs"
-				style="--x: 0; --y: 0; --w: 399.012; --h: 164.139; --tilt-x: {tilt.x}deg; --tilt-y: {tilt.y}deg"
-			>
-				<div class="ticket-paper abs" style="--x: 0; --y: 0; --w: 399.012; --h: 164.139; --mask: url({ticketShape})">
-					<div class="abs" style="--x: -2.605; --y: -11.561; --w: 411.3; --h: 184.5; background: #e4d6d1"></div>
-					<div class="abs" style="--x: 268.295; --y: -21.461; --w: 199.8; --h: 207.9; background: #53758b"></div>
-					<img class="perforation abs" src={ticketPerforation} alt="" style="--x: 269.395; --y: 1.039; --w: 165.6; --h: 2" />
-					<img class="abs multiply faint" src={ticketPhoto} alt="" style="--x: -33.205; --y: -79.961; --w: 465.975; --h: 310.65" />
-					<img class="abs multiply faint opaque" src={bookdragonPattern} alt="" style="--x: -47.605; --y: -162.761; --w: 471.994; --h: 489.192" />
-					<p class="ticket-side abs" style="--x: 334.895; --y: 74.839; --w: 52.2; --h: 14.4">Admit One</p>
-					<p class="ticket-side abs" style="--x: 292.595; --y: 74.839; --w: 104.4; --h: 14.4">Leaving Paris, France</p>
-				</div>
-				<div class="outline abs" style="--x: 290.795; --y: 7.339; --w: 81; --h: 149.4; --border: 2; --radius: 2"></div>
-				<div class="outline abs" style="--x: 22.595; --y: 14.539; --w: 221.4; --h: 48.6; --border: 3; --radius: 4"></div>
-				<img class="abs" src={ticketCode} alt="" style="--x: 296.195; --y: 24.439; --w: 35.202; --h: 35.896" />
-				<img class="abs" src={ticketCode} alt="" style="--x: 296.195; --y: 64.039; --w: 35.202; --h: 35.896" />
-				<img class="abs" src={ticketCode} alt="" style="--x: 296.195; --y: 103.639; --w: 35.202; --h: 35.896" />
-				<p class="ticket-text centered" style="--x: 133.295; --y: 18.139; --w: 246.6; --size: 38">To Qualify:</p>
-				<p class="ticket-text centered" style="--x: 134.645; --y: 73.039; --w: 216.9; --size: 40">60 Hours Spent Creating</p>
+		<!-- The postcard, 390 wide (900 Figma pixels, so --pc is 390/900 of a design
+		     pixel), centred between the board and the tagline. It tilts toward the
+		     cursor; the tilt is measured against this untransformed box, so the
+		     tilting card doesn't feed back into it. -->
+		<div class="abs" style="--x: 657; --y: 263; --w: 390; --h: 260" bind:this={postcardArea}>
+			<div class="tilt" style="--tilt-x: {tilt.x}deg; --tilt-y: {tilt.y}deg; --pc: calc(var(--u) * 390 / 900)">
+				<Postcard />
 			</div>
 		</div>
+		<p class="crimson centered" style="--x:645; --y: 450; transform: rotateZ(-90deg); opacity: 50%">click me!</p>
+
+		<p class="crimson centered" style="--x: 852; --y: 70; --size: 40; letter-spacing: 0.3em;"><a href="https://hackclub.com" target="_blank" style="text-decoration: none;">hack club</a></p>
 
 		<!-- The title flips into place on a split-flap board when the page loads. The
 		     board is decoration; the heading is there for screen readers. It sits
@@ -294,33 +301,55 @@
 		</p>
 
 		<img class="line abs" src={arrowUp} alt="" style="--x: 841.113; --y: 664.17; --w: 29.887; --h: 5.774; --angle: 90deg" />
-		<a class="button abs" href="/signin" onclick={getStarted} style="--x: 742; --y: 688; --w: 228; --h: 67">
-			<span class="doto centered" style="--x: 114; --y: 15; --size: 32">Get Started</span>
-		</a>
+		<a class="button centered" href="/signin" onclick={getStarted} style="--x: 856; --y: 688"><span>Get Started</span></a>
 		<img class="drop-line" src={fadeLine} alt="" />
 
-		<h2 class="doto centered below" style="--x: 875.5; --y: 1450; --w: 803; --size: 32">What is Hack Club Crossroads?</h2>
-		<p class="doto centered below" style="--x: 877.5; --y: 1510; --w: 803; --size: 24">
-			Crossroads is a <a href="https://hackclub.com" target="_blank" rel="noopener">Hack Club</a> Event running in February 2027
-			where a group of 30 teens build projects for 65 hours, then travel by train across Europe together.
-			Everything (including train passes, food and accommodation) is totally free for teenagers who qualify by building a
-			project. Can't come? We're also providing funding and prizes for every teen who ships a technical project.
-		</p>
-		<h2 class="doto centered below" style="--x: 888.5; --y: 1765; --w: 803; --size: 32">What is Hack Club Crossroads?</h2>
+		<!-- Everything under the first film strip flows down the page, so as the
+		     questions grow they push the second strip and everything after it down. -->
+		<div class="lower">
+			<section class="faq">
+				<div class="qa">
+					<h2 class="crimson" style="--size: 32">- What is Hack Club Crossroads? -</h2>
+					<p class="crimson" style="--size: 24">
+						Crossroads is a <a href="https://hackclub.com" target="_blank" rel="noopener">Hack Club</a> event running in February 2027
+						where a group of 30 teens build projects for 65 hours, then travel by train across Europe together.
+						Everything (including train passes, food and accommodation) is totally free for teenagers who qualify by building a
+						project. Can't come? We're also providing funding and prizes for every teen who ships a technical project.
+					</p>
+				</div>
+				<div class="qa">
+					<h2 class="crimson" style="--size: 32">- Who can participate? -</h2>
+					<p class="crimson" style="--size: 24">
+						Anyone 13 to 18 years old (including both ends), whether it's your first time writing code or the 300th graphics API you've written from scratch. Hack Club is about wanting and trying to make things, not about being the best programmer in the world.
+					</p>
+				</div>
+				<div class="qa">
+					<h2 class="crimson" style="--size: 32">- What can I make? -</h2>
+					<p class="crimson" style="--size: 24">
+						Any kind of software project, it just has to be open source!
+					</p>
+				</div>
+				<div class="qa">
+					<h2 class="crimson" style="--size: 32">- What's the trip going to be like? -</h2>
+					<p class="crimson" style="--size: 24">
+						There's always a chance that our plans change, but the current route would start us in Berlin and take us through Paris, Brussels, and down to Italy, where we'd end in Milan. Make sure you're in our Slack channel (<a href="https://hackclub.enterprise.slack.com/archives/C0CDHHFABAR" target="_blank">#crossroads</a>) for the latest updates on the route and plan.
+					</p>
+				</div>
+				<div class="qa">
+					<h2 class="crimson" style="--size: 32">- What about visas? -</h2>
+					<p class="crimson" style="--size: 24">We can't make any definitive promises, but we'll do our very best to support you through the process of applying for a Schengen visa for the EU once you've met a minimum hour requirement.</p>
+				</div>
+			</section>
 
-		<img class="line abs below" src={arrowDown} alt="" style="--x: 772.056; --y: 2705.057; --w: 169.887; --h: 5.774; --angle: -90deg" />
-		<a class="button abs below" href="/signin" onclick={getStarted} style="--x: 742; --y: 2813; --w: 228; --h: 67">
-			<span class="doto centered" style="--x: 114; --y: 15; --size: 32">Get Started</span>
-		</a>
-
-		<p class="doto centered nowrap below" style="--x: 856.5; --y: 3010; --size: 16">Fuffilment Bounty + Privacy and Terms</p>
+			<!-- Positions in here are from the second strip's top, 2326 in Figma. -->
+			<div class="tail">
+				{@render film(reels[1], 0)}
+				<img class="line abs" src={arrowDown} alt="" style="--x: 772.056; --y: 379.057; --w: 169.887; --h: 5.774; --angle: -90deg" />
+				<a class="button centered" href="/signin" onclick={getStarted} style="--x: 856; --y: 487"><span>Get Started</span></a>
+				<p class="doto centered nowrap" style="--x: 856.5; --y: 684; --size: 16"><a href="https://forms.hackclub.com/bounty" target="_blank">Fulfillment Bounty</a> + <a href="https://hackclub.com/privacy-and-terms" target="_blank">Privacy and Terms</a></p>
+			</div>
+		</div>
 	</div>
-
-	<svg class="filters" aria-hidden="true">
-		<filter id="opaque">
-			<feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0 1" />
-		</filter>
-	</svg>
 </main>
 
 <style>
@@ -363,7 +392,8 @@
 		--strip-top: calc(var(--screen) - 147.75 * var(--u));
 		position: relative;
 		width: calc(1728 * var(--u));
-		height: calc(3060 * var(--u) + var(--shift));
+		/* No height: .lower, in the page's flow, sets it, so the frame grows
+		   with the questions. Unstretched it's 3060 + --shift, as in Figma. */
 		margin-left: calc(50cqw - 864 * var(--u));
 		overflow: hidden;
 		color: #fff;
@@ -400,67 +430,15 @@
 		white-space: nowrap;
 	}
 
-	.multiply {
-		mix-blend-mode: multiply;
-		object-fit: cover;
-	}
-
-	.faint {
-		opacity: 0.4;
-	}
-
-	/* Figma draws the pattern PNG as if it had no alpha channel; this matches it. */
-	.opaque {
-		filter: url(#opaque);
-	}
-
-	.filters {
-		position: absolute;
-		width: 0;
-		height: 0;
-	}
-
-	.ticket {
+	.tilt {
 		transform: perspective(calc(1000 * var(--u))) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
 		will-change: transform;
 	}
 
-	/* Every layer of the paper is clipped to the ticket's notched outline. */
-	.ticket-paper {
-		mask: var(--mask) 0 0 / 100% 100% no-repeat;
-	}
-
 	@media (prefers-reduced-motion: reduce) {
-		.ticket {
+		.tilt {
 			transform: none;
 		}
-	}
-
-	.perforation {
-		transform-origin: 0 0;
-		rotate: 90deg;
-	}
-
-	.ticket-side {
-		rotate: -90deg;
-		font-family: 'Playfair Display', serif;
-		font-size: calc(12 * var(--u));
-		line-height: normal;
-		color: #000;
-		overflow-wrap: break-word;
-	}
-
-	.outline {
-		border: calc(var(--border) * var(--u)) solid #000;
-		border-radius: calc(var(--radius) * var(--u));
-	}
-
-	.ticket-text {
-		font-family: 'Cute Font', sans-serif;
-		font-size: calc(var(--size) * var(--u));
-		line-height: calc(42 * var(--u));
-		color: #000;
-		overflow-wrap: break-word;
 	}
 
 	.doto {
@@ -470,6 +448,44 @@
 		font-size: calc(var(--size) * var(--u));
 		line-height: normal;
 		overflow-wrap: break-word;
+	}
+
+	/* Everything under the first film strip, in the page's flow: it starts
+	   where that strip ends (1406.5, plus --shift). A margin, not padding, so
+	   the box itself starts there and doesn't cover the first screen's
+	   postcard and links; the frame's overflow keeps it from collapsing. */
+	.lower {
+		position: relative;
+		margin-top: calc(1406.5 * var(--u) + var(--shift));
+	}
+
+	/* The questions, 803 wide and centred on 877.5 as in Figma: 16 between a
+	   question and its answer, 48 between one answer and the next question.
+	   The column fills at least Figma's 919.5 between the strips, centred in
+	   it, and grows past that when it needs to, moving the second strip down
+	   but keeping 56 above and below. */
+	.faq {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: calc(48 * var(--u));
+		width: calc(803 * var(--u));
+		min-height: calc(919.5 * var(--u));
+		margin-left: calc(476 * var(--u));
+		padding-block: calc(56 * var(--u));
+		text-align: center;
+	}
+
+	/* The second film strip and what's under it, 734 tall as in Figma. */
+	.tail {
+		position: relative;
+		height: calc(734 * var(--u));
+	}
+
+	.qa {
+		display: flex;
+		flex-direction: column;
+		gap: calc(16 * var(--u));
 	}
 
 	.crimson {
@@ -521,13 +537,31 @@
 		rotate: var(--angle);
 	}
 
+	/* One frame of film, repeated across the page and centred on it. */
+	.film {
+		background: url('../lib/assets/landing/film.svg') center top / calc(404 * var(--u)) 100% repeat-x;
+	}
+
+	/* A photo in one of film.svg's frames: 346 by 202 with round corners, 43
+	   down from the top of the strip, one every 404 with the middle one
+	   centred on the page. */
+	.shot {
+		position: absolute;
+		left: calc(var(--x) * var(--u));
+		top: calc(43 * var(--u));
+		width: calc(346 * var(--u));
+		height: calc(202 * var(--u));
+		border-radius: calc(20 * var(--u));
+		object-fit: cover;
+	}
+
 	/* From under Get Started down to the film strip, however far that is:
 	   the fade line, turned on its end so it fades out downwards. */
 	.drop-line {
 		position: absolute;
 		left: calc(857.5 * var(--u));
-		top: calc(762.5 * var(--u));
-		width: calc(var(--screen) - 915 * var(--u));
+		top: calc(770 * var(--u));
+		width: calc(var(--screen) - 922.75 * var(--u));
 		height: var(--u);
 		transform-origin: 0 0;
 		rotate: 90deg;
@@ -681,23 +715,56 @@
 		white-space: nowrap;
 	}
 
+	/* Get Started: Crimson Text on a dark, barely rounded box, 72 tall. On
+	   hover the box lifts and grows a little, and a short white line grows
+	   out from the middle of where it sat, 8 below. */
 	.button {
-		border: calc(3 * var(--u)) solid #fff;
-		border-radius: calc(12 * var(--u));
-		background: rgb(69 69 69 / 0.2);
+		width: auto;
 		color: inherit;
 		text-decoration: none;
 	}
 
-	/* The label is placed from the button's outer edge, like in Figma. */
-	.button > .centered {
-		margin: calc(-3 * var(--u)) 0 0 calc(-3 * var(--u));
+	.button span {
+		display: block;
+		padding: calc(17 * var(--u)) calc(44 * var(--u));
+		border: calc(3 * var(--u)) solid #fff;
+		border-radius: calc(4 * var(--u));
+		background: rgb(8 8 8 / 0.85);
+		font-family: 'Crimson Text', Georgia, serif;
+		font-size: calc(32 * var(--u));
+		line-height: 1;
 		white-space: nowrap;
-		width: auto;
+		transition: transform 0.25s ease-out;
 	}
 
-	.button:hover {
-		background: rgb(69 69 69 / 0.4);
+	.button::after {
+		content: '';
+		position: absolute;
+		left: 50%;
+		top: calc(100% + 8 * var(--u));
+		width: 40%;
+		height: calc(2 * var(--u));
+		background: #fff;
+		translate: -50% 0;
+		scale: 0 1;
+		transition: scale 0.25s ease-out;
+	}
+
+	.button:hover span,
+	.button:focus-visible span {
+		transform: translateY(calc(-5 * var(--u))) scale(1.04);
+	}
+
+	.button:hover::after,
+	.button:focus-visible::after {
+		scale: 1 1;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.button span,
+		.button::after {
+			transition: none;
+		}
 	}
 
 	.button:focus-visible {
