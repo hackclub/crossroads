@@ -296,9 +296,7 @@
 		</p>
 
 		<img class="line abs" src={arrowUp} alt="" style="--x: 841.113; --y: 664.17; --w: 29.887; --h: 5.774; --angle: 90deg" />
-		<a class="button abs" href="/signin" onclick={getStarted} style="--x: 742; --y: 688; --w: 228; --h: 67">
-			<span class="doto centered" style="--x: 114; --y: 15; --size: 32">Get Started</span>
-		</a>
+		<a class="button centered" href="/signin" onclick={getStarted} style="--x: 856; --y: 688"><span>Get Started</span></a>
 		<img class="drop-line" src={fadeLine} alt="" />
 
 		<h2 class="doto centered below" style="--x: 875.5; --y: 1450; --w: 803; --size: 32">What is Hack Club Crossroads?</h2>
@@ -311,9 +309,7 @@
 		<h2 class="doto centered below" style="--x: 888.5; --y: 1765; --w: 803; --size: 32">What is Hack Club Crossroads?</h2>
 
 		<img class="line abs below" src={arrowDown} alt="" style="--x: 772.056; --y: 2705.057; --w: 169.887; --h: 5.774; --angle: -90deg" />
-		<a class="button abs below" href="/signin" onclick={getStarted} style="--x: 742; --y: 2813; --w: 228; --h: 67">
-			<span class="doto centered" style="--x: 114; --y: 15; --size: 32">Get Started</span>
-		</a>
+		<a class="button centered below" href="/signin" onclick={getStarted} style="--x: 856; --y: 2813"><span>Get Started</span></a>
 
 		<p class="doto centered nowrap below" style="--x: 856.5; --y: 3010; --size: 16"><a href="https://forms.hackclub.com/bounty" target="_blank">Fulfillment Bounty</a> + <a href="https://hackclub.com/privacy-and-terms" target="_blank">Privacy and Terms</a></p>
 	</div>
@@ -488,8 +484,8 @@
 	.drop-line {
 		position: absolute;
 		left: calc(857.5 * var(--u));
-		top: calc(762.5 * var(--u));
-		width: calc(var(--screen) - 915 * var(--u));
+		top: calc(770 * var(--u));
+		width: calc(var(--screen) - 922.75 * var(--u));
 		height: var(--u);
 		transform-origin: 0 0;
 		rotate: 90deg;
@@ -643,23 +639,56 @@
 		white-space: nowrap;
 	}
 
+	/* Get Started: Crimson Text on a dark, barely rounded box, 72 tall. On
+	   hover the box lifts and grows a little, and a short white line grows
+	   out from the middle of where it sat, 8 below. */
 	.button {
-		border: calc(3 * var(--u)) solid #fff;
-		border-radius: calc(12 * var(--u));
-		background: rgb(69 69 69 / 0.2);
+		width: auto;
 		color: inherit;
 		text-decoration: none;
 	}
 
-	/* The label is placed from the button's outer edge, like in Figma. */
-	.button > .centered {
-		margin: calc(-3 * var(--u)) 0 0 calc(-3 * var(--u));
+	.button span {
+		display: block;
+		padding: calc(17 * var(--u)) calc(44 * var(--u));
+		border: calc(3 * var(--u)) solid #fff;
+		border-radius: calc(4 * var(--u));
+		background: rgb(8 8 8 / 0.85);
+		font-family: 'Crimson Text', Georgia, serif;
+		font-size: calc(32 * var(--u));
+		line-height: 1;
 		white-space: nowrap;
-		width: auto;
+		transition: transform 0.25s ease-out;
 	}
 
-	.button:hover {
-		background: rgb(69 69 69 / 0.4);
+	.button::after {
+		content: '';
+		position: absolute;
+		left: 50%;
+		top: calc(100% + 8 * var(--u));
+		width: 40%;
+		height: calc(2 * var(--u));
+		background: #fff;
+		translate: -50% 0;
+		scale: 0 1;
+		transition: scale 0.25s ease-out;
+	}
+
+	.button:hover span,
+	.button:focus-visible span {
+		transform: translateY(calc(-5 * var(--u))) scale(1.04);
+	}
+
+	.button:hover::after,
+	.button:focus-visible::after {
+		scale: 1 1;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.button span,
+		.button::after {
+			transition: none;
+		}
 	}
 
 	.button:focus-visible {
