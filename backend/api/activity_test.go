@@ -41,15 +41,16 @@ func TestAdminActivity(t *testing.T) {
 		Seconds            int    `json:"seconds"`
 		Visitors           int    `json:"visitors"`
 		SignUps            int    `json:"sign_ups"`
+		Participants       int    `json:"participants"`
 	}
 	var out struct {
-		Days               []day      `json:"days"`
-		Last7Days          int        `json:"last_7_days"`
-		Last30Days         int        `json:"last_30_days"`
-		VisitorsLast7Days  int        `json:"visitors_last_7_days"`
-		VisitorsLast30Days int        `json:"visitors_last_30_days"`
-		MinMinutes         int        `json:"min_minutes"`
-		UpdatedAt          *time.Time `json:"updated_at"`
+		Days  []day `json:"days"`
+		Range struct {
+			Visitors           int `json:"visitors"`
+			ActiveParticipants int `json:"active_participants"`
+		} `json:"range"`
+		MinMinutes int        `json:"min_minutes"`
+		UpdatedAt  *time.Time `json:"updated_at"`
 	}
 	e.mustCall(t, admin, http.StatusOK, "GET", "/api/admin/activity?days=7", nil, &out)
 	if len(out.Days) != 7 {
@@ -62,15 +63,18 @@ func TestAdminActivity(t *testing.T) {
 	if out.Days[4].Seconds != 7200 || out.Days[5].ActiveParticipants != 0 {
 		t.Errorf("earlier days: got %+v", out.Days)
 	}
-	if out.Last7Days != 1 || out.Last30Days != 1 || out.UpdatedAt == nil {
-		t.Errorf("totals: got %+v", out)
+	if out.Range.ActiveParticipants != 1 || out.Range.Visitors != 1 || out.UpdatedAt == nil {
+		t.Errorf("the last 7 days: got %+v", out)
 	}
 	// Both participants signed up today; the admin isn't one.
-	if last.Visitors != 1 || last.SignUps != 2 || out.Days[5].Visitors != 0 || out.Days[5].SignUps != 0 {
+	if last.Visitors != 1 || last.SignUps != 2 || last.Participants != 2 || out.Days[5].Visitors != 0 || out.Days[5].SignUps != 0 || out.Days[5].Participants != 0 {
 		t.Errorf("platform today and yesterday: got %+v, %+v", last, out.Days[5])
 	}
-	if out.VisitorsLast7Days != 1 || out.VisitorsLast30Days != 2 {
-		t.Errorf("visitors: got %d in 7 days and %d in 30, want 1 and 2", out.VisitorsLast7Days, out.VisitorsLast30Days)
+
+	// The lapsed participant's visit 9 days ago is in the last 30.
+	e.mustCall(t, admin, http.StatusOK, "GET", "/api/admin/activity?days=30", nil, &out)
+	if len(out.Days) != 30 || out.Range.Visitors != 2 || out.Range.ActiveParticipants != 1 {
+		t.Errorf("the last 30 days: got %d days, %+v", len(out.Days), out.Range)
 	}
 
 	// With an hour minimum, only the day with two hours counts.

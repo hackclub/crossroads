@@ -43,7 +43,7 @@ Every new dev user starts with three fake Hackatime projects: `crossroads-game` 
 
 Fake Hackatime time lives in the backend's memory and **resets when the backend restarts**, while the database keeps what was submitted and approved. After a restart, a project shows no new time until you add more. That's harmless: the backend never pays out more than Hackatime reports.
 
-The fake also answers heartbeat spans for the activity poller, with each linked project's whole fake total as one span ending now, so the admin **Activity** tab puts all of a dev user's time on today. It shows up at the poller's next pass (every 30 minutes, and on startup).
+The fake also answers heartbeat spans for the activity poller, with each linked project's whole fake total as one span ending now, so the admin **Stats** tab puts all of a dev user's time on today. It shows up at the poller's next pass (every 30 minutes, and on startup).
 
 ### A full run-through
 

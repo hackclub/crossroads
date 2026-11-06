@@ -627,11 +627,12 @@ interface Activity {
     seconds: number;             // participants' total project time
     visitors: number;            // participants who made a signed-in request
     sign_ups: number;            // participants who signed up
+    participants: number;        // participants signed up by the end of the day
   }[];
-  last_7_days: number;   // participants active on at least one of the last 7 days
-  last_30_days: number;  // and the last 30
-  visitors_last_7_days: number;  // participants who used the platform on at least one of the last 7 days
-  visitors_last_30_days: number; // and the last 30
+  range: {                       // each participant counted once over all the days returned
+    visitors: number;            // used the platform on at least one of them
+    active_participants: number; // active (min_minutes) on at least one of them
+  };
   min_minutes: number;
   updated_at: string | null; // when the poller last recorded anything
 }

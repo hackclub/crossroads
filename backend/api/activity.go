@@ -18,7 +18,8 @@ import (
 // Hackatime time the activity poller records per project per UTC day, and
 // how many use the platform, from their signed-in requests. A participant is
 // active on a day if their projects got at least min_minutes between them;
-// the last day is today.
+// the last day is today. range counts each participant once over all the
+// days returned.
 //
 // GET /api/admin/activity?days=30&min_minutes=0
 func (a *API) adminActivity(w http.ResponseWriter, r *http.Request) {
@@ -45,30 +46,14 @@ func (a *API) adminActivity(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
-	activeOver := func(n int) (int32, error) {
-		return a.Queries.CountActiveParticipants(r.Context(), db.CountActiveParticipantsParams{
-			StartDay: today.AddDate(0, 0, 1-n), EndDay: today, MinSeconds: minSeconds,
-		})
-	}
-	week, err := activeOver(7)
+	active, err := a.Queries.CountActiveParticipants(r.Context(), db.CountActiveParticipantsParams{
+		StartDay: start, EndDay: today, MinSeconds: minSeconds,
+	})
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return
 	}
-	month, err := activeOver(30)
-	if err != nil {
-		respond.ServerError(w, r, err)
-		return
-	}
-	visitorsOver := func(n int) (int32, error) {
-		return a.Queries.CountVisitors(r.Context(), db.CountVisitorsParams{StartDay: today.AddDate(0, 0, 1-n), EndDay: today})
-	}
-	visitorsWeek, err := visitorsOver(7)
-	if err != nil {
-		respond.ServerError(w, r, err)
-		return
-	}
-	visitorsMonth, err := visitorsOver(30)
+	visitors, err := a.Queries.CountVisitors(r.Context(), db.CountVisitorsParams{StartDay: start, EndDay: today})
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return
@@ -89,20 +74,22 @@ func (a *API) adminActivity(w http.ResponseWriter, r *http.Request) {
 		Seconds            int64  `json:"seconds"`
 		Visitors           int32  `json:"visitors"`
 		SignUps            int32  `json:"sign_ups"`
+		Participants       int32  `json:"participants"`
 	}
 	out := make([]dayJSON, len(rows))
 	for i, row := range rows {
-		out[i] = dayJSON{row.Day.Format(time.DateOnly), row.ActiveParticipants, row.ActiveProjects, row.Seconds, row.Visitors, row.SignUps}
+		out[i] = dayJSON{row.Day.Format(time.DateOnly), row.ActiveParticipants, row.ActiveProjects, row.Seconds, row.Visitors, row.SignUps, row.Participants}
+	}
+	type rangeJSON struct {
+		Visitors           int32 `json:"visitors"`
+		ActiveParticipants int32 `json:"active_participants"`
 	}
 	respond.JSON(w, http.StatusOK, struct {
-		Days               []dayJSON  `json:"days"`
-		Last7Days          int32      `json:"last_7_days"`
-		Last30Days         int32      `json:"last_30_days"`
-		VisitorsLast7Days  int32      `json:"visitors_last_7_days"`
-		VisitorsLast30Days int32      `json:"visitors_last_30_days"`
-		MinMinutes         int        `json:"min_minutes"`
-		UpdatedAt          *time.Time `json:"updated_at"`
-	}{out, week, month, visitorsWeek, visitorsMonth, minMinutes, updatedAt})
+		Days       []dayJSON  `json:"days"`
+		Range      rangeJSON  `json:"range"`
+		MinMinutes int        `json:"min_minutes"`
+		UpdatedAt  *time.Time `json:"updated_at"`
+	}{out, rangeJSON{visitors, active}, minMinutes, updatedAt})
 }
 
 // queryInt reads an optional whole-number query parameter from lo to hi,

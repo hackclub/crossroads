@@ -95,7 +95,9 @@ select days.day::date as day,
         join users on users.id = platform_activity.user_id
         where platform_activity.day = days.day::date and users.role = 'participant')::integer as visitors,
     (select count(*) from users
-        where (users.created_at at time zone 'UTC')::date = days.day::date and users.role = 'participant')::integer as sign_ups
+        where (users.created_at at time zone 'UTC')::date = days.day::date and users.role = 'participant')::integer as sign_ups,
+    (select count(*) from users
+        where (users.created_at at time zone 'UTC')::date <= days.day::date and users.role = 'participant')::integer as participants
 from generate_series($2::date, $3::date, interval '1 day') as days (day)
 left join per_user on per_user.day = days.day::date
 group by days.day
@@ -115,12 +117,14 @@ type DailyActivityRow struct {
 	Seconds            int64
 	Visitors           int32
 	SignUps            int32
+	Participants       int32
 }
 
 // Each day from start_day to end_day, including empty ones: how many
 // participants spent at least min_seconds on their projects, how many of
 // their projects got any time, and the total; and how many participants
-// used the platform, and how many signed up.
+// used the platform, how many signed up, and how many there were by the end
+// of the day.
 func (q *Queries) DailyActivity(ctx context.Context, arg DailyActivityParams) ([]DailyActivityRow, error) {
 	rows, err := q.db.Query(ctx, dailyActivity, arg.MinSeconds, arg.StartDay, arg.EndDay)
 	if err != nil {
@@ -137,6 +141,7 @@ func (q *Queries) DailyActivity(ctx context.Context, arg DailyActivityParams) ([
 			&i.Seconds,
 			&i.Visitors,
 			&i.SignUps,
+			&i.Participants,
 		); err != nil {
 			return nil, err
 		}

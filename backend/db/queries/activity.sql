@@ -22,7 +22,8 @@ on conflict (project_id, day) do update set seconds = excluded.seconds, updated_
 -- Each day from start_day to end_day, including empty ones: how many
 -- participants spent at least min_seconds on their projects, how many of
 -- their projects got any time, and the total; and how many participants
--- used the platform, and how many signed up.
+-- used the platform, how many signed up, and how many there were by the end
+-- of the day.
 with per_user as (
     select project_activity.day, projects.user_id,
         count(*) as projects, sum(project_activity.seconds) as seconds
@@ -41,7 +42,9 @@ select days.day::date as day,
         join users on users.id = platform_activity.user_id
         where platform_activity.day = days.day::date and users.role = 'participant')::integer as visitors,
     (select count(*) from users
-        where (users.created_at at time zone 'UTC')::date = days.day::date and users.role = 'participant')::integer as sign_ups
+        where (users.created_at at time zone 'UTC')::date = days.day::date and users.role = 'participant')::integer as sign_ups,
+    (select count(*) from users
+        where (users.created_at at time zone 'UTC')::date <= days.day::date and users.role = 'participant')::integer as participants
 from generate_series(sqlc.arg(start_day)::date, sqlc.arg(end_day)::date, interval '1 day') as days (day)
 left join per_user on per_user.day = days.day::date
 group by days.day

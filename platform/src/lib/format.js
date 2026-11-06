@@ -10,6 +10,11 @@ export function date(iso) {
 	return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
+// A UTC day from the API ("2026-11-06") as "Nov 6".
+export function utcDay(day) {
+	return new Date(day + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
 export function money(cents) {
 	return cents == null ? '' : '$' + (cents / 100).toFixed(cents % 100 ? 2 : 0);
 }
