@@ -64,27 +64,6 @@ func (c *Client) Stats(ctx context.Context, slackID string, projects []string) (
 	if len(projects) > 0 {
 		query.Set("filter_by_project", strings.Join(projects, ","))
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.baseURL+"/api/v1/users/"+url.PathEscape(slackID)+"/stats?"+query.Encode(), nil)
-	if err != nil {
-		return Stats{}, err
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return Stats{}, err
-	}
-	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusOK:
-	case http.StatusNotFound:
-		return Stats{}, ErrNoAccount
-	case http.StatusForbidden:
-		return Stats{}, ErrPrivate
-	default:
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return Stats{}, fmt.Errorf("hackatime stats for %s: %s: %s", slackID, resp.Status, body)
-	}
-
 	var body struct {
 		Data struct {
 			TotalSeconds float64 `json:"total_seconds"`
@@ -97,8 +76,8 @@ func (c *Client) Stats(ctx context.Context, slackID string, projects []string) (
 			TrustLevel string `json:"trust_level"`
 		} `json:"trust_factor"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return Stats{}, fmt.Errorf("hackatime stats for %s: %w", slackID, err)
+	if err := c.get(ctx, slackID, "stats", query, &body); err != nil {
+		return Stats{}, err
 	}
 	stats := Stats{
 		Seconds:   int(body.Data.TotalSeconds),
@@ -108,4 +87,68 @@ func (c *Client) Stats(ctx context.Context, slackID string, projects []string) (
 		stats.Projects = append(stats.Projects, Project{Name: p.Name, Seconds: int(p.TotalSeconds)})
 	}
 	return stats, nil
+}
+
+// Span is a stretch of coding, from Hackatime's heartbeats.
+type Span struct {
+	Start time.Time
+	End   time.Time
+}
+
+// Spans returns someone's coding between start and end on the given
+// Hackatime projects, looking them up by Slack ID. Their durations add up to
+// the same time Stats reports. projects can't be empty, since that would
+// mean every project; names can't contain commas.
+func (c *Client) Spans(ctx context.Context, slackID string, projects []string, start, end time.Time) ([]Span, error) {
+	if len(projects) == 0 {
+		return nil, errors.New("hackatime spans: no projects to filter by")
+	}
+	query := url.Values{
+		"start_date":        {start.UTC().Format(time.RFC3339)},
+		"end_date":          {end.UTC().Format(time.RFC3339)},
+		"filter_by_project": {strings.Join(projects, ",")},
+	}
+	var body struct {
+		Spans []struct {
+			StartTime float64 `json:"start_time"` // epoch seconds
+			Duration  float64 `json:"duration"`
+		} `json:"spans"`
+	}
+	if err := c.get(ctx, slackID, "heartbeats/spans", query, &body); err != nil {
+		return nil, err
+	}
+	spans := make([]Span, len(body.Spans))
+	for i, s := range body.Spans {
+		start := time.UnixMilli(int64(s.StartTime * 1000)).UTC()
+		spans[i] = Span{Start: start, End: start.Add(time.Duration(s.Duration * float64(time.Second)))}
+	}
+	return spans, nil
+}
+
+// get fetches /api/v1/users/{slackID}/{endpoint} and decodes it into out.
+func (c *Client) get(ctx context.Context, slackID, endpoint string, query url.Values, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.baseURL+"/api/v1/users/"+url.PathEscape(slackID)+"/"+endpoint+"?"+query.Encode(), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound:
+		return ErrNoAccount
+	case http.StatusForbidden:
+		return ErrPrivate
+	default:
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("hackatime %s for %s: %s: %s", endpoint, slackID, resp.Status, body)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("hackatime %s for %s: %w", endpoint, slackID, err)
+	}
+	return nil
 }

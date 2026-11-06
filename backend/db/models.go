@@ -502,6 +502,13 @@ type Project struct {
 	UpdatedAt     time.Time
 }
 
+type ProjectActivity struct {
+	ProjectID int64
+	Day       time.Time
+	Seconds   int32
+	UpdatedAt time.Time
+}
+
 type ProjectHackatimeProject struct {
 	UserID           int64
 	HackatimeProject string

@@ -7,9 +7,11 @@
 	import StampTypes from '#lib/admin/StampTypes.svelte';
 	import BoxTypes from '#lib/admin/BoxTypes.svelte';
 	import Milestones from '#lib/admin/Milestones.svelte';
+	import Activity from '#lib/admin/Activity.svelte';
 
 	const tabs = {
 		people: ['People', People],
+		activity: ['Activity', Activity],
 		orders: ['Orders', Orders],
 		shop: ['Shop items', ShopItems],
 		stamps: ['Special stamp types', StampTypes],

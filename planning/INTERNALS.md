@@ -12,7 +12,7 @@ The backend is a Go server (chi router) on Postgres. Postgres is the source of t
 
 ```
 backend/
-  main.go           reads config, connects, migrates, wires everything, starts the Airtable sync
+  main.go           reads config, connects, migrates, wires everything, starts the activity poller and Airtable sync
   auth/             sign-in with Hack Club Auth, sessions, RequireUser / RequireRole, GET /api/me
   api/              every /api handler
     api.go            the routes, decode(), idParam()
@@ -21,9 +21,11 @@ backend/
     boxes.go          boxes, odds, opening, special stamps
     admin.go          admin people, stamp types, box types, drop tables, milestones, grants
     shop.go           shop, orders, verification check, admin shop items, orders, stamp adjustments
+    activity.go       the admin activity numbers
   hca/              Hack Club Auth client: OAuth, GET /api/v1/me, the public verification check
-  hackatime/        Hackatime client: one call, user stats filtered to some projects
+  hackatime/        Hackatime client: user stats and heartbeat spans, filtered to some projects
   airtable/         small Airtable REST client: create, update, list
+  activity/         the background poll of each project's Hackatime time per day
   airtablesync/     the background copy into Airtable, and picking up fulfilled orders
   respond/          JSON, error and 500 responses
   db/
@@ -66,6 +68,7 @@ Responses always use explicit JSON structs with `snake_case` tags. Never return 
 | `boxes` | Boxes people have, from a milestone or an admin; `opened_at`. |
 | `special_stamps` | Stamps people have, from a box or an admin; `submission_id` once used. |
 | `shop_items` | `kind` (`ticket`, `physical`, `stipend`), `price`, optional `stock` and `max_per_user`, `stipend_cents`, `active`. |
+| `project_activity` | Each project's Hackatime `seconds` per UTC `day`, written by the activity poller. Only days with time have rows. |
 | `orders` | `price` as paid, `status` (`pending`, `fulfilled`, `cancelled`), `shipping_address`, admin `notes`, Airtable bookkeeping. |
 
 ### Where each rule is enforced
@@ -187,6 +190,17 @@ Details:
 - Requests go in batches of 10, at most 4 a second (Airtable allows 5), with `typecast` on.
 - If Airtable accepts a new row but saving its record ID fails, the next pass adds it again. This is rare, and the cost is a duplicate row.
 - Only one server instance should run the sync.
+
+## Activity
+
+`activity.Poller` runs every 30 minutes inside the server and records how much time each project got on each UTC day, for `GET /api/admin/activity`. Each pass:
+
+1. Takes a Postgres advisory lock, so only one server instance polls; the others skip the pass.
+2. Lists projects with linked Hackatime projects whose owner has a Slack ID.
+3. Asks Hackatime for each one's heartbeat spans (`/users/{slack_id}/heartbeats/spans`, filtered to the linked projects), splits them at UTC midnight and adds them up per day. Spans add up to the same total as the stats call.
+4. In one transaction per project, deletes its rows for the days covered and writes the new ones, so time that moves between projects (relinking) or disappears ends up right.
+
+The first pass each UTC day covers everything since Hackatime time starts counting (Nov 3), which picks up relinked projects and late heartbeats. The rest cover yesterday and today. Private or missing Hackatime accounts are skipped; other errors are logged and retried next pass.
 
 ## Locking
 

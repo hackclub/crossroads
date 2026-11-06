@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,6 +28,7 @@ type API struct {
 	HCA           *hca.Client    // for checking verification before purchases
 	StampsPerHour int            // paid for each approved hour
 	Uploads       *uploads.Store // project screenshots; nil turns uploading off
+	HoursStart    time.Time      // when Hackatime time starts counting; activity before it isn't shown
 }
 
 func (a *API) Routes() chi.Router {
@@ -62,6 +64,7 @@ func (a *API) Routes() chi.Router {
 	})
 	r.Route("/admin", func(r chi.Router) {
 		r.Use(auth.RequireRole(db.UserRoleAdmin))
+		r.Get("/activity", a.adminActivity)
 		r.Get("/users", a.adminListUsers)
 		r.Patch("/users/{userID}", a.adminUpdateUser)
 		r.Post("/users/{userID}/boxes", a.adminGrantBox)
