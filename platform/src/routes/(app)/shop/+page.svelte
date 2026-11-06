@@ -44,6 +44,23 @@
 	const address = $derived(session.me.address);
 	const hoursFor = (n) => Math.ceil(n / rate);
 
+	// The launch sale: everything but the ticket and its lock is some percent
+	// off for the first week. Prices go back up when it ends, so the page
+	// reloads them then rather than showing prices it wouldn't charge.
+	const sale = $derived(others.find((i) => i.sale)?.sale);
+	$effect(() => {
+		if (!sale) return;
+		const timer = setTimeout(load, Math.min(Math.max(new Date(sale.ends_at) - Date.now(), 0) + 5000, 2 ** 31 - 1));
+		return () => clearTimeout(timer);
+	});
+	const until = (iso) => new Date(iso).toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+	// The sale sticker's starburst, as a clip-path: 18 points.
+	const burst = `polygon(${Array.from({ length: 36 }, (_, i) => {
+		const r = i % 2 ? 43 : 50;
+		const a = (Math.PI * i) / 18;
+		return `${(50 + r * Math.sin(a)).toFixed(2)}% ${(50 - r * Math.cos(a)).toFixed(2)}%`;
+	}).join(', ')})`;
+
 	function soldOutReason(item) {
 		if (item.max_per_user != null && item.bought >= item.max_per_user) return item.kind === 'ticket' ? 'You have your ticket' : 'You have the most you can get';
 		if (item.stock === 0) return 'Sold out';
@@ -192,17 +209,25 @@
 
 	<section class="stack">
 		{#if ticket && others.length}<h2>Everything else</h2>{/if}
-		<div class="items">
+		{#if sale}<p class="sale-note">Everything here is {sale.percent}% off until {until(sale.ends_at)}.</p>{/if}
+		<div class="items" class:on-sale={sale}>
 			{#each others as item}
 				{@const reason = soldOutReason(item)}
 				{@const short = item.price - stamps}
 				<article class="card item">
+					{#if item.sale}
+						<span class="sticker" style:--burst={burst} aria-hidden="true"><span><b>{item.sale.percent}%</b>off</span></span>
+					{/if}
 					<div class="thumb">
 						{#if item.image_url}<img src={item.image_url} alt="" loading="lazy" />{/if}
 					</div>
 					<div class="info">
 						<h3 class="item-name">{item.name}</h3>
-						<span class="price">{item.price} stamps</span>
+						{#if item.sale}
+							<span class="price"><s aria-hidden="true">{item.sale.full_price}</s> {item.price} stamps<span class="visually-hidden"> ({item.sale.percent}% off, was {item.sale.full_price})</span></span>
+						{:else}
+							<span class="price">{item.price} stamps</span>
+						{/if}
 						{#if item.description}<p class="desc">{item.description}</p>{/if}
 					</div>
 					<!-- Pinned to the bottom so the buttons line up across a row. -->
@@ -231,7 +256,7 @@
 		<form class="stack" method="dialog" onsubmit={buy}>
 			<h2 id="buy-title">{pending.kind === 'price_lock' ? `Lock your ticket at ${inHours(batches.prices[batches.current])}?` : `Buy ${pending.name}?`}</h2>
 			<dl class="sums">
-				<dt>Price</dt><dd>{pending.price} stamps</dd>
+				<dt>Price</dt><dd>{#if pending.sale}<s aria-hidden="true">{pending.sale.full_price}</s> {/if}{pending.price} stamps{#if pending.sale}<span class="visually-hidden"> ({pending.sale.percent}% off)</span>{/if}</dd>
 				<dt>You have</dt><dd>{stamps} stamps</dd>
 				<dt>Left after</dt><dd><b>{left} stamps</b></dd>
 			</dl>
@@ -282,6 +307,7 @@
 		gap: 16px;
 	}
 	.item {
+		position: relative;
 		display: grid;
 		grid-template-columns: 104px minmax(0, 1fr);
 		grid-template-rows: 1fr auto;
@@ -309,6 +335,45 @@
 		overflow: hidden;
 	}
 	.item .card-foot { grid-column: 1 / -1; padding-top: 0; }
+
+	/* The launch sale: a die-cut sticker slapped over the top right corner of
+	   everything on sale. A white vinyl edge round a glossy red starburst, in
+	   heavy type. The name and price keep clear of it. */
+	.sale-note { font-size: 24px; }
+	.items.on-sale { padding-top: 16px; }
+	.on-sale .item-name, .on-sale .price { padding-right: 80px; }
+	.sticker {
+		position: absolute;
+		z-index: 1;
+		top: -26px;
+		right: -24px;
+		display: grid;
+		width: 112px;
+		aspect-ratio: 1;
+		rotate: 12deg;
+		filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.5)) drop-shadow(0 6px 8px rgb(0 0 0 / 0.35));
+		pointer-events: none;
+	}
+	.sticker::before, .sticker::after, .sticker > span { grid-area: 1 / 1; clip-path: var(--burst); }
+	.sticker::before { content: ''; background: #fbf7ee; }
+	.sticker > span {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		margin: 5px;
+		color: #fff;
+		background: radial-gradient(circle at 32% 28%, #ff6a45, #e0261a 55%, #a8130b);
+		font: 900 17px/0.95 'Arial Black', 'Helvetica Neue', Impact, system-ui, sans-serif;
+		font-size-adjust: none;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		text-shadow: 0 1px 0 rgb(0 0 0 / 0.3);
+	}
+	.sticker b { font-size: 34px; font-weight: 900; letter-spacing: -0.02em; }
+	/* Gloss on the vinyl. */
+	.sticker::after { content: ''; margin: 5px; background: linear-gradient(140deg, rgb(255 255 255 / 0.4), transparent 42%); }
+	.price s, .sums s { color: var(--muted); }
 
 	dialog {
 		width: min(560px, calc(100vw - 32px));
@@ -359,5 +424,7 @@
 	.card-foot .btn { width: 100%; white-space: normal; }
 	@media (max-width: 820px) {
 		.ticket { grid-template-columns: 1fr; padding-inline: 18px; }
+		/* Inside the page's narrow gutter. */
+		.sticker { right: -10px; }
 	}
 </style>

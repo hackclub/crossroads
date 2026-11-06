@@ -76,9 +76,7 @@
 
 			<!-- The writing side: name, message and links on ruled lines. -->
 			<div class="writing">
-				<div class="franking" aria-hidden="true">
-					<span class="postmark">Crossroads<br />Paris</span>
-				</div>
+				<span class="postmark" aria-hidden="true">Crossroads<br />Paris</span>
 				<label class="line name-line">
 					<span>Project</span>
 					<input required maxlength="100" bind:value={name} placeholder="My cool project" />
@@ -187,9 +185,10 @@
 		padding-left: 32px;
 		border-left: 1px solid var(--rule);
 	}
-	/* No stamp while writing the card; just the postmark in its corner. */
-	.franking { display: flex; align-items: center; align-self: flex-end; height: 120px; margin-bottom: -6px; }
+	/* No stamp on it: you stick your own special stamps on the project once it exists. */
 	.postmark {
+		align-self: flex-end;
+		margin: 4px 8px -6px 0;
 		display: grid;
 		place-content: center;
 		width: 96px;
