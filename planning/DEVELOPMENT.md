@@ -144,6 +144,21 @@ Stop the server first, because it migrates up again when it starts.
 
 To wipe everything: `docker compose down -v && docker compose up -d`, then restart the server.
 
+## Fake data
+
+`db/seed.sql` fills an empty database with an admin setup (special stamp types, box types and their drops, milestones, shop items) and thirteen test users in every state the platform has to show: waiting for review, rejected, hours cut, close to the ticket, ticket bought, a negative balance after a clawback, and more. The full list is at the top of the file.
+
+```sh
+docker exec -i crossroads-postgres-1 psql -U crossroads -X -v ON_ERROR_STOP=1 < db/seed.sql
+```
+
+With `DEV_MODE=1`, sign in as any of them with `/dev/login?name=maya`. Pass `role=reviewer` for rita, `role=admin` for adam and `verified=0` for nina, because signing in sets the role and verification every time. Their Hackatime is the dev fake, which only has the three starter projects. Alice's and Bob's projects line up with those. Everyone else's show no time until you add some to their Hackatime project in the dev panel.
+
+It's one transaction, and it refuses to run on production or on a database that already has an admin setup or seeded projects. To start over, empty the database and run it again:
+
+- **Locally:** `docker compose down -v && docker compose up -d`, then restart the server so it migrates, then the seed.
+- **On Orchard** (`dev-db` in the development environment, already seeded): in the database's primary pod, `psql -d ysws_crossroads_crossroads_db -c 'truncate users, shop_items, special_stamp_types, box_types restart identity cascade'`, then the seed with `psql -d ysws_crossroads_crossroads_db -f -` or `-c`. That cascades to every table, and also signs out and removes everyone who signed in there. Nobody can sign in as the test users on Orchard, since there's no `DEV_MODE` there, but they fill the review queue and the admin pages.
+
 ## Talking to outside services in development
 
 - **Hackatime** is read directly from the live API (https://hackatime.hackclub.com/api-docs). People are looked up by Slack ID, and need public stats turned on. There's no fake for local running, so use your own account.

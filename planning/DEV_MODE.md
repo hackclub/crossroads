@@ -28,6 +28,8 @@ The backend still refuses to start without `HCA_CLIENT_ID` and `HCA_CLIENT_SECRE
 
 The sign-in page shows a **Dev sign-in** box when the backend is in dev mode. Type any name (lowercase letters, digits and dashes) and pick a role. Each name is its own account and keeps its data. Every dev user is created verified and YSWS-eligible, with a test address, so the shop works.
 
+To start with an admin setup and a dozen test users in every state already there, load the fake data (DEVELOPMENT.md, "Fake data").
+
 You can also sign in from a link: `http://localhost:5173/dev/login?name=alice&role=participant&next=/home`. Add `verified=0` to try the shop's "verify first" path; it will fail with a "couldn't reach Hack Club Auth" error unless real credentials are set, because checkout asks Hack Club Auth again.
 
 ### The dev panel
