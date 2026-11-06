@@ -261,15 +261,18 @@
 
 		<!-- Film strips: this first one along the bottom of the first screen
 		     (.below moves it with that screen's height), and the second further down. -->
-		{#snippet film(reel, y)}
-			<div class="film abs" class:below={y > 0} style="--x: 0; --y: {y}; --w: 1728; --h: 295.5">
-				{#each reel as shot, i}
-					<!-- The cut-off frames at the ends repeat photos, so only the whole ones are described. -->
-					<img class="shot" src={shot.src} alt={i === 0 || i === 4 ? '' : shot.alt} style="--x: {691 + 404 * (i - 2)}" />
-				{/each}
+		{#snippet film(reel, y, scroll = false)}
+			<div class="film abs" class:below={y > 0} class:scroll style="--x: 0; --y: {y}; --w: 1728; --h: 295.5">
+				<!-- A strip that scrolls carries its frames twice, so it can loop. -->
+				<div class="reel" style:--frames={reel.length}>
+					{#each scroll ? [...reel, ...reel] : reel as shot, i}
+						<!-- Only the frames whole on the page at rest are described. -->
+						<img class="shot" src={shot.src} alt={i >= 1 && i <= 3 ? shot.alt : ''} style="--x: {691 + 404 * (i - 2)}" />
+					{/each}
+				</div>
 			</div>
 		{/snippet}
-		{@render film(reels[0], 1111)}
+		{@render film(reels[0], 1111, true)}
 
 		<!-- The postcard, 390 wide (900 Figma pixels, so --pc is 390/900 of a design
 		     pixel), centred between the board and the tagline. It tilts toward the
@@ -296,7 +299,7 @@
 			Hack across Europe.
 		</p>
 
-		<p class="doto centered" style="--x: 852; --y: 610; --w: 842; --size: 30">
+		<p class="crimson centered" style="--x: 852; --y: 610; --w: 842; --size: 30">
 			5 days. 6 cities. 30 teenagers.
 		</p>
 
@@ -308,13 +311,13 @@
 		     questions grow they push the second strip and everything after it down. -->
 		<div class="lower">
 			<section class="faq">
-				<div class="qa">
+				<div class="qa featured">
 					<h2 class="crimson" style="--size: 32">- What is Hack Club Crossroads? -</h2>
 					<p class="crimson" style="--size: 24">
 						Crossroads is a <a href="https://hackclub.com" target="_blank" rel="noopener">Hack Club</a> event running in February 2027
 						where a group of 30 teens build projects for 65 hours, then travel by train across Europe together.
-						Everything (including train passes, food and accommodation) is totally free for teenagers who qualify by building a
-						project. Can't come? We're also providing funding and prizes for every teen who ships a technical project.
+						Everything (including train passes, food and accommodation) is totally free for teenagers who qualify by building
+						projects. Can't come? We're also providing funding and prizes for every teen who ships a technical project.
 					</p>
 				</div>
 				<div class="qa">
@@ -399,6 +402,15 @@
 		color: #fff;
 		/* Textured black: faint film grain over near-black. */
 		background: url('../lib/assets/landing/grain.svg') 0 0 / 256px #070707;
+		/* The plain black track through the board, and through the first
+		   question: ties 82 long and 20 wide, every 36, with one in the middle
+		   so they fall evenly either side; two rails 6 thick, 10 in from the
+		   ties' ends. As a background for a box 82 tall. */
+		--track:
+			linear-gradient(#000 0 0) left 0 top calc(10 * var(--u)) / 100% calc(6 * var(--u)) no-repeat,
+			linear-gradient(#000 0 0) left 0 bottom calc(10 * var(--u)) / 100% calc(6 * var(--u)) no-repeat,
+			linear-gradient(90deg, transparent calc(8 * var(--u)), #000 0 calc(28 * var(--u)), transparent 0)
+				center / calc(36 * var(--u)) 100% repeat-x;
 	}
 
 	.abs,
@@ -476,6 +488,40 @@
 		text-align: center;
 	}
 
+	/* The first question, highlighted: a band a shade lighter than the page,
+	   across the whole frame, with the board's track through its middle. The
+	   band reaches 56 past the text above and below, and sits 56 from the film
+	   strip and from the next question. It isolates so the band and track go
+	   behind the text without dropping behind the page. */
+	.featured {
+		position: relative;
+		isolation: isolate;
+		padding-block: calc(56 * var(--u));
+		margin-bottom: calc(8 * var(--u)); /* on top of .faq's 48 */
+	}
+
+	.featured::before,
+	.featured::after {
+		content: '';
+		position: absolute;
+		z-index: -1;
+		/* From the frame's left edge: .faq's margin. */
+		left: calc(-476 * var(--u));
+		width: calc(1728 * var(--u));
+	}
+
+	.featured::before {
+		inset-block: 0;
+		background: url('../lib/assets/landing/grain.svg') 0 0 / 256px #1a1a1a;
+	}
+
+	.featured::after {
+		top: 50%;
+		height: calc(82 * var(--u));
+		translate: 0 -50%;
+		background: var(--track);
+	}
+
 	/* The second film strip and what's under it, 734 tall as in Figma. */
 	.tail {
 		position: relative;
@@ -503,10 +549,8 @@
 		width: auto;
 	}
 
-	/* A plain black track behind the board, centred on it and long enough to
-	   cross the whole frame, which clips it. Ties 82 long and 20 wide, every
-	   36, with one under the board's middle so they fall evenly either side;
-	   two rails 6 thick, 10 in from the ties' ends. */
+	/* The track behind the board, centred on it and long enough to cross the
+	   whole frame, which clips it. */
 	.board-title::before {
 		content: '';
 		position: absolute;
@@ -516,11 +560,7 @@
 		width: calc(2 * 1728 * var(--u));
 		height: calc(82 * var(--u));
 		translate: -50% -50%;
-		background:
-			linear-gradient(#000 0 0) left 0 top calc(10 * var(--u)) / 100% calc(6 * var(--u)) no-repeat,
-			linear-gradient(#000 0 0) left 0 bottom calc(10 * var(--u)) / 100% calc(6 * var(--u)) no-repeat,
-			linear-gradient(90deg, transparent calc(8 * var(--u)), #000 0 calc(28 * var(--u)), transparent 0)
-				center / calc(36 * var(--u)) 100% repeat-x;
+		background: var(--track);
 	}
 
 	.visually-hidden {
@@ -537,9 +577,40 @@
 		rotate: var(--angle);
 	}
 
-	/* One frame of film, repeated across the page and centred on it. */
 	.film {
-		background: url('../lib/assets/landing/film.svg') center top / calc(404 * var(--u)) 100% repeat-x;
+		overflow: hidden;
+	}
+
+	/* One frame of film, repeated across the strip with the middle one centred
+	   on the page (so frames start at -146, every 404), and the photos in them. */
+	.reel {
+		position: absolute;
+		inset: 0;
+		background: url('../lib/assets/landing/film.svg') calc(-146 * var(--u)) 0 / calc(404 * var(--u)) 100% repeat-x;
+	}
+
+	/* The first strip runs right to left while it's hovered, a frame every 2.5
+	   seconds, and stops where it is when it isn't. Its reel is long enough to
+	   move one set of frames along, then starts over, which looks the same. */
+	.film.scroll .reel {
+		width: calc((1728 + var(--frames) * 404) * var(--u));
+		animation: film-scroll calc(var(--frames) * 2.5s) linear infinite paused;
+	}
+
+	.film.scroll:hover .reel {
+		animation-play-state: running;
+	}
+
+	@keyframes film-scroll {
+		to {
+			translate: calc(var(--frames) * -404 * var(--u)) 0;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.film.scroll .reel {
+			animation: none;
+		}
 	}
 
 	/* A photo in one of film.svg's frames: 346 by 202 with round corners, 43
