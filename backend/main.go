@@ -127,6 +127,7 @@ func main() {
 	if devMode {
 		r.Get("/dev/login", a.DevLogin)
 		r.Mount("/dev/hackatime", devhackatime.New().Routes())
+		r.With(auth.RequireUser).Post("/dev/box", apiRoutes.DevGrantBox)
 	}
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {

@@ -295,6 +295,24 @@ func (a *API) reviewSubmission(w http.ResponseWriter, r *http.Request) {
 				respond.ServerError(w, r, err)
 				return
 			}
+			// A Golden Spike on the project pays 10% more, as its own entry.
+			spiked, err := q.ProjectHasStampMultiplier(r.Context(), &submission.ProjectID)
+			if err != nil {
+				respond.ServerError(w, r, err)
+				return
+			}
+			if bonus := stampBonus(stampsPaid); spiked && bonus > 0 {
+				if _, err := q.AddStampEntry(r.Context(), db.AddStampEntryParams{
+					UserID:       owner.ID,
+					Kind:         db.StampEntryKindBonus,
+					Amount:       int32(bonus),
+					SubmissionID: &submission.ID,
+				}); err != nil {
+					respond.ServerError(w, r, err)
+					return
+				}
+				stampsPaid += bonus
+			}
 		}
 		granted, err := q.GrantMilestoneBoxes(r.Context(), db.GrantMilestoneBoxesParams{UserID: owner.ID, ApprovedSeconds: int32(after)})
 		if err != nil {

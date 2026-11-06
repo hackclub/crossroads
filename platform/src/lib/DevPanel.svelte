@@ -1,9 +1,10 @@
 <script>
-	// Only shown when the backend runs with DEV_MODE=1. Switch test users and
-	// add fake Hackatime time. Remove with dev mode (planning/DEV_MODE.md).
+	// Only shown when the backend runs with DEV_MODE=1. Switch test users, add
+	// fake Hackatime time, and give yourself boxes. Remove with dev mode
+	// (planning/DEV_MODE.md).
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { devHackatime, devLoginUrl, isDevMode } from './api.js';
+	import { devGiveBox, devHackatime, devLoginUrl, isDevMode } from './api.js';
 
 	let { onchange } = $props();
 	let dev = $state(false);
@@ -12,6 +13,8 @@
 	let name = $state('crossroads-game');
 	let addHours = $state(5);
 	let error = $state('');
+	let boxNote = $state('');
+	let giving = $state(false);
 
 	const users = [
 		['alice', 'participant'],
@@ -30,6 +33,21 @@
 			time = await devHackatime();
 		} catch (e) {
 			error = e.message;
+		}
+	}
+
+	// A box to open on the Boxes page, which drops a stamp into your stamp box.
+	async function giveBox() {
+		error = '';
+		giving = true;
+		try {
+			await devGiveBox();
+			boxNote = 'Added a box. Open it on the Boxes page.';
+			onchange?.();
+		} catch (err) {
+			error = err.message;
+		} finally {
+			giving = false;
 		}
 	}
 
@@ -65,6 +83,11 @@
 					<datalist id="dev-projects">{#each time as t}<option value={t.name}></option>{/each}</datalist>
 					<button class="btn small">Add</button>
 				</form>
+				<div class="row small">
+					<strong>Stamp box:</strong>
+					<button class="btn small" disabled={giving} onclick={giveBox}>{giving ? 'Adding…' : 'Add a box'}</button>
+					{#if boxNote}<a href="/boxes">{boxNote}</a>{/if}
+				</div>
 				{#if time.length}
 					<span class="small muted">Your Hackatime: {time.map((t) => `${t.name} ${(t.seconds / 3600).toFixed(1)}h`).join(' · ')}</span>
 				{/if}

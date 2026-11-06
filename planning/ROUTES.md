@@ -37,7 +37,7 @@ TypeScript definitions of everything the API returns. Copy them into the fronten
 type Role = "participant" | "reviewer" | "admin";
 type SubmissionStatus = "pending" | "approved" | "rejected";
 type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
-type Effect = "none" | "priority_review";
+type Effect = "none" | "priority_review" | "stamp_multiplier";
 type ShopItemKind = "ticket" | "physical" | "stipend";
 type OrderStatus = "pending" | "fulfilled" | "cancelled";
 
@@ -188,6 +188,7 @@ Reviewer and admin shapes are listed with their routes below.
 | POST | `/api/boxes/{id}/open` | owner | Open a box |
 | GET | `/api/box-types` | signed in | Box types and their current odds |
 | GET | `/api/special-stamps` | signed in | Their special stamps |
+| POST | `/api/special-stamps/{id}/placement` | owner | Stick a special stamp on a project, or move it there |
 | GET | `/api/shop/items` | signed in | What's in the shop |
 | POST | `/api/shop/items/{id}/orders` | signed in, verified | Buy something |
 | GET | `/api/orders` | signed in | Their orders |
@@ -612,3 +613,31 @@ interface AdminOrder extends Order {
 **`GET /api/admin/orders?status=pending`** → `200 AdminOrder[]`, oldest first. `status` is optional.
 
 **`PATCH /api/admin/orders/{id}`** with `{"status": "fulfilled" | "cancelled", "notes": "shipped 11/10"}` → `200 Order`. Only pending orders can change (`409` otherwise). Cancelling refunds the stamps and puts the item back in stock. Orders can also be fulfilled by ticking **Fulfilled** in the Shop Orders table in Airtable (see INTERNALS.md, "Airtable sync").
+
+## Placed stamps
+
+Special stamps leave the owner's **stamp box** by being stuck on one of their projects. Once on a project they stay there for good: the owner can move them around that project, but can't take them off or move them to another project. (Deleting a never-shipped project puts its stamps back in the box.)
+
+```ts
+interface PlacedStamp {
+  id: number;
+  type: SpecialStampType;
+  x: number;        // 0-1 across the project's stamp board (its screenshot card)
+  y: number;        // 0-1 down it
+  rotation: number; // degrees, set when it's stuck on
+  submission_id: number | null; // the ship an Express stamp gave priority to
+  placed_at: string;
+}
+```
+
+`SpecialStamp` (from `GET /api/special-stamps`) also has `project_id: number | null`: null means it's in the stamp box. `GET /api/projects/{id}` returns the project's `stamps: PlacedStamp[]`. Nothing in `PlacedStamp` is private, so it's meant to be shown to anyone viewing the project once project pages are public.
+
+**`POST /api/special-stamps/{id}/placement`** with `{"project_id": 3, "x": 0.4, "y": 0.2, "rotation": -6}` → `200 PlacedStamp`. The first call sticks it on (x and y are clamped to 0-1, rotation to ±45 and only taken then). Later calls with the same `project_id` move it. `404` if it isn't their stamp or project, `409` if it's on another project or was used on a ship before placement existed.
+
+Effects, from when the stamp goes on:
+- **priority_review** (Express): the project's ship in review gets priority review; if nothing is in review, the next ship does. One Express per ship.
+- **stamp_multiplier** (Golden Spike): every approved ship of the project pays 10% more stamps (rounded), as a separate `bonus` ledger entry and included in `stamps_paid`. More than one spike is still 10%.
+- **none**: a collectible; it's only shown on the project.
+
+The old `special_stamp_id` on `POST /api/projects/{id}/submissions` still works, but the site now uses placement instead.
+

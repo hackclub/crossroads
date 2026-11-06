@@ -38,6 +38,10 @@ type projectJSON struct {
 	HackatimeError     string `json:"hackatime_error,omitempty"`
 
 	Submissions []submissionJSON `json:"submissions"` // newest first
+
+	// Only on GET /projects/{id}: special stamps stuck on it. Nothing
+	// private, so it can be shown to anyone viewing the project.
+	Stamps []placedStampJSON `json:"stamps,omitempty"`
 }
 
 type submissionJSON struct {
@@ -318,6 +322,10 @@ func (a *API) getProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := toProjectJSON(project, links, submissions)
+	if out.Stamps, err = a.projectStamps(r, a.Queries, project.ID); err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
 
 	if len(links) > 0 {
 		userLinks, err := a.Queries.ListHackatimeLinks(r.Context(), user.ID)
@@ -691,6 +699,21 @@ func (a *API) submit(w http.ResponseWriter, r *http.Request) {
 		if err := q.ApplySpecialStamp(r.Context(), db.ApplySpecialStampParams{ID: *body.SpecialStampID, SubmissionID: &submission.ID}); err != nil {
 			respond.ServerError(w, r, err)
 			return
+		}
+	} else {
+		// An Express stamp stuck on the project while nothing was in review
+		// gives this ship priority.
+		waiting, err := q.WaitingPriorityStamp(r.Context(), &project.ID)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+		case err != nil:
+			respond.ServerError(w, r, err)
+			return
+		default:
+			if err := q.ApplySpecialStamp(r.Context(), db.ApplySpecialStampParams{ID: waiting, SubmissionID: &submission.ID}); err != nil {
+				respond.ServerError(w, r, err)
+				return
+			}
 		}
 	}
 	if err := tx.Commit(r.Context()); err != nil {

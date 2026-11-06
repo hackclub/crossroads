@@ -51,6 +51,7 @@ func (a *API) Routes() chi.Router {
 	r.Post("/boxes/{boxID}/open", a.openBox)
 	r.Get("/box-types", a.listBoxTypes)
 	r.Get("/special-stamps", a.listSpecialStamps)
+	r.Post("/special-stamps/{stampID}/placement", a.placeStamp)
 	r.Get("/shop/items", a.listShopItems)
 	r.Post("/shop/items/{itemID}/orders", a.buy)
 	r.Get("/orders", a.listOrders)

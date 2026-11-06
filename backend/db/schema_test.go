@@ -158,7 +158,15 @@ func TestSubmissionPaysOutOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := q.AddStampEntry(ctx, payout)
-	wantViolation(t, err, "stamp_ledger_one_payout_per_submission")
+	wantViolation(t, err, "stamp_ledger_one_entry_per_submission_kind")
+
+	// A Golden Spike bonus sits alongside the payout, once.
+	bonus := db.AddStampEntryParams{UserID: user, Kind: db.StampEntryKindBonus, Amount: 1, SubmissionID: &submission}
+	if _, err := q.AddStampEntry(ctx, bonus); err != nil {
+		t.Fatal(err)
+	}
+	_, err = q.AddStampEntry(ctx, bonus)
+	wantViolation(t, err, "stamp_ledger_one_entry_per_submission_kind")
 }
 
 func TestOnePendingSubmissionPerProject(t *testing.T) {

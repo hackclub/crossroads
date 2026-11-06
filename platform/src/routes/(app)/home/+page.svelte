@@ -3,6 +3,7 @@
 	import { get } from '#lib/api.js';
 	import { session } from '#lib/session.svelte.js';
 	import Train from '#lib/Train.svelte';
+	import StampIcon from '#lib/StampIcon.svelte';
 	import { hours, approvedSeconds, projectStatus, GOAL_HOURS } from '#lib/format.js';
 
 	let projects = $state(null);
@@ -59,7 +60,7 @@
 			<div class="stack">
 				<h1>Hi {first}!</h1>
 				<div class="row">
-					<span class="stat">Stamps: <b>{stamps}</b></span>
+					<span class="stat">Stamps: <b>{stamps}<StampIcon /></b></span>
 					<a class="stat" href="/boxes" style="text-decoration: none">Boxes: <b>{unopened}</b></a>
 				</div>
 			</div>

@@ -6,6 +6,7 @@
 	import film from './assets/film-nav.webp';
 	import flag from './assets/hack-club-flag.png';
 	import { signOut } from './api.js';
+	import StampIcon from './StampIcon.svelte';
 	import { session, isReviewer, isAdmin } from './session.svelte.js';
 
 	const links = [
@@ -29,7 +30,7 @@
 	{#if session.me}
 		<div class="window w-right">
 			<div class="who">
-				<span>{session.me.name} · {session.me.stamps} stamps</span>
+				<span>{session.me.name} · {session.me.stamps}<StampIcon label="stamps" /></span>
 				<span class="links">
 					<a href="/shop/orders">Orders</a>
 					{#if isReviewer()}<a href="/review">Review</a>{/if}

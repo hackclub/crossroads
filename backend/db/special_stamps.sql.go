@@ -52,7 +52,7 @@ func (q *Queries) ClaimSpecialStampSupply(ctx context.Context, id int64) (Specia
 const createSpecialStamp = `-- name: CreateSpecialStamp :one
 insert into special_stamps (user_id, special_stamp_type_id, box_id, granted_by)
 values ($1, $2, $3, $4)
-returning id, user_id, special_stamp_type_id, box_id, granted_by, submission_id, acquired_at
+returning id, user_id, special_stamp_type_id, box_id, granted_by, submission_id, acquired_at, project_id, pos_x, pos_y, rotation, placed_at
 `
 
 type CreateSpecialStampParams struct {
@@ -78,6 +78,11 @@ func (q *Queries) CreateSpecialStamp(ctx context.Context, arg CreateSpecialStamp
 		&i.GrantedBy,
 		&i.SubmissionID,
 		&i.AcquiredAt,
+		&i.ProjectID,
+		&i.PosX,
+		&i.PosY,
+		&i.Rotation,
+		&i.PlacedAt,
 	)
 	return i, err
 }
@@ -144,6 +149,63 @@ func (q *Queries) GetSpecialStampType(ctx context.Context, id int64) (SpecialSta
 	return i, err
 }
 
+const listProjectStamps = `-- name: ListProjectStamps :many
+select special_stamps.id, special_stamps.user_id, special_stamps.special_stamp_type_id, special_stamps.box_id, special_stamps.granted_by, special_stamps.submission_id, special_stamps.acquired_at, special_stamps.project_id, special_stamps.pos_x, special_stamps.pos_y, special_stamps.rotation, special_stamps.placed_at, special_stamp_types.id, special_stamp_types.name, special_stamp_types.description, special_stamp_types.image_url, special_stamp_types.rarity, special_stamp_types.effect, special_stamp_types.supply_cap, special_stamp_types.issued_count, special_stamp_types.created_at, special_stamp_types.updated_at
+from special_stamps
+join special_stamp_types on special_stamp_types.id = special_stamps.special_stamp_type_id
+where special_stamps.project_id = $1
+order by special_stamps.placed_at, special_stamps.id
+`
+
+type ListProjectStampsRow struct {
+	SpecialStamp     SpecialStamp
+	SpecialStampType SpecialStampType
+}
+
+// The stamps stuck on a project, oldest first so newer ones sit on top.
+func (q *Queries) ListProjectStamps(ctx context.Context, projectID *int64) ([]ListProjectStampsRow, error) {
+	rows, err := q.db.Query(ctx, listProjectStamps, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListProjectStampsRow
+	for rows.Next() {
+		var i ListProjectStampsRow
+		if err := rows.Scan(
+			&i.SpecialStamp.ID,
+			&i.SpecialStamp.UserID,
+			&i.SpecialStamp.SpecialStampTypeID,
+			&i.SpecialStamp.BoxID,
+			&i.SpecialStamp.GrantedBy,
+			&i.SpecialStamp.SubmissionID,
+			&i.SpecialStamp.AcquiredAt,
+			&i.SpecialStamp.ProjectID,
+			&i.SpecialStamp.PosX,
+			&i.SpecialStamp.PosY,
+			&i.SpecialStamp.Rotation,
+			&i.SpecialStamp.PlacedAt,
+			&i.SpecialStampType.ID,
+			&i.SpecialStampType.Name,
+			&i.SpecialStampType.Description,
+			&i.SpecialStampType.ImageUrl,
+			&i.SpecialStampType.Rarity,
+			&i.SpecialStampType.Effect,
+			&i.SpecialStampType.SupplyCap,
+			&i.SpecialStampType.IssuedCount,
+			&i.SpecialStampType.CreatedAt,
+			&i.SpecialStampType.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSpecialStampTypes = `-- name: ListSpecialStampTypes :many
 select special_stamp_types.id, special_stamp_types.name, special_stamp_types.description, special_stamp_types.image_url, special_stamp_types.rarity, special_stamp_types.effect, special_stamp_types.supply_cap, special_stamp_types.issued_count, special_stamp_types.created_at, special_stamp_types.updated_at,
     (select count(*) from special_stamps
@@ -200,7 +262,7 @@ func (q *Queries) ListSpecialStampTypes(ctx context.Context) ([]ListSpecialStamp
 }
 
 const listSpecialStamps = `-- name: ListSpecialStamps :many
-select special_stamps.id, special_stamps.user_id, special_stamps.special_stamp_type_id, special_stamps.box_id, special_stamps.granted_by, special_stamps.submission_id, special_stamps.acquired_at, special_stamp_types.id, special_stamp_types.name, special_stamp_types.description, special_stamp_types.image_url, special_stamp_types.rarity, special_stamp_types.effect, special_stamp_types.supply_cap, special_stamp_types.issued_count, special_stamp_types.created_at, special_stamp_types.updated_at
+select special_stamps.id, special_stamps.user_id, special_stamps.special_stamp_type_id, special_stamps.box_id, special_stamps.granted_by, special_stamps.submission_id, special_stamps.acquired_at, special_stamps.project_id, special_stamps.pos_x, special_stamps.pos_y, special_stamps.rotation, special_stamps.placed_at, special_stamp_types.id, special_stamp_types.name, special_stamp_types.description, special_stamp_types.image_url, special_stamp_types.rarity, special_stamp_types.effect, special_stamp_types.supply_cap, special_stamp_types.issued_count, special_stamp_types.created_at, special_stamp_types.updated_at
 from special_stamps
 join special_stamp_types on special_stamp_types.id = special_stamps.special_stamp_type_id
 where special_stamps.user_id = $1
@@ -229,6 +291,11 @@ func (q *Queries) ListSpecialStamps(ctx context.Context, userID int64) ([]ListSp
 			&i.SpecialStamp.GrantedBy,
 			&i.SpecialStamp.SubmissionID,
 			&i.SpecialStamp.AcquiredAt,
+			&i.SpecialStamp.ProjectID,
+			&i.SpecialStamp.PosX,
+			&i.SpecialStamp.PosY,
+			&i.SpecialStamp.Rotation,
+			&i.SpecialStamp.PlacedAt,
 			&i.SpecialStampType.ID,
 			&i.SpecialStampType.Name,
 			&i.SpecialStampType.Description,
@@ -251,7 +318,7 @@ func (q *Queries) ListSpecialStamps(ctx context.Context, userID int64) ([]ListSp
 }
 
 const lockSpecialStamp = `-- name: LockSpecialStamp :one
-select special_stamps.id, special_stamps.user_id, special_stamps.special_stamp_type_id, special_stamps.box_id, special_stamps.granted_by, special_stamps.submission_id, special_stamps.acquired_at, special_stamp_types.effect
+select special_stamps.id, special_stamps.user_id, special_stamps.special_stamp_type_id, special_stamps.box_id, special_stamps.granted_by, special_stamps.submission_id, special_stamps.acquired_at, special_stamps.project_id, special_stamps.pos_x, special_stamps.pos_y, special_stamps.rotation, special_stamps.placed_at, special_stamp_types.effect
 from special_stamps
 join special_stamp_types on special_stamp_types.id = special_stamps.special_stamp_type_id
 where special_stamps.id = $1 and special_stamps.user_id = $2
@@ -279,9 +346,140 @@ func (q *Queries) LockSpecialStamp(ctx context.Context, arg LockSpecialStampPara
 		&i.SpecialStamp.GrantedBy,
 		&i.SpecialStamp.SubmissionID,
 		&i.SpecialStamp.AcquiredAt,
+		&i.SpecialStamp.ProjectID,
+		&i.SpecialStamp.PosX,
+		&i.SpecialStamp.PosY,
+		&i.SpecialStamp.Rotation,
+		&i.SpecialStamp.PlacedAt,
 		&i.Effect,
 	)
 	return i, err
+}
+
+const moveSpecialStamp = `-- name: MoveSpecialStamp :one
+update special_stamps set pos_x = $2, pos_y = $3 where id = $1
+returning id, user_id, special_stamp_type_id, box_id, granted_by, submission_id, acquired_at, project_id, pos_x, pos_y, rotation, placed_at
+`
+
+type MoveSpecialStampParams struct {
+	ID   int64
+	PosX *float32
+	PosY *float32
+}
+
+// Moves a stamp around the project it's already on.
+func (q *Queries) MoveSpecialStamp(ctx context.Context, arg MoveSpecialStampParams) (SpecialStamp, error) {
+	row := q.db.QueryRow(ctx, moveSpecialStamp, arg.ID, arg.PosX, arg.PosY)
+	var i SpecialStamp
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.SpecialStampTypeID,
+		&i.BoxID,
+		&i.GrantedBy,
+		&i.SubmissionID,
+		&i.AcquiredAt,
+		&i.ProjectID,
+		&i.PosX,
+		&i.PosY,
+		&i.Rotation,
+		&i.PlacedAt,
+	)
+	return i, err
+}
+
+const pendingSubmissionForProject = `-- name: PendingSubmissionForProject :one
+select id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id from submissions where project_id = $1 and status = 'pending'
+for update
+`
+
+func (q *Queries) PendingSubmissionForProject(ctx context.Context, projectID int64) (Submission, error) {
+	row := q.db.QueryRow(ctx, pendingSubmissionForProject, projectID)
+	var i Submission
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Status,
+		&i.HackatimeProjects,
+		&i.HackatimeSeconds,
+		&i.NewSeconds,
+		&i.ApprovedSeconds,
+		&i.ReviewerID,
+		&i.ReviewedAt,
+		&i.Feedback,
+		&i.InternalNotes,
+		&i.SubmittedAt,
+		&i.AirtableRecordID,
+	)
+	return i, err
+}
+
+const placeSpecialStamp = `-- name: PlaceSpecialStamp :one
+update special_stamps
+set project_id = $2, pos_x = $3, pos_y = $4, rotation = $5, placed_at = now()
+where id = $1
+returning id, user_id, special_stamp_type_id, box_id, granted_by, submission_id, acquired_at, project_id, pos_x, pos_y, rotation, placed_at
+`
+
+type PlaceSpecialStampParams struct {
+	ID        int64
+	ProjectID *int64
+	PosX      *float32
+	PosY      *float32
+	Rotation  float32
+}
+
+// Sticks a stamp from the box onto a project.
+func (q *Queries) PlaceSpecialStamp(ctx context.Context, arg PlaceSpecialStampParams) (SpecialStamp, error) {
+	row := q.db.QueryRow(ctx, placeSpecialStamp,
+		arg.ID,
+		arg.ProjectID,
+		arg.PosX,
+		arg.PosY,
+		arg.Rotation,
+	)
+	var i SpecialStamp
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.SpecialStampTypeID,
+		&i.BoxID,
+		&i.GrantedBy,
+		&i.SubmissionID,
+		&i.AcquiredAt,
+		&i.ProjectID,
+		&i.PosX,
+		&i.PosY,
+		&i.Rotation,
+		&i.PlacedAt,
+	)
+	return i, err
+}
+
+const projectHasStampMultiplier = `-- name: ProjectHasStampMultiplier :one
+select exists (
+    select 1 from special_stamps
+    join special_stamp_types on special_stamp_types.id = special_stamps.special_stamp_type_id
+    where special_stamps.project_id = $1 and special_stamp_types.effect = 'stamp_multiplier'
+)
+`
+
+func (q *Queries) ProjectHasStampMultiplier(ctx context.Context, projectID *int64) (bool, error) {
+	row := q.db.QueryRow(ctx, projectHasStampMultiplier, projectID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const submissionHasSpecialStamp = `-- name: SubmissionHasSpecialStamp :one
+select exists (select 1 from special_stamps where submission_id = $1)
+`
+
+func (q *Queries) SubmissionHasSpecialStamp(ctx context.Context, submissionID *int64) (bool, error) {
+	row := q.db.QueryRow(ctx, submissionHasSpecialStamp, submissionID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const updateSpecialStampType = `-- name: UpdateSpecialStampType :one
@@ -325,4 +523,24 @@ func (q *Queries) UpdateSpecialStampType(ctx context.Context, arg UpdateSpecialS
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const waitingPriorityStamp = `-- name: WaitingPriorityStamp :one
+select special_stamps.id
+from special_stamps
+join special_stamp_types on special_stamp_types.id = special_stamps.special_stamp_type_id
+where special_stamps.project_id = $1
+    and special_stamps.submission_id is null
+    and special_stamp_types.effect = 'priority_review'
+order by special_stamps.placed_at, special_stamps.id
+limit 1
+for update of special_stamps
+`
+
+// An Express stamp on the project that hasn't given a ship priority yet.
+func (q *Queries) WaitingPriorityStamp(ctx context.Context, projectID *int64) (int64, error) {
+	row := q.db.QueryRow(ctx, waitingPriorityStamp, projectID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }

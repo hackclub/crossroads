@@ -19,3 +19,14 @@ Product images are the makers' own, taken from their product pages or supplied b
 ## Made for Crossroads
 
 The grant cards (domain, AI, 3D printing, PCB & electronics, hardware, cloud hosting, laptop and PC parts) use the light-leak texture from the Figma and Crimson Pro (SIL Open Font License).
+
+## Stamps (ship postcards and special stamps)
+
+In `platform/src/lib/assets/stamps/`, supplied by the team. All look to be public domain, but confirm before launch.
+
+| Stamp | Used for | What it is |
+|---|---|---|
+| `papua.webp` | Ship postcards; the Ticket Stub special stamp | Papua 2d "Two Pence" postage stamp (bird of paradise), 1930s |
+| `divan.webp` | Ship postcards; the Golden Rail special stamp | Toulouse-Lautrec's *Divan Japonais* poster (1893), framed as a stamp |
+| `monet.webp` | Ship postcards; the Express special stamp | Claude Monet's *Arrival of the Normandy Train, Gare Saint-Lazare* (1877), framed as a stamp |
+

@@ -36,3 +36,12 @@ export function projectStatus(project) {
 }
 
 export const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+
+// What a special stamp does once it's stuck on a project, in a few words and
+// in a sentence.
+export const EFFECTS = {
+	none: { short: 'Collectible', long: "It's a collectible. It shows on your project for anyone who views it." },
+	priority_review: { short: 'Priority review', long: 'The ship of this project in review gets priority review. If nothing is in review, the next ship does.' },
+	stamp_multiplier: { short: '+10% stamps', long: 'Every ship of this project approved from now on earns 10% more stamps.' }
+};
+export const effectShort = (effect) => EFFECTS[effect]?.short ?? effect;

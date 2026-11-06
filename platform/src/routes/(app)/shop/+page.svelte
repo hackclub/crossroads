@@ -4,6 +4,7 @@
 	import { session, refresh } from '#lib/session.svelte.js';
 	import { stampsPerHour } from '#lib/format.js';
 	import Train from '#lib/Train.svelte';
+	import StampIcon from '#lib/StampIcon.svelte';
 
 	let items = $state([]);
 	let error = $state('');
@@ -92,7 +93,7 @@
 	<div class="page-head">
 		<div class="stack-sm">
 			<h1>Shop</h1>
-			<p>You have {stamps} stamps. You earn {rate} per approved hour.</p>
+			<p>You have {stamps}<StampIcon /> stamps. You earn {rate} per approved hour.</p>
 		</div>
 		<a class="btn ghost" href="/shop/orders">My orders</a>
 	</div>

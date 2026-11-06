@@ -135,8 +135,9 @@ func AllShopItemKindValues() []ShopItemKind {
 type SpecialStampEffect string
 
 const (
-	SpecialStampEffectNone           SpecialStampEffect = "none"
-	SpecialStampEffectPriorityReview SpecialStampEffect = "priority_review"
+	SpecialStampEffectNone            SpecialStampEffect = "none"
+	SpecialStampEffectPriorityReview  SpecialStampEffect = "priority_review"
+	SpecialStampEffectStampMultiplier SpecialStampEffect = "stamp_multiplier"
 )
 
 func (e *SpecialStampEffect) Scan(src interface{}) error {
@@ -177,7 +178,8 @@ func (ns NullSpecialStampEffect) Value() (driver.Value, error) {
 func (e SpecialStampEffect) Valid() bool {
 	switch e {
 	case SpecialStampEffectNone,
-		SpecialStampEffectPriorityReview:
+		SpecialStampEffectPriorityReview,
+		SpecialStampEffectStampMultiplier:
 		return true
 	}
 	return false
@@ -187,6 +189,7 @@ func AllSpecialStampEffectValues() []SpecialStampEffect {
 	return []SpecialStampEffect{
 		SpecialStampEffectNone,
 		SpecialStampEffectPriorityReview,
+		SpecialStampEffectStampMultiplier,
 	}
 }
 
@@ -264,6 +267,7 @@ const (
 	StampEntryKindPurchase   StampEntryKind = "purchase"
 	StampEntryKindRefund     StampEntryKind = "refund"
 	StampEntryKindAdjustment StampEntryKind = "adjustment"
+	StampEntryKindBonus      StampEntryKind = "bonus"
 )
 
 func (e *StampEntryKind) Scan(src interface{}) error {
@@ -306,7 +310,8 @@ func (e StampEntryKind) Valid() bool {
 	case StampEntryKindPayout,
 		StampEntryKindPurchase,
 		StampEntryKindRefund,
-		StampEntryKindAdjustment:
+		StampEntryKindAdjustment,
+		StampEntryKindBonus:
 		return true
 	}
 	return false
@@ -318,6 +323,7 @@ func AllStampEntryKindValues() []StampEntryKind {
 		StampEntryKindPurchase,
 		StampEntryKindRefund,
 		StampEntryKindAdjustment,
+		StampEntryKindBonus,
 	}
 }
 
@@ -539,6 +545,11 @@ type SpecialStamp struct {
 	GrantedBy          *int64
 	SubmissionID       *int64
 	AcquiredAt         time.Time
+	ProjectID          *int64
+	PosX               *float32
+	PosY               *float32
+	Rotation           float32
+	PlacedAt           *time.Time
 }
 
 type SpecialStampType struct {

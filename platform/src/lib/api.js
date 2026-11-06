@@ -65,3 +65,11 @@ export async function devHackatime(add) {
 	if (!res.ok) throw new ApiError(res.status, data?.error ?? 'Dev Hackatime failed.');
 	return data;
 }
+
+// Dev mode: give the signed-in person a box to open (POST /dev/box).
+export async function devGiveBox() {
+	const res = await fetch('/dev/box', { method: 'POST' });
+	const data = await res.json().catch(() => null);
+	if (!res.ok) throw new ApiError(res.status, data?.error ?? `Couldn't add a box (${res.status}).`);
+	return data;
+}
