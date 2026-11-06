@@ -112,7 +112,7 @@ The schema is in `db/migrations` (goose), queries in `db/queries` (sqlc), and `g
 
 ### Adding a migration
 
-1. Create the next numbered file, like `db/migrations/00008_something.sql`, with `-- +goose Up` and `-- +goose Down` sections. Wrap functions and anything else with semicolons inside in `-- +goose StatementBegin` / `-- +goose StatementEnd`.
+1. Create the next numbered file, like `db/migrations/00010_something.sql`, with `-- +goose Up` and `-- +goose Down` sections. Wrap functions and anything else with semicolons inside in `-- +goose StatementBegin` / `-- +goose StatementEnd`.
 2. Make the Down section undo the Up section completely. `TestMigrationsRoundTrip` migrates everything down and checks nothing is left behind.
 3. `go generate ./db`, then `go build ./...`.
 4. Restart the server to apply it.
