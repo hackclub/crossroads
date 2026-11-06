@@ -1,11 +1,11 @@
 <script>
 	import '../app.css';
-	import favicon from '#lib/assets/favicon.svg';
+	import favicon from '#lib/assets/favicon.png'; // the crossing sign from the top bar
 	let { children } = $props();
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
+	<link rel="icon" type="image/png" href={favicon} />
 </svelte:head>
 
 {@render children()}

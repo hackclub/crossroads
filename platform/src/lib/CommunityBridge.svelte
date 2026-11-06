@@ -73,8 +73,11 @@
 				<!-- The crumbled ends either side of the gap (Vector 1). -->
 				<img class="crumble" src={crumble} alt="" />
 				{#each BRICKS as [x, y]}<i class="brick" style="--x: {x}; --y: {y}"></i>{/each}
-				{#each WAGONS as x}<img class="wagon" src={wagon} alt="" style="--x: {x}" />{/each}
-				<img class="loco" src={locomotive} alt="" />
+				<!-- The train on the bridge rolls in as the scene rises. -->
+				<div class="consist">
+					{#each WAGONS as x}<img class="wagon" src={wagon} alt="" style="--x: {x}" />{/each}
+					<img class="loco" src={locomotive} alt="" />
+				</div>
 			</div>
 
 			<div class="copy">
@@ -121,10 +124,15 @@
 	.fold { min-height: 0; overflow: hidden; }
 	.scene { translate: 0 calc(160 * var(--bu)); transition: translate 0.5s cubic-bezier(0.55, 0, 1, 0.45) 0.1s; }
 	.shown .scene { translate: 0 0; transition: translate 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.1s; }
+	/* The train on the bridge starts off the left edge and rolls in while the
+	   scene rises, slowing to a stop; it rolls back out as the scene sinks.
+	   (transform, not translate: phones use translate to lift the scene.) */
+	.consist { transform: translateX(calc(-720 * var(--bu))); transition: transform 0.5s cubic-bezier(0.55, 0, 1, 0.45); }
+	.shown .consist { transform: none; transition: transform 1.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s; }
 	.copy { opacity: 0; transition: opacity 0.2s ease-in; }
 	.shown .copy { opacity: 1; transition: opacity 0.45s ease-out 0.55s; }
 	@media (prefers-reduced-motion: reduce) {
-		.goal, .goal.shown, .scene, .shown .scene, .copy, .shown .copy { transition: none; }
+		.goal, .goal.shown, .scene, .shown .scene, .consist, .shown .consist, .copy, .shown .copy { transition: none; }
 	}
 	.stage {
 		--bu: calc(100cqw / 1728);
@@ -136,7 +144,8 @@
 
 	/* The scene covers the stage, so its pieces sit at stage coordinates. */
 	.scene { position: absolute; inset: 0; }
-	.scene > * { position: absolute; display: block; max-width: none; } /* the bridge is wider than the page on purpose */
+	.scene > *, .consist > * { position: absolute; display: block; max-width: none; } /* the bridge is wider than the page on purpose */
+	.consist { inset: 0; }
 	/* The viaduct runs past both edges; its foot fades into the photo. */
 	.bridge { left: calc(-83 * var(--bu)); top: calc(193.5 * var(--bu)); width: calc(1844 * var(--bu)); height: calc(220 * var(--bu)); }
 	.crumble { left: calc(788.6 * var(--bu)); top: calc(195.5 * var(--bu)); width: calc(143.36 * var(--bu)); height: calc(55 * var(--bu)); }

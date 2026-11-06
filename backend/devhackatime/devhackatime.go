@@ -2,14 +2,21 @@
 // the whole submit → review → stamps flow can be tried without real tracked
 // time. It's only mounted when DEV_MODE=1 (see main.go).
 //
-// Time lives in memory and is lost when the server restarts. That's harmless:
-// the backend never pays out more than Hackatime reports, so after a restart a
-// project just has nothing new to submit until more time is added.
+// Time added from the dev panel is saved to a file (see New), so it survives
+// restarts. When it didn't, a restart dropped everyone back to the starter
+// time while their ships stayed in the database, and since the backend never
+// pays out more than Hackatime reports, nothing could be shipped until the
+// lost time was added again.
 package devhackatime
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -31,10 +38,47 @@ var starter = map[string]int{
 type Fake struct {
 	mu   sync.Mutex
 	time map[string]map[string]int // slack ID → project → seconds
+	file string
 }
 
-func New() *Fake {
-	return &Fake{time: map[string]map[string]int{}}
+// New loads the time saved in file, if there is any, and saves to it
+// whenever time is added. An empty file name keeps time in memory only.
+func New(file string) *Fake {
+	f := &Fake{time: map[string]map[string]int{}, file: file}
+	if file == "" {
+		return f
+	}
+	data, err := os.ReadFile(file)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		log.Printf("dev hackatime: reading %s: %v", file, err)
+	default:
+		if err := json.Unmarshal(data, &f.time); err != nil {
+			log.Printf("dev hackatime: reading %s: %v", file, err)
+		}
+	}
+	return f
+}
+
+// save writes everyone's time to the file. Call it with mu held.
+func (f *Fake) save() {
+	if f.file == "" {
+		return
+	}
+	data, err := json.Marshal(f.time)
+	if err == nil {
+		err = os.MkdirAll(filepath.Dir(f.file), 0o755)
+	}
+	if err == nil {
+		tmp := f.file + ".tmp"
+		if err = os.WriteFile(tmp, data, 0o644); err == nil {
+			err = os.Rename(tmp, f.file)
+		}
+	}
+	if err != nil {
+		log.Printf("dev hackatime: saving %s: %v", f.file, err)
+	}
 }
 
 func (f *Fake) projects(slackID string) map[string]int {
@@ -163,6 +207,7 @@ func (f *Fake) add(w http.ResponseWriter, r *http.Request) {
 	}
 	f.mu.Lock()
 	f.projects(*user.SlackID)[body.Name] += body.Seconds
+	f.save()
 	f.mu.Unlock()
 	f.mine(w, r)
 }
