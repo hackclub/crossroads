@@ -43,6 +43,9 @@ type shopItemJSON struct {
 	// Tickets: the price the signed-in person locked in, if they bought a
 	// price lock. Not filled in for admins.
 	LockedPrice *int32 `json:"locked_price"`
+	// While it's on sale: price is the sale price, and this has the full
+	// one. Not filled in for admins, who see and set the full price.
+	Sale *saleJSON `json:"sale"`
 }
 
 func toShopItemJSON(item db.ShopItem, bought int64) shopItemJSON {
@@ -129,9 +132,9 @@ func toOrderJSON(order db.Order, item db.ShopItem) orderJSON {
 	}
 }
 
-// listShopItems lists what's in the shop. A ticket's price is what the
-// signed-in person would pay for it now: the batch on sale, or the price
-// they locked in if that's lower.
+// listShopItems lists what's in the shop. Prices are what the signed-in
+// person would pay now: for a ticket, the batch on sale, or the price they
+// locked in if that's lower; for anything on sale, the sale price.
 func (a *API) listShopItems(w http.ResponseWriter, r *http.Request) {
 	user := auth.User(r.Context())
 	items, err := a.Queries.ListShopItems(r.Context())
@@ -160,9 +163,14 @@ func (a *API) listShopItems(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
+	now := time.Now()
 	out := []shopItemJSON{}
 	for _, item := range items {
 		j := toShopItemJSON(item, bought[item.ID])
+		if a.onSale(item, now) {
+			j.Sale = &saleJSON{FullPrice: item.Price, Percent: salePercent, EndsAt: a.SaleEnd}
+			j.Price = salePrice(item.Price)
+		}
 		if item.Kind == db.ShopItemKindTicket {
 			if j.Batches = toBatchesJSON(item, sold[item.ID]); j.Batches != nil {
 				j.Price = j.Batches.Prices[j.Batches.Current]
@@ -193,8 +201,9 @@ func (a *API) listOrders(w http.ResponseWriter, r *http.Request) {
 
 // buy orders a shop item. Physical items ship to {"shipping_address": {...}},
 // or to the address they gave Hack Club Auth if that's left out. Tickets
-// cost the batch on sale, or the buyer's locked price if that's lower. A
-// price lock is done as soon as it's bought, so its order starts fulfilled.
+// cost the batch on sale, or the buyer's locked price if that's lower, and
+// anything on sale costs the sale price. A price lock is done as soon as
+// it's bought, so its order starts fulfilled.
 func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 	user := auth.User(r.Context())
 	id, ok := idParam(w, r, "itemID")
@@ -284,6 +293,9 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	price, status, lockedPrice := item.Price, db.OrderStatusPending, (*int32)(nil)
+	if a.onSale(item, time.Now()) {
+		price = salePrice(item.Price)
+	}
 	switch item.Kind {
 	case db.ShopItemKindTicket:
 		sold, err := q.CountSold(r.Context(), item.ID)

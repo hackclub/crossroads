@@ -37,6 +37,9 @@ var communityGoal = api.CommunityGoal{
 	Ends:    time.Date(2026, time.November, 15, 23, 59, 0, 0, time.FixedZone("EST", -5*3600)),
 }
 
+// The launch sale: the shop's first week, from launch on November 6.
+var saleEnd = time.Date(2026, time.November, 13, 0, 0, 0, 0, time.UTC)
+
 func main() {
 	ctx := context.Background()
 
@@ -110,6 +113,7 @@ func main() {
 		Uploads:       uploadStore,
 		HoursStart:    hoursStart,
 		CommunityGoal: communityGoal,
+		SaleEnd:       saleEnd,
 	}
 
 	// Price locks are refunded if the tickets sell out before they're used.

@@ -30,6 +30,7 @@ type API struct {
 	Uploads       *uploads.Store // project screenshots; nil turns uploading off
 	HoursStart    time.Time      // when Hackatime time starts counting; activity before it isn't shown
 	CommunityGoal CommunityGoal  // the home page's "Repair Bridge" goal
+	SaleEnd       time.Time      // until then the shop is on sale (sale.go); zero for no sale
 }
 
 func (a *API) Routes() chi.Router {

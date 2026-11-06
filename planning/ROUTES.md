@@ -135,7 +135,7 @@ interface ShopItem {
   name: string;
   description: string;
   image_url: string | null;
-  price: number;                // stamps; for a ticket in GET /api/shop/items, what they'd pay now (see below)
+  price: number;                // stamps; in GET /api/shop/items, what they'd pay now: a ticket's batch (see below), or the sale price
   stipend_cents: number | null; // stipends only
   stock: number | null;         // left in stock; null is unlimited
   max_per_user: number | null;  // null is unlimited; tickets and price locks are always 1
@@ -146,6 +146,13 @@ interface ShopItem {
   batches: Batches | null;      // tickets sold in batches only
   bought: number;               // how many the signed-in person has (0 on admin routes)
   locked_price: number | null;  // tickets: the price they locked in with a price lock (null on admin routes)
+  sale: Sale | null;            // while it's on sale (null on admin routes, which show the full price)
+}
+
+interface Sale {
+  full_price: number;    // what it costs once the sale's over
+  percent: number;       // how much is off: 10
+  ends_at: string;       // when the sale ends
 }
 
 interface Batches {
@@ -407,6 +414,8 @@ Rolls a special stamp from the box's type, among the stamp types that still have
 `200` → `ShopItem[]`: active items only, by `position` then cheapest first, each with how many they've `bought`. The event ticket is the item with `kind: "ticket"`.
 
 **Ticket batches.** A ticket with `batches` sells in batches: the first `batch_size` cost the first price, and each batch after costs `batch_step` more. The next batch goes on sale when one sells out, and `stock` counts what's left across all of them. The ticket's `price` here is what the signed-in person would pay now: the batch on sale, or their `locked_price` if that's lower.
+
+**The launch sale.** Until midnight UTC on November 13, 2026 (`saleEnd` in `main.go`), everything except tickets and price locks is 10% off, rounded down but never below 1 stamp. Those items have a `sale`, and their `price` is the sale price, which is what buying charges. Prices go back to full when it ends, so a page showing sale prices should reload them at `ends_at`.
 
 **Price locks.** The item with `kind: "price_lock"` fixes their ticket at the price of the batch on sale when they buy it, for whenever they buy the ticket. It's on top of the ticket's price, it doesn't hold a ticket, and it's one per person. If the tickets sell out before they buy one, the lock is cancelled and its stamps refunded automatically.
 

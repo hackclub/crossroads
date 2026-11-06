@@ -159,7 +159,7 @@ The queue puts submissions with a priority-review special stamp first, then olde
 2. Lock the buyer's `users` row, then the item.
 3. Fill in the shipping address from `users.address` if none was sent.
 4. Check `max_per_user`, stock, and the balance (only for a friendlier message).
-5. Work out the price (tickets and price locks, below).
+5. Work out the price: the launch sale (`api/sale.go`: 10% off everything but tickets and price locks until `API.SaleEnd`), then tickets and price locks, below.
 6. Create the order, then the purchase ledger entry. The ledger trigger is the real guard against overspending.
 7. Take one from stock.
 
@@ -250,6 +250,7 @@ Settled with the organizer while building this (Nov 3 and 4, 2026):
 
 - **Postgres as the source of truth, synced one way to Airtable.** The shop needs transactions so nobody can spend the same stamps twice, and Airtable has none (and a limit of 5 requests a second).
 - **Rates and qualifying:** 30 stamps per approved hour. The ticket costs 60 hours' worth (1,800) in its first batch, then 5 hours more for each batch of 6 after that, up to 80 hours for the last of the 30. A price lock costs 5 hours' worth and is on top of the ticket, so it pays off only if the price would have gone up two batches or more (decided 2026-11-06). Qualifying means buying the ticket, so spending stamps on other things delays it.
+- **Launch sale:** for the shop's first week, until midnight UTC on Nov 13 2026, everything is 10% off except the ticket and price locks, so qualifying still takes 60 hours (decided 2026-11-06).
 - **Hours count from midnight UTC on Nov 3 2026, and only approved hours count,** totaled across all of a person's projects.
 - **Verification:** submitting doesn't need Hack Club Auth verification. Buying needs a verified identity that HCA says is YSWS-eligible.
 - **Milestones count approved hours, not raw Hackatime hours,** so they can't be farmed. The catch is that the first box only arrives after the first approval.
