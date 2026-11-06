@@ -7,6 +7,7 @@
 	import TopBar from '#lib/TopBar.svelte';
 	import DevPanel from '#lib/DevPanel.svelte';
 	import RailTrain from '#lib/RailTrain.svelte';
+	import CommunityBridge from '#lib/CommunityBridge.svelte';
 	import { STATIONS } from '#lib/rail.svelte.js';
 
 	let { children } = $props();
@@ -28,6 +29,8 @@
 		<main class="main"><p class="callout warn">Couldn't reach the backend: {error} Is it running on :8080?</p></main>
 	{:else if session.me}
 		<TopBar />
+		<!-- Home opens with the community goal ("Repair Bridge"), above the train. -->
+		{#if station}<CommunityBridge open={station === '/home'} />{/if}
 		{#if station}<RailTrain at={station} />{/if}
 		<main class="main">
 			{@render children()}

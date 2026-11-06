@@ -11,6 +11,7 @@
 	// can't be focused while they're off to the side.
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { browser } from '$app/environment';
 	import { rail, STATIONS } from './rail.svelte.js';
 	import StampCar from './cars/StampCar.svelte';
 	import HomePreview from './cars/HomePreview.svelte';
@@ -21,14 +22,22 @@
 
 	// Which station the train is drawn at, and how long the move there takes:
 	// longer the more cars it passes.
+	// Leaving Home, it waits for the bridge above to fold away first; either
+	// way it notes when it will come to rest, so the bridge can wait for that.
 	let shown = $state(untrack(() => STATIONS.indexOf(at)));
 	let duration = $state(0);
+	let delay = $state(0);
+	const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+	if (browser) rail.settle = performance.now() + (still() ? 0 : 1600); // the roll-in below
 	$effect(() => {
 		const target = STATIONS.indexOf(at);
-		untrack(() => {
+		// After this update's other effects, so the bridge has had its say.
+		queueMicrotask(() => {
 			if (target === shown) return;
+			delay = Math.max(0, rail.foldUntil - performance.now()) / 1000;
 			duration = 0.9 + 0.6 * Math.abs(target - shown);
 			shown = target;
+			rail.settle = performance.now() + (still() ? 0 : (delay + duration) * 1000);
 		});
 	});
 
@@ -81,7 +90,7 @@
 <div class="rail" style="--k: {shown}; --wood: url({wood})">
 	<div class="track rails" aria-hidden="true"></div>
 	<div class="arrive">
-		<div class="strip" style="transition-duration: {duration}s">
+		<div class="strip" style="transition-duration: {duration}s; transition-delay: {delay}s">
 			<div class="end rear" aria-hidden="true"><span class="coupler"><i class="knob"></i><i class="bar"></i><i class="block"></i></span></div>
 
 			<section class="car station" aria-label="Your stamps" inert={at !== '/boxes'}>

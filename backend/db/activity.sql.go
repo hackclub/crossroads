@@ -26,6 +26,32 @@ func (q *Queries) ClearProjectActivity(ctx context.Context, arg ClearProjectActi
 	return err
 }
 
+const communitySeconds = `-- name: CommunitySeconds :one
+select coalesce(sum(submissions.new_seconds), 0)::bigint
+from submissions
+join projects on projects.id = submissions.project_id
+join users on users.id = projects.user_id
+where users.role = 'participant'
+    and submissions.status <> 'rejected'
+    and submissions.submitted_at >= $1
+    and submissions.submitted_at <= $2
+`
+
+type CommunitySecondsParams struct {
+	StartsAt time.Time
+	EndsAt   time.Time
+}
+
+// Hours shipped by all participants from starts_at to ends_at, for the
+// community goal on the home page. A ship counts as soon as it's submitted,
+// without waiting for review, and drops out again if it's rejected.
+func (q *Queries) CommunitySeconds(ctx context.Context, arg CommunitySecondsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, communitySeconds, arg.StartsAt, arg.EndsAt)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countActiveParticipants = `-- name: CountActiveParticipants :one
 select count(distinct active.user_id)::integer from (
     select projects.user_id

@@ -30,6 +30,13 @@ import (
 // Only Hackatime time from here on counts toward Crossroads.
 var hoursStart = time.Date(2026, time.November, 3, 0, 0, 0, 0, time.UTC)
 
+// The home page's community goal: 200 hours together by 11:59 PM Eastern on
+// November 15 (EST, UTC-5).
+var communityGoal = api.CommunityGoal{
+	Seconds: 200 * 3600,
+	Ends:    time.Date(2026, time.November, 15, 23, 59, 0, 0, time.FixedZone("EST", -5*3600)),
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -102,6 +109,7 @@ func main() {
 		StampsPerHour: stampsPerHour,
 		Uploads:       uploadStore,
 		HoursStart:    hoursStart,
+		CommunityGoal: communityGoal,
 	}
 
 	// Price locks are refunded if the tickets sell out before they're used.

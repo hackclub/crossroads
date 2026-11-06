@@ -79,3 +79,16 @@ from platform_activity
 join users on users.id = platform_activity.user_id
 where users.role = 'participant'
     and platform_activity.day between sqlc.arg(start_day)::date and sqlc.arg(end_day)::date;
+
+-- name: CommunitySeconds :one
+-- Hours shipped by all participants from starts_at to ends_at, for the
+-- community goal on the home page. A ship counts as soon as it's submitted,
+-- without waiting for review, and drops out again if it's rejected.
+select coalesce(sum(submissions.new_seconds), 0)::bigint
+from submissions
+join projects on projects.id = submissions.project_id
+join users on users.id = projects.user_id
+where users.role = 'participant'
+    and submissions.status <> 'rejected'
+    and submissions.submitted_at >= sqlc.arg(starts_at)
+    and submissions.submitted_at <= sqlc.arg(ends_at);

@@ -29,6 +29,7 @@ type API struct {
 	StampsPerHour int            // paid for each approved hour
 	Uploads       *uploads.Store // project screenshots; nil turns uploading off
 	HoursStart    time.Time      // when Hackatime time starts counting; activity before it isn't shown
+	CommunityGoal CommunityGoal  // the home page's "Repair Bridge" goal
 }
 
 func (a *API) Routes() chi.Router {
@@ -36,6 +37,7 @@ func (a *API) Routes() chi.Router {
 	r.Use(auth.RequireUser)
 	r.Get("/me", a.me)
 	r.Get("/hackatime/projects", a.listHackatimeProjects)
+	r.Get("/community", a.community)
 	if a.Uploads != nil {
 		r.Post("/uploads", a.Uploads.Upload)
 	}

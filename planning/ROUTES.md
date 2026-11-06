@@ -189,6 +189,7 @@ Reviewer and admin shapes are listed with their routes below.
 | POST | `/auth/logout` | anyone | Sign out |
 | GET | `/api/me` | signed in | The signed-in person |
 | GET | `/api/hackatime/projects` | signed in | Their Hackatime projects, for linking |
+| GET | `/api/community` | signed in | The community goal: hours shipped by everyone so far |
 | GET | `/api/projects` | signed in | Their projects |
 | POST | `/api/projects` | signed in | Create a project |
 | GET | `/api/projects/{id}` | owner | One project, with live Hackatime numbers |
@@ -685,4 +686,21 @@ Effects, from when the stamp goes on:
 - **none**: a collectible; it's only shown on the project.
 
 The old `special_stamp_id` on `POST /api/projects/{id}/submissions` still works, but the site now uses placement instead.
+
+## Community goal
+
+The home page's "Repair Bridge": the in-person event only runs if participants together ship enough hours between launch and the deadline.
+
+**`GET /api/community`** → `200`:
+
+```ts
+interface Community {
+  seconds: number;      // shipped so far
+  goal_seconds: number; // what's needed (200 hours)
+  starts_at: string;    // launch: when Hackatime time starts counting
+  ends_at: string;      // the deadline, 11:59 PM EST on November 15
+}
+```
+
+`seconds` is the `new_seconds` of every participant's submission made between `starts_at` and `ends_at`. A ship counts as soon as it's submitted, without waiting for review, and drops out if it's rejected; a reviewer cutting its hours doesn't change it. The goal and deadline are `communityGoal` in `backend/main.go`.
 
