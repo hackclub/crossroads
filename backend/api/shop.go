@@ -31,6 +31,7 @@ type shopItemJSON struct {
 	Stock        *int32          `json:"stock"`         // how many are left; null is unlimited
 	MaxPerUser   *int32          `json:"max_per_user"`  // null is unlimited
 	Active       bool            `json:"active"`
+	Position     int32           `json:"position"` // lower shows first in the shop
 	// How many the signed-in person has bought, not counting cancelled
 	// orders. Not filled in for admins.
 	Bought int64 `json:"bought"`
@@ -48,6 +49,7 @@ func toShopItemJSON(item db.ShopItem, bought int64) shopItemJSON {
 		Stock:        item.Stock,
 		MaxPerUser:   item.MaxPerUser,
 		Active:       item.Active,
+		Position:     item.Position,
 		Bought:       bought,
 	}
 }
@@ -323,6 +325,7 @@ type shopItemFields struct {
 	Stock        optional[int32]  `json:"stock"`
 	MaxPerUser   optional[int32]  `json:"max_per_user"`
 	Active       *bool            `json:"active"`
+	Position     *int32           `json:"position"`
 }
 
 func (f shopItemFields) apply(item *db.ShopItem) string {
@@ -352,6 +355,9 @@ func (f shopItemFields) apply(item *db.ShopItem) string {
 	}
 	if f.Active != nil {
 		item.Active = *f.Active
+	}
+	if f.Position != nil {
+		item.Position = *f.Position
 	}
 	switch {
 	case !item.Kind.Valid():
@@ -407,6 +413,7 @@ func (a *API) adminCreateShopItem(w http.ResponseWriter, r *http.Request) {
 	item, err := a.Queries.CreateShopItem(r.Context(), db.CreateShopItemParams{
 		Kind: item.Kind, Name: item.Name, Description: item.Description, ImageUrl: item.ImageUrl, Price: item.Price,
 		StipendCents: item.StipendCents, Stock: item.Stock, MaxPerUser: item.MaxPerUser, Active: item.Active,
+		Position: item.Position,
 	})
 	if err != nil {
 		respond.ServerError(w, r, err)
@@ -450,6 +457,7 @@ func (a *API) adminUpdateShopItem(w http.ResponseWriter, r *http.Request) {
 	item, err = q.UpdateShopItem(r.Context(), db.UpdateShopItemParams{
 		ID: item.ID, Kind: item.Kind, Name: item.Name, Description: item.Description, ImageUrl: item.ImageUrl, Price: item.Price,
 		StipendCents: item.StipendCents, Stock: item.Stock, MaxPerUser: item.MaxPerUser, Active: item.Active,
+		Position: item.Position,
 	})
 	if err != nil {
 		respond.ServerError(w, r, err)

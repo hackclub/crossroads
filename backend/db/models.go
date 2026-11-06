@@ -528,6 +528,7 @@ type ShopItem struct {
 	Active       bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	Position     int32
 }
 
 type SpecialStamp struct {

@@ -1,8 +1,8 @@
 -- name: ListShopItems :many
-select * from shop_items where active order by price, id;
+select * from shop_items where active order by position, price, id;
 
 -- name: ListAllShopItems :many
-select * from shop_items order by id;
+select * from shop_items order by position, price, id;
 
 -- name: GetShopItem :one
 select * from shop_items where id = $1;
@@ -11,14 +11,14 @@ select * from shop_items where id = $1;
 select * from shop_items where id = $1 for update;
 
 -- name: CreateShopItem :one
-insert into shop_items (kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+insert into shop_items (kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, position)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 returning *;
 
 -- name: UpdateShopItem :one
 update shop_items set
     kind = $2, name = $3, description = $4, image_url = $5, price = $6,
-    stipend_cents = $7, stock = $8, max_per_user = $9, active = $10
+    stipend_cents = $7, stock = $8, max_per_user = $9, active = $10, position = $11
 where id = $1
 returning *;
 

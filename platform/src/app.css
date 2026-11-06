@@ -69,7 +69,7 @@ html { scrollbar-color: var(--body) var(--bg); }
 }
 /* Text that sits straight on the photo keeps a soft shadow under it. */
 .main { text-shadow: 0 1px 3px rgb(0 0 0 / 0.75); }
-.light-card, .polaroid, dialog, input, textarea, select { text-shadow: none; }
+.light-card, dialog, input, textarea, select { text-shadow: none; }
 
 /* A run of track: wooden ties under two grey rails, as in the Figma
    "track" groups. Everything scales with the track's height: each rail is

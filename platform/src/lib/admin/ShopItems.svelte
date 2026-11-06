@@ -6,7 +6,7 @@
 
 	let items = $state([]);
 	let msg = $state(null);
-	const blank = () => ({ kind: 'physical', name: '', description: '', image_url: '', price: 100, stipend_dollars: '', stock: '', max_per_user: '', active: true });
+	const blank = () => ({ kind: 'physical', name: '', description: '', image_url: '', price: 100, stipend_dollars: '', stock: '', max_per_user: '', position: 0, active: true });
 	let form = $state(blank());
 	let editing = $state(null); // item id
 
@@ -31,7 +31,8 @@
 			stipend_cents: f.kind === 'stipend' ? Math.round(Number(f.stipend_dollars) * 100) : null,
 			stock: num(f.stock),
 			max_per_user: f.kind === 'ticket' ? 1 : num(f.max_per_user),
-			active: f.active
+			active: f.active,
+			position: Number(f.position) || 0
 		};
 	}
 
@@ -65,10 +66,11 @@
 	{#if msg}<p class="callout {msg.tone} small">{msg.text}</p>{/if}
 	<div class="card table-wrap">
 		<table>
-			<thead><tr><th>Name</th><th>Kind</th><th>Price</th><th>Stock</th><th>Per person</th><th>Active</th><th></th></tr></thead>
+			<thead><tr><th>Order</th><th>Name</th><th>Kind</th><th>Price</th><th>Stock</th><th>Per person</th><th>Active</th><th></th></tr></thead>
 			<tbody>
 				{#each items as i}
 					<tr>
+						<td>{i.position}</td>
 						<td>{i.name}</td>
 						<td>{i.kind}{i.stipend_cents ? ` (${money(i.stipend_cents)})` : ''}</td>
 						<td>{i.price}</td>
@@ -99,6 +101,7 @@
 			{#if form.kind !== 'ticket'}
 				<label class="field"><span>Max per person <em>empty = unlimited</em></span><input type="number" min="1" bind:value={form.max_per_user} /></label>
 			{/if}
+			<label class="field"><span>Order in shop <em>lower shows first</em></span><input type="number" step="1" bind:value={form.position} /></label>
 		</div>
 		<div class="field">
 			<span>Image <em>optional</em></span>

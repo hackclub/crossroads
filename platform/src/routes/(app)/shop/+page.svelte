@@ -28,7 +28,8 @@
 
 	// The ticket is the point of the shop, so it gets its own card first.
 	const ticket = $derived(items.find((i) => i.kind === 'ticket'));
-	const others = $derived(items.filter((i) => i.kind !== 'ticket').toSorted((a, b) => a.price - b.price));
+	// Everything else, in the order the API gives: by each item's position (most wanted first).
+	const others = $derived(items.filter((i) => i.kind !== 'ticket'));
 	const rate = $derived(stampsPerHour(ticket));
 	const stamps = $derived(session.me.stamps);
 	const hasTicket = $derived(!!ticket && ticket.bought > 0);
@@ -141,20 +142,19 @@
 
 	<section class="stack">
 		{#if ticket && others.length}<h2>Everything else</h2>{/if}
-		<div class="polaroids">
+		<div class="items">
 			{#each others as item}
 				{@const reason = soldOutReason(item)}
 				{@const short = item.price - stamps}
-				<!-- A polaroid: square photo, then the caption on the wide bottom strip. -->
-				<article class="polaroid">
-					<div class="photo">
-						{#if item.image_url}<img src={item.image_url} alt="" />{/if}
+				<article class="card item">
+					<div class="thumb">
+						{#if item.image_url}<img src={item.image_url} alt="" loading="lazy" />{/if}
 					</div>
-					<div class="caption">
+					<div class="info">
 						<h3 class="item-name">{item.name}</h3>
 						<span class="price">{item.price} stamps</span>
+						{#if item.description}<p class="desc">{item.description}</p>{/if}
 					</div>
-					{#if item.description}<p class="desc">{item.description}</p>{/if}
 					<!-- Pinned to the bottom so the buttons line up across a row. -->
 					<div class="card-foot">
 						{#if reason}
@@ -220,47 +220,40 @@
 <style>
 	.shop { display: flex; flex-direction: column; gap: 24px; }
 	.status:not(:has(p)) { margin-top: -24px; }
-	/* ---- Polaroids ---- */
-	.polaroids {
+	/* ---- Items: the site's textured cards, kept short ---- */
+	.items {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-		gap: 40px 32px;
-		padding: 8px 4px 0;
+		grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+		gap: 16px;
 	}
-	.polaroid {
-		--paper: #ecebe6;
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		padding: 14px 14px 18px;
-		color: var(--ink);
-		background: var(--paper);
-		border-radius: 3px;
-		box-shadow: 0 2px 0 rgb(255 255 255 / 0.06), 0 14px 30px rgb(0 0 0 / 0.6);
-		rotate: -1.5deg;
-		transition: rotate 180ms ease-out, translate 180ms ease-out;
+	.item {
+		display: grid;
+		grid-template-columns: 104px minmax(0, 1fr);
+		grid-template-rows: 1fr auto;
+		gap: 12px 16px;
+		padding: 16px;
 	}
-	/* Each one sits a little crooked, like they were pinned up by hand. */
-	.polaroid:nth-child(3n + 2) { rotate: 1.2deg; }
-	.polaroid:nth-child(3n) { rotate: -0.6deg; }
-	.polaroid:hover, .polaroid:focus-within { rotate: 0deg; translate: 0 -4px; }
-	.photo {
-		aspect-ratio: 1;
-		margin-bottom: 8px;
+	.thumb {
+		width: 104px;
+		height: 104px;
 		overflow: hidden;
-		background: #1f1c1c;
-		box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25);
+		background: var(--navy-deep);
+		border-radius: 14px;
 	}
-	.photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-	.caption { display: flex; flex-direction: column; gap: 2px; padding-inline: 4px; }
-	.polaroid .item-name { font-size: 32px; font-weight: 400; line-height: 1.05; }
-	.polaroid .price { flex: none; font-size: 24px; }
-	.desc { margin: 0; padding-inline: 4px; font-size: 21px; color: #3d3939; }
-	.polaroid .card-foot { padding-top: 10px; }
-	.polaroid .btn.primary { background: var(--deepest); color: var(--text); }
-	.polaroid .btn.ghost { color: var(--ink); background: transparent; box-shadow: inset 0 0 0 2px var(--deepest); }
-	.polaroid .btn:disabled { background: #d3d1ca; color: #3d3939; }
-	@media (prefers-reduced-motion: reduce) { .polaroid { transition: none; } }
+	.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+	.info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+	.item .item-name { font-size: 28px; line-height: 1.1; }
+	.item .price { font-size: 22px; }
+	.desc {
+		margin: 0;
+		font-size: 20px;
+		color: var(--muted);
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+	.item .card-foot { grid-column: 1 / -1; padding-top: 0; }
 
 	dialog {
 		width: min(560px, calc(100vw - 32px));
@@ -298,8 +291,6 @@
 	.ticket .bar { height: 20px; }
 	.ticket .btn.ghost { box-shadow: inset 0 0 0 2px var(--head); align-self: flex-start; }
 	.big-line { font-size: 36px; }
-	.item-name { font-size: 30px; line-height: 1.1; }
-	.price { font-size: 26px; }
 	.card-foot { margin-top: auto; padding-top: 8px; display: flex; }
 	.card-foot .btn { width: 100%; white-space: normal; }
 	@media (max-width: 820px) {

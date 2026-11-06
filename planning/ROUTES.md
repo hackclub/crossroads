@@ -139,6 +139,7 @@ interface ShopItem {
   stock: number | null;         // left in stock; null is unlimited
   max_per_user: number | null;  // null is unlimited; tickets are always 1
   active: boolean;
+  position: number;             // order in the shop: lower first, ties cheapest first
   bought: number;               // how many the signed-in person has (0 on admin routes)
 }
 
@@ -387,7 +388,7 @@ Rolls a special stamp from the box's type, among the stamp types that still have
 
 ### `GET /api/shop/items`
 
-`200` → `ShopItem[]`: active items only, cheapest first, each with how many they've `bought`. The event ticket is the item with `kind: "ticket"`.
+`200` → `ShopItem[]`: active items only, by `position` then cheapest first, each with how many they've `bought`. The event ticket is the item with `kind: "ticket"`.
 
 ### `POST /api/shop/items/{id}/orders`
 
@@ -586,7 +587,7 @@ interface Milestone { id: number; name: string; approved_seconds: number; box_ty
 
 ### Shop items
 
-**`GET /api/admin/shop-items`** → `200 ShopItem[]`, including inactive ones.
+**`GET /api/admin/shop-items`** → `200 ShopItem[]`, including inactive ones, in shop order.
 
 **`POST /api/admin/shop-items`**:
 
@@ -595,7 +596,7 @@ interface Milestone { id: number; name: string; approved_seconds: number; box_ty
   "price": 1800, "stipend_cents": null, "stock": null, "max_per_user": 1, "active": true }
 ```
 
-`kind`, `name` and `price` are required. Stipends need `stipend_cents`, and nothing else can have it. Tickets are always one per person (`max_per_user` defaults to 1 for them, and anything else is rejected). `stock`, `max_per_user` and `image_url` are *nullable* (null = unlimited / none). `active` defaults to true. → `201 ShopItem`.
+`kind`, `name` and `price` are required. Stipends need `stipend_cents`, and nothing else can have it. Tickets are always one per person (`max_per_user` defaults to 1 for them, and anything else is rejected). `stock`, `max_per_user` and `image_url` are *nullable* (null = unlimited / none). `active` defaults to true and `position` to 0. → `201 ShopItem`.
 
 **`PATCH /api/admin/shop-items/{id}`**: any of the same fields. → `200`. Price changes don't affect existing orders. Set `active: false` to take something out of the shop.
 
