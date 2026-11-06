@@ -279,6 +279,8 @@
 			</div>
 		</div>
 
+		<p class="crimson centered" style="--x: 852; --y: 70; --size: 40; letter-spacing: 0.3em;"><a href="https://hackclub.com" target="_blank" style="text-decoration: none;">hack club</a></p>
+
 		<!-- The title flips into place on a split-flap board when the page loads. The
 		     board is decoration; the heading is there for screen readers. It sits
 		     centred where the Figma title and its reflection were. -->
