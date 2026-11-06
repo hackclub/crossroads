@@ -4,9 +4,6 @@
 	// below about 780px wide the page stops shrinking and crops the sides instead.
 	// The film-*.png strips are baked from Figma's film shader at 2x; re-export them from
 	// Figma if the design changes. "Get Started" goes to /signin.
-	import thibaultLamTran from '#lib/assets/landing/thibault-lam-tran.jpg';
-	import aliKazal from '#lib/assets/landing/ali-kazal.jpg';
-	import jessiPena from '#lib/assets/landing/jessi-pena.jpg';
 	import filmTopLeft from '#lib/assets/landing/film-top-left.png';
 	import filmTopRight from '#lib/assets/landing/film-top-right.png';
 	import filmBottomLeft from '#lib/assets/landing/film-bottom-left.png';
@@ -219,10 +216,6 @@
 <main class="page">
 	<!-- Positions are design pixels from the 1728x3060 Figma frame; --u scales them. -->
 	<div class="frame">
-		<img class="abs" src={thibaultLamTran} alt="" style="--x: -104; --y: -587; --w: 1920; --h: 2397" />
-		<img class="abs" src={aliKazal} alt="" style="--x: -77; --y: -381; --w: 1920; --h: 2879" />
-		<img class="abs multiply" src={jessiPena} alt="" style="--x: -251; --y: -1210; --w: 2400; --h: 3593" />
-
 		<!-- Above the film strip, the first screen splits: tracks on the left, the route's photos on the right. -->
 		<div class="yard" aria-hidden="true">
 			{#each tracks as x}<div class="yard-track" style="--x: {x}"></div>{/each}
@@ -336,8 +329,8 @@
 		background: #000;
 	}
 
-	/* The platform's global img { max-width: 100% } would squash the oversized
-	   background photos; positions here are exact. */
+	/* The platform's global img { max-width: 100% } would squash images that
+	   reach past the frame; positions here are exact. */
 	.frame :global(img) {
 		max-width: none;
 	}
@@ -370,6 +363,8 @@
 		margin-left: calc(50cqw - 864 * var(--u));
 		overflow: hidden;
 		color: #fff;
+		/* Textured black: faint film grain over near-black. */
+		background: url('../lib/assets/landing/grain.svg') 0 0 / 256px #070707;
 	}
 
 	.abs,
