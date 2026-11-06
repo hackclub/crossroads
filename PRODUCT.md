@@ -14,7 +14,7 @@ web
 
 ## Product Purpose
 
-Crossroads is a Hack Club YSWS ("You Ship, We Ship"). Participants build for 60 approved hours, then travel across Europe by train together, January 8–12 (2027), leaving from Paris, with 30 spots. The platform is where they create projects, link Hackatime, ship for review, watch their approved hours grow, and spend stamps. Success is a participant knowing at every moment how far they are from the trip and what to do next.
+Crossroads is a Hack Club YSWS ("You Ship, We Ship"). Participants build for 60 approved hours, then travel across Europe by train together in February 2027, leaving from Berlin, with 30 spots. The platform is where they create projects, link Hackatime, ship for review, watch their approved hours grow, and spend stamps. Success is a participant knowing at every moment how far they are from the trip and what to do next.
 
 ## Positioning
 
@@ -34,7 +34,7 @@ The reward is a train journey across Europe with other teen builders, not a priz
 - Stamps: the currency, 30 per approved hour. The shop sells the ticket (one per person), physical items and travel stipends. Buying needs a verified, YSWS-eligible Hack Club identity.
 - Boxes: one per approved-hours milestone. Opening one drops a special stamp; some special stamps have an effect (today only priority review). Boxes are earned, never sold, and their odds are always shown because participants are minors.
 - Terminology to keep: **stamps**, **boxes**, **special stamps**, **ship / shipping**, **Hackatime**.
-- Undecided: trip itinerary beyond Paris, whether the leaderboard is opt-in, team projects, the exact milestones and shop catalogue.
+- Undecided: trip itinerary beyond Berlin, whether the leaderboard is opt-in, team projects, the exact milestones and shop catalogue.
 
 ## Brand Commitments
 

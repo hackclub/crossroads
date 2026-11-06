@@ -147,12 +147,12 @@
 				<div class="stack-sm">
 					<span class="kind">The trip</span>
 					<h2 id="ticket-name">{ticket.name}</h2>
-					<span>Paris, then across Europe by train · January 8–12</span>
+					<span>Berlin, then across Europe by train · February 2027</span>
 					{#if ticket.description}<span class="small">{ticket.description}</span>{/if}
 				</div>
 				<div class="stack">
 					{#if hasTicket}
-						<p class="big-line">You have your ticket. See you in Paris!</p>
+						<p class="big-line">You have your ticket. See you in Berlin!</p>
 						<a class="btn ghost" href="/shop/orders">See your order</a>
 					{:else}
 						{#if batches}

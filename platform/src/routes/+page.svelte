@@ -135,22 +135,15 @@
 		if (!event.relatedTarget) resetPostcard();
 	}
 
-	// Photos of places on the route fade from one to the next on the right of
-	// the first screen, with the place's name on a small board in the corner
-	// and the photo's credit under it. They're from Wikimedia Commons, resized
+	// Photos of places on the route, in the order we'd get to them, fade from
+	// one to the next on the right of the first screen, with the place's name
+	// on a small board in the corner and the photo's credit under it. They're
+	// from Wikimedia Commons, resized
 	// to 1800px and converted to WebP, and their licences need that credit
 	// shown. `position` is an object-position, where a photo's subject would
 	// otherwise be cropped or faded out.
 	const BY_SA = 'https://creativecommons.org/licenses/by-sa/4.0/';
 	const route = [
-		{
-			place: 'Paris',
-			src: paris,
-			author: 'Fabien Barrau',
-			license: 'CC BY-SA 4.0',
-			licenseUrl: BY_SA,
-			page: 'https://commons.wikimedia.org/wiki/File:Tour_Saint-Jacques_au_cr%C3%A9puscule.jpg'
-		},
 		{
 			place: 'Berlin',
 			src: berlin,
@@ -160,12 +153,20 @@
 			page: 'https://commons.wikimedia.org/wiki/File:Fernsehturm,_Berl%C3%ADn,_Alemania,_2016-04-22,_DD_40-42_HDR.jpg'
 		},
 		{
-			place: 'Genoa',
-			src: genoa,
-			author: 'Abldecn',
-			license: 'CC BY 4.0',
-			licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
-			page: 'https://commons.wikimedia.org/wiki/File:Pier_of_Boccadasse.jpg'
+			place: 'Paris',
+			src: paris,
+			author: 'Fabien Barrau',
+			license: 'CC BY-SA 4.0',
+			licenseUrl: BY_SA,
+			page: 'https://commons.wikimedia.org/wiki/File:Tour_Saint-Jacques_au_cr%C3%A9puscule.jpg'
+		},
+		{
+			place: 'Brussels',
+			src: brussels,
+			author: 'Diego Delso',
+			license: 'CC BY-SA 4.0',
+			licenseUrl: BY_SA,
+			page: 'https://commons.wikimedia.org/wiki/File:Edificios_en_la_Grand-Place,_Bruselas,_B%C3%A9lgica,_2021-12-15,_DD_184-186_HDR.jpg'
 		},
 		{
 			place: 'San Salvatore',
@@ -177,12 +178,12 @@
 			page: 'https://commons.wikimedia.org/wiki/File:Lugano_-_Luganersee_%26_Monte_San_Salvatore_(2013).jpg'
 		},
 		{
-			place: 'Brussels',
-			src: brussels,
-			author: 'Diego Delso',
-			license: 'CC BY-SA 4.0',
-			licenseUrl: BY_SA,
-			page: 'https://commons.wikimedia.org/wiki/File:Edificios_en_la_Grand-Place,_Bruselas,_B%C3%A9lgica,_2021-12-15,_DD_184-186_HDR.jpg'
+			place: 'Genoa',
+			src: genoa,
+			author: 'Abldecn',
+			license: 'CC BY 4.0',
+			licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+			page: 'https://commons.wikimedia.org/wiki/File:Pier_of_Boccadasse.jpg'
 		}
 	];
 

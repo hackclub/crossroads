@@ -17,10 +17,10 @@
 <div class="preview">
 	<span class="kind">The trip</span>
 	<h2>{ticket?.name ?? 'Crossroads ticket'}</h2>
-	<span>Paris, then across Europe by train · January 8–12</span>
+	<span>Berlin, then across Europe by train · February 2027</span>
 	{#if ticket}
 		{#if ticket.bought > 0}
-			<span>You have your ticket. See you in Paris!</span>
+			<span>You have your ticket. See you in Berlin!</span>
 		{:else}
 			<span class="small">{Math.max(stamps, 0)} / {ticket.price} stamps</span>
 			<div class="bar" aria-hidden="true"><span class="seg approved" style="width: {pct}%"></span></div>

@@ -28,7 +28,7 @@
 	<div class="stack" style="align-items: center; text-align: center">
 		<h1 class="page-title" style="margin-bottom: 0">Crossroads</h1>
 		<p class="muted" style="max-width: 640px; font-size: 28px">
-			Build for 60 approved hours, then travel across Europe by train with other teens, January 8–12, leaving from Paris.
+			Build for 60 approved hours, then travel across Europe by train with other teens in February 2027, leaving from Berlin.
 		</p>
 		{#if error}<p class="callout warn small">{error}</p>{/if}
 		<button class="btn primary" onclick={() => signIn(next)}>Sign in with Hack Club</button>

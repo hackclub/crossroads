@@ -117,11 +117,11 @@ insert into milestones (name, approved_seconds, box_type_id) values
 
 -- Stock is what's left after the orders below; the ones not cancelled took one each.
 insert into shop_items (kind, name, description, price, stipend_cents, stock, max_per_user, active) values
-    ('ticket', 'Crossroads ticket', 'Your seat on the train: Paris, January 8 to 12, 2027.', 1800, null, 29, 1, true),
+    ('ticket', 'Crossroads ticket', 'Your seat on the train: Berlin, February 2027.', 1800, null, 29, 1, true),
     ('physical', 'Sticker pack', 'Ten stickers from the trip.', 60, null, null, null, true),
     ('physical', 'Rail map poster', 'Every stop on the route, printed A2.', 150, null, 24, 1, true),
     ('physical', 'Night train hoodie', 'Warm enough for the overnight stretch.', 600, null, 15, 1, true),
-    ('stipend', 'Travel stipend', 'Help getting to Paris, sent before the trip.', 300, 5000, null, 4, true),
+    ('stipend', 'Travel stipend', 'Help getting to Berlin, sent before the trip.', 300, 5000, null, 4, true),
     ('physical', 'Early-bird pin', 'Only for the first week. Sold out.', 90, null, 0, 1, false);
 
 -- The ticket sells in five batches of six, from 60 hours' worth up to 80, and

@@ -76,7 +76,7 @@
 
 			<!-- The writing side: name, message and links on ruled lines. -->
 			<div class="writing">
-				<span class="postmark" aria-hidden="true">Crossroads<br />Paris</span>
+				<span class="postmark" aria-hidden="true">Crossroads<br />Berlin</span>
 				<label class="line name-line">
 					<span>Project</span>
 					<input required maxlength="100" bind:value={name} placeholder="My cool project" />
