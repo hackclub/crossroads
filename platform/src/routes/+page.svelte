@@ -4,11 +4,6 @@
 	// below about 780px wide the page stops shrinking and crops the sides instead.
 	// The film strips are film.svg, redrawn from the Figma strip without its colour bleed.
 	// "Get Started" goes to /signin.
-	import ticketShape from '#lib/assets/landing/ticket-shape.svg';
-	import ticketPerforation from '#lib/assets/landing/ticket-perforation.svg';
-	import ticketPhoto from '#lib/assets/landing/ticket-photo.jpg';
-	import bookdragonPattern from '#lib/assets/landing/bookdragon-pattern.png';
-	import ticketCode from '#lib/assets/landing/ticket-code.png';
 	import arrowUp from '#lib/assets/landing/arrow-up.svg';
 	import arrowDown from '#lib/assets/landing/arrow-down.svg';
 	import fadeLine from '#lib/assets/landing/fade-line.svg';
@@ -24,6 +19,7 @@
 	import assembleWorkshop from '#lib/assets/landing/events/assemble-workshop.webp';
 	import assembleGroup from '#lib/assets/landing/events/assemble-group.webp';
 	import SplitFlapDisplay from '#lib/SplitFlapDisplay.svelte';
+	import Postcard from '#lib/Postcard.svelte';
 	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import { signIn, isDevMode } from '#lib/api.js';
@@ -50,21 +46,21 @@
 		}
 	}
 
-	// How far the ticket can rotate on each axis, in degrees.
+	// How far the postcard can rotate on each axis, in degrees.
 	const MAX_TILT = 7;
 
-	// How far outside the ticket the cursor starts to tilt it, as a multiple of the ticket's height.
+	// How far outside the postcard the cursor starts to tilt it, as a multiple of the postcard's height.
 	const REACH = 0.6;
 
 	// How quickly the tilt catches up with the cursor, in seconds. Higher is smoother but laggier.
 	const SMOOTHING = 0.15;
 
-	// The pointer sets `target`; each frame `tilt` eases toward it so fast sweeps don't jolt the ticket.
+	// The pointer sets `target`; each frame `tilt` eases toward it so fast sweeps don't jolt the postcard.
 	let tilt = $state({ x: 0, y: 0 });
 	let target = { x: 0, y: 0 };
 	let frame = 0;
 	let lastTime = 0;
-	let ticketArea;
+	let postcardArea;
 
 	function setTarget(x, y) {
 		target = { x, y };
@@ -89,29 +85,29 @@
 	}
 
 	// Rotate so the point under the cursor tips away from the viewer. Outside the
-	// ticket the tilt aims at the nearest edge and fades out with distance, so it
+	// postcard the tilt aims at the nearest edge and fades out with distance, so it
 	// builds up as the cursor approaches instead of snapping on at the edge.
-	function tiltTicket(event) {
+	function tiltPostcard(event) {
 		if (event.pointerType !== 'mouse') return;
-		const box = ticketArea.getBoundingClientRect();
+		const box = postcardArea.getBoundingClientRect();
 		const px = (event.clientX - box.left) / box.width - 0.5;
 		const py = (event.clientY - box.top) / box.height - 0.5;
 		const dx = Math.max(box.left - event.clientX, 0, event.clientX - box.right);
 		const dy = Math.max(box.top - event.clientY, 0, event.clientY - box.bottom);
 		const t = Math.max(0, 1 - Math.hypot(dx, dy) / (box.height * REACH));
 		const strength = t * t * (3 - 2 * t);
-		if (strength === 0) return resetTicket();
+		if (strength === 0) return resetPostcard();
 		const clamp = (v) => Math.min(0.5, Math.max(-0.5, v));
 		setTarget(-clamp(py) * 2 * MAX_TILT * strength, clamp(px) * 2 * MAX_TILT * strength);
 	}
 
-	function resetTicket() {
+	function resetPostcard() {
 		if (target.x || target.y) setTarget(0, 0);
 	}
 
 	// relatedTarget is null when the pointer leaves the window entirely.
 	function leaveWindow(event) {
-		if (!event.relatedTarget) resetTicket();
+		if (!event.relatedTarget) resetPostcard();
 	}
 
 	// Photos of places on the route fade from one to the next on the right of
@@ -205,7 +201,7 @@
 	const tracks = [108, 324, 540, 756];
 
 	// People riding cars on the three left tracks (the fourth runs behind the
-	// ticket). Their pictures come from Cachet, Hack Club's cache of Slack
+	// postcard). Their pictures come from Cachet, Hack Club's cache of Slack
 	// avatars, by Slack ID; a rider without one yet gets an empty window.
 	const riders = [
 		{ name: 'Joaquin', slack: 'U083W5CCFDG' },
@@ -230,7 +226,7 @@
 	<meta name="description" content="Hack across Europe. 6 cities. 5 days. 30 teenagers." />
 </svelte:head>
 
-<svelte:window onpointermove={tiltTicket} onpointerout={leaveWindow} />
+<svelte:window onpointermove={tiltPostcard} onpointerout={leaveWindow} />
 
 <main class="page">
 	<!-- Positions are design pixels from the 1728x3060 Figma frame; --u scales them. -->
@@ -273,29 +269,13 @@
 			</div>
 		{/each}
 
-		<!-- Everything on the ticket is placed relative to the ticket so it can tilt as one piece. -->
-		<!-- The tilt is measured against this untransformed box, so the tilting ticket doesn't feed back into it. -->
-		<div class="abs" style="--x: 648.105; --y: 312.961; --w: 399.012; --h: 164.139" bind:this={ticketArea}>
-			<div
-				class="ticket abs"
-				style="--x: 0; --y: 0; --w: 399.012; --h: 164.139; --tilt-x: {tilt.x}deg; --tilt-y: {tilt.y}deg"
-			>
-				<div class="ticket-paper abs" style="--x: 0; --y: 0; --w: 399.012; --h: 164.139; --mask: url({ticketShape})">
-					<div class="abs" style="--x: -2.605; --y: -11.561; --w: 411.3; --h: 184.5; background: #e4d6d1"></div>
-					<div class="abs" style="--x: 268.295; --y: -21.461; --w: 199.8; --h: 207.9; background: #53758b"></div>
-					<img class="perforation abs" src={ticketPerforation} alt="" style="--x: 269.395; --y: 1.039; --w: 165.6; --h: 2" />
-					<img class="abs multiply faint" src={ticketPhoto} alt="" style="--x: -33.205; --y: -79.961; --w: 465.975; --h: 310.65" />
-					<img class="abs multiply faint opaque" src={bookdragonPattern} alt="" style="--x: -47.605; --y: -162.761; --w: 471.994; --h: 489.192" />
-					<p class="ticket-side abs" style="--x: 334.895; --y: 74.839; --w: 52.2; --h: 14.4">Admit One</p>
-					<p class="ticket-side abs" style="--x: 292.595; --y: 74.839; --w: 104.4; --h: 14.4">Leaving Paris, France</p>
-				</div>
-				<div class="outline abs" style="--x: 290.795; --y: 7.339; --w: 81; --h: 149.4; --border: 2; --radius: 2"></div>
-				<div class="outline abs" style="--x: 22.595; --y: 14.539; --w: 221.4; --h: 48.6; --border: 3; --radius: 4"></div>
-				<img class="abs" src={ticketCode} alt="" style="--x: 296.195; --y: 24.439; --w: 35.202; --h: 35.896" />
-				<img class="abs" src={ticketCode} alt="" style="--x: 296.195; --y: 64.039; --w: 35.202; --h: 35.896" />
-				<img class="abs" src={ticketCode} alt="" style="--x: 296.195; --y: 103.639; --w: 35.202; --h: 35.896" />
-				<p class="ticket-text centered" style="--x: 133.295; --y: 18.139; --w: 246.6; --size: 38">To Qualify:</p>
-				<p class="ticket-text centered" style="--x: 134.645; --y: 73.039; --w: 216.9; --size: 40">60 Hours Spent Creating</p>
+		<!-- The postcard, 390 wide (900 Figma pixels, so --pc is 390/900 of a design
+		     pixel), centred between the board and the tagline. It tilts toward the
+		     cursor; the tilt is measured against this untransformed box, so the
+		     tilting card doesn't feed back into it. -->
+		<div class="abs" style="--x: 657; --y: 263; --w: 390; --h: 260" bind:this={postcardArea}>
+			<div class="tilt" style="--tilt-x: {tilt.x}deg; --tilt-y: {tilt.y}deg; --pc: calc(var(--u) * 390 / 900)">
+				<Postcard />
 			</div>
 		</div>
 
@@ -337,12 +317,6 @@
 
 		<p class="doto centered nowrap below" style="--x: 856.5; --y: 3010; --size: 16"><a href="https://forms.hackclub.com/bounty" target="_blank">Fulfillment Bounty</a> + <a href="https://hackclub.com/privacy-and-terms" target="_blank">Privacy and Terms</a></p>
 	</div>
-
-	<svg class="filters" aria-hidden="true">
-		<filter id="opaque">
-			<feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0 1" />
-		</filter>
-	</svg>
 </main>
 
 <style>
@@ -422,67 +396,15 @@
 		white-space: nowrap;
 	}
 
-	.multiply {
-		mix-blend-mode: multiply;
-		object-fit: cover;
-	}
-
-	.faint {
-		opacity: 0.4;
-	}
-
-	/* Figma draws the pattern PNG as if it had no alpha channel; this matches it. */
-	.opaque {
-		filter: url(#opaque);
-	}
-
-	.filters {
-		position: absolute;
-		width: 0;
-		height: 0;
-	}
-
-	.ticket {
+	.tilt {
 		transform: perspective(calc(1000 * var(--u))) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
 		will-change: transform;
 	}
 
-	/* Every layer of the paper is clipped to the ticket's notched outline. */
-	.ticket-paper {
-		mask: var(--mask) 0 0 / 100% 100% no-repeat;
-	}
-
 	@media (prefers-reduced-motion: reduce) {
-		.ticket {
+		.tilt {
 			transform: none;
 		}
-	}
-
-	.perforation {
-		transform-origin: 0 0;
-		rotate: 90deg;
-	}
-
-	.ticket-side {
-		rotate: -90deg;
-		font-family: 'Playfair Display', serif;
-		font-size: calc(12 * var(--u));
-		line-height: normal;
-		color: #000;
-		overflow-wrap: break-word;
-	}
-
-	.outline {
-		border: calc(var(--border) * var(--u)) solid #000;
-		border-radius: calc(var(--radius) * var(--u));
-	}
-
-	.ticket-text {
-		font-family: 'Cute Font', sans-serif;
-		font-size: calc(var(--size) * var(--u));
-		line-height: calc(42 * var(--u));
-		color: #000;
-		overflow-wrap: break-word;
 	}
 
 	.doto {
