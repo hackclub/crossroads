@@ -17,6 +17,12 @@
 	import genoa from '#lib/assets/landing/route/genoa.webp';
 	import sanSalvatore from '#lib/assets/landing/route/san-salvatore.webp';
 	import brussels from '#lib/assets/landing/route/brussels.webp';
+	import outernetCoding from '#lib/assets/landing/events/outernet-coding.webp';
+	import outernetFlamethrower from '#lib/assets/landing/events/outernet-flamethrower.webp';
+	import outernetGroup from '#lib/assets/landing/events/outernet-group.webp';
+	import flagshipHands from '#lib/assets/landing/events/flagship-hands.webp';
+	import assembleWorkshop from '#lib/assets/landing/events/assemble-workshop.webp';
+	import assembleGroup from '#lib/assets/landing/events/assemble-group.webp';
 	import SplitFlapDisplay from '#lib/SplitFlapDisplay.svelte';
 	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
@@ -175,6 +181,23 @@
 		new Image().src = route[(photo + 1) % route.length].src;
 	});
 
+	// Photos of Hack Club events in the film strips' frames, from the press
+	// page (hackclub.com/press), cropped to the frames' shape. Each strip shows
+	// five frames, the first and last cut off by the screen's edges, so every
+	// photo gets a whole frame once and the cut-off ones repeat.
+	const shots = {
+		outernetCoding: { src: outernetCoding, alt: 'Teens coding at Outernet' },
+		outernetFlamethrower: { src: outernetFlamethrower, alt: 'Teens demonstrating a flame thrower at Outernet' },
+		outernetGroup: { src: outernetGroup, alt: 'Group photo at Outernet, our Summer 2023 hackathon' },
+		flagshipHands: { src: flagshipHands, alt: 'Teens with hands raised at Flagship' },
+		assembleWorkshop: { src: assembleWorkshop, alt: 'Teenager leading a workshop at Assemble' },
+		assembleGroup: { src: assembleGroup, alt: 'Group photo at Assemble, our Summer 2022 hackathon' }
+	};
+	const reels = [
+		[shots.assembleGroup, shots.outernetCoding, shots.flagshipHands, shots.assembleWorkshop, shots.outernetFlamethrower],
+		[shots.assembleWorkshop, shots.outernetFlamethrower, shots.outernetGroup, shots.assembleGroup, shots.outernetCoding]
+	];
+
 	// Straight tracks down the left of the first screen, under the logo's
 	// track, from the top of the window to the film strip: the x of each
 	// one's middle in design pixels, evenly spaced across the left half.
@@ -241,8 +264,14 @@
 		</p>
 
 		<!-- Film strips. .below moves them, and everything after them, with the height of the first screen. -->
-		<div class="film abs below" style="--x: 0; --y: 1111; --w: 1728; --h: 295.5"></div>
-		<div class="film abs below" style="--x: 0; --y: 2326; --w: 1728; --h: 295.5"></div>
+		{#each reels as reel, r}
+			<div class="film abs below" style="--x: 0; --y: {[1111, 2326][r]}; --w: 1728; --h: 295.5">
+				{#each reel as shot, i}
+					<!-- The cut-off frames at the ends repeat photos, so only the whole ones are described. -->
+					<img class="shot" src={shot.src} alt={i === 0 || i === 4 ? '' : shot.alt} style="--x: {691 + 404 * (i - 2)}" />
+				{/each}
+			</div>
+		{/each}
 
 		<!-- Everything on the ticket is placed relative to the ticket so it can tilt as one piece. -->
 		<!-- The tilt is measured against this untransformed box, so the tilting ticket doesn't feed back into it. -->
@@ -517,6 +546,19 @@
 	/* One frame of film, repeated across the page and centred on it. */
 	.film {
 		background: url('../lib/assets/landing/film.svg') center top / calc(404 * var(--u)) 100% repeat-x;
+	}
+
+	/* A photo in one of film.svg's frames: 346 by 202 with round corners, 43
+	   down from the top of the strip, one every 404 with the middle one
+	   centred on the page. */
+	.shot {
+		position: absolute;
+		left: calc(var(--x) * var(--u));
+		top: calc(43 * var(--u));
+		width: calc(346 * var(--u));
+		height: calc(202 * var(--u));
+		border-radius: calc(20 * var(--u));
+		object-fit: cover;
 	}
 
 	/* From under Get Started down to the film strip, however far that is:
