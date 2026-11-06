@@ -3,7 +3,7 @@
 	import { api, get } from '#lib/api.js';
 	import { session, refresh } from '#lib/session.svelte.js';
 	import { stampHours } from '#lib/format.js';
-	import Train from '#lib/Train.svelte';
+	import Station from '#lib/Station.svelte';
 	import StampIcon from '#lib/StampIcon.svelte';
 
 	let items = $state([]);
@@ -124,7 +124,8 @@
 	{#if ticket}
 		{@const short = ticket.price - stamps}
 		{@const pct = Math.min(Math.max(stamps / ticket.price, 0), 1) * 100}
-		<Train labelledby="ticket-name">
+		<!-- The ticket is a car of the train in the layout. -->
+		<Station name="shop">
 		<div class="ticket">
 				<div class="stack-sm">
 					<span class="kind">The trip</span>
@@ -186,7 +187,7 @@
 					{/if}
 				</div>
 		</div>
-		</Train>
+		</Station>
 	{/if}
 
 	<section class="stack">
@@ -332,7 +333,7 @@
 	.addr-form input { font-size: 22px; }
 	.addr-form input:nth-child(-n + 3) { grid-column: 1 / -1; }
 
-	/* The ticket rides the train, like the home hero; Train draws the car. */
+	/* The ticket car of the long train; RailTrain draws the car. */
 	.ticket {
 		display: grid;
 		grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);

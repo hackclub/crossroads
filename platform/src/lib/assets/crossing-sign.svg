@@ -1,0 +1,17 @@
+<svg width="443" height="443" viewBox="0 0 443 443" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Group 2">
+<g id="Ellipse 3">
+<circle cx="221.5" cy="221.5" r="221.5" fill="#EDBF2A"/>
+<circle cx="221.5" cy="221.5" r="221.5" fill="#EDBF2A"/>
+</g>
+<g id="Ellipse 2">
+<circle cx="221.5" cy="221.5" r="210.5" fill="#EDBF2A"/>
+<circle cx="221.5" cy="221.5" r="210.5" fill="#EDBF2A"/>
+<circle cx="221.5" cy="221.5" r="210.5" stroke="black" stroke-width="10"/>
+</g>
+<rect id="Rectangle 7" x="56.6672" y="356.001" width="423.302" height="42.8957" rx="8" transform="rotate(-45 56.6672 356.001)" fill="black"/>
+<rect id="Rectangle 8" width="423.302" height="42.8957" rx="8" transform="matrix(-0.707107 -0.707107 -0.707107 0.707107 386.319 356.001)" fill="black"/>
+<path id="H" d="M89.7073 214.171V182.951H105.317V261H89.7073V229.78H67.8537V261H52.2439V182.951H67.8537V214.171H89.7073Z" fill="black"/>
+<path id="H_2" d="M373.707 214.171V182.951H389.317V261H373.707V229.78H351.854V261H336.244V182.951H351.854V214.171H373.707Z" fill="black"/>
+</g>
+</svg>

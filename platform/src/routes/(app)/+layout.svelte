@@ -6,9 +6,13 @@
 	import { session, refresh } from '#lib/session.svelte.js';
 	import TopBar from '#lib/TopBar.svelte';
 	import DevPanel from '#lib/DevPanel.svelte';
+	import RailTrain from '#lib/RailTrain.svelte';
+	import { STATIONS } from '#lib/rail.svelte.js';
 
 	let { children } = $props();
 	let error = $state('');
+	// Home, Shop and Boxes share one long train (see RailTrain.svelte).
+	const station = $derived(STATIONS.includes(page.url.pathname) ? page.url.pathname : null);
 
 	onMount(async () => {
 		try {
@@ -24,6 +28,7 @@
 		<main class="main"><p class="callout warn">Couldn't reach the backend: {error} Is it running on :8080?</p></main>
 	{:else if session.me}
 		<TopBar />
+		{#if station}<RailTrain at={station} />{/if}
 		<main class="main">
 			{@render children()}
 		</main>

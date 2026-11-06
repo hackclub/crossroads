@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { api, get } from '#lib/api.js';
 	import { date, effectShort } from '#lib/format.js';
+	import { rail } from '#lib/rail.svelte.js';
 
 	let boxes = $state([]);
 	let types = $state([]);
@@ -29,6 +30,7 @@
 		opening = box.id;
 		try {
 			dropped = await api('POST', `/boxes/${box.id}/open`);
+			rail.stampsVersion++; // the stamp car in the train shows the new stamp
 			await load();
 		} catch (e) {
 			error = e.message;
@@ -95,27 +97,8 @@
 		{/each}
 	</section>
 
-	<section class="stack">
-		<h2>Your special stamps ({stamps.length})</h2>
-		{#if stamps.length}
-			<!-- A stamp album: each stamp you own, with what it does. -->
-			<ul class="album">
-				{#each stamps as s}
-					<li class="card owned" class:used={s.submission_id && !s.project_id}>
-						{#if s.type.image_url}<img src={s.type.image_url} alt="" />{:else}<span class="blank" aria-hidden="true"></span>{/if}
-						<strong>{s.type.name}</strong>
-						<span class="small muted">{s.type.rarity} · {effectShort(s.type.effect)}</span>
-						{#if s.project_id}<a class="small" href="/projects/{s.project_id}">On a project</a>
-						{:else if s.submission_id}<span class="small">Used on a ship</span>
-						{:else}<span class="small">In your stamp box</span>{/if}
-					</li>
-				{/each}
-			</ul>
-		{:else}
-			<p class="muted small">None yet.</p>
-		{/if}
-		{#if opened.length}<p class="small muted">Opened boxes: {opened.map((b) => `${typeName(b.box_type_id)} → ${stampName(b.special_stamp_id)}`).join(' · ')}</p>{/if}
-	</section>
+	<!-- Your stamps are in the last car of the train, above. -->
+	{#if opened.length}<p class="small muted">Opened boxes: {opened.map((b) => `${typeName(b.box_type_id)} → ${stampName(b.special_stamp_id)}`).join(' · ')}</p>{/if}
 </div>
 
 <style>
@@ -124,16 +107,4 @@
 	.named { display: inline-flex; align-items: center; gap: 10px; }
 	.thumb { height: 40px; width: auto; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.5)); }
 	.thumb-blank { width: 34px; height: 40px; border: 1px dashed var(--head); border-radius: 3px; }
-	.album {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-		gap: 16px;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-	}
-	.owned { align-items: center; gap: 6px; padding: 18px 16px; text-align: center; }
-	.owned img, .owned .blank { height: 150px; width: auto; margin-bottom: 6px; filter: drop-shadow(0 2px 6px rgb(0 0 0 / 0.5)); }
-	.owned .blank { width: 120px; border: 2px dashed var(--head); border-radius: 6px; filter: none; }
-	.owned.used img { filter: grayscale(0.7) brightness(0.8) drop-shadow(0 2px 6px rgb(0 0 0 / 0.5)); }
 </style>

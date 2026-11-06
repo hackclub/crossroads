@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { get } from '#lib/api.js';
 	import { session } from '#lib/session.svelte.js';
-	import Train from '#lib/Train.svelte';
+	import Station from '#lib/Station.svelte';
 	import StampIcon from '#lib/StampIcon.svelte';
 	import { hours, approvedSeconds, projectStatus, GOAL_HOURS } from '#lib/format.js';
 
@@ -61,7 +61,8 @@
 <div class="stack-lg">
 	{#if error}<p class="callout warn">{error}</p>{/if}
 
-	<Train label="Your progress">
+	<!-- The dashboard is the front car of the train in the layout. -->
+	<Station name="home">
 		<div class="home-hero">
 			<div class="stack">
 				<h1>Hi {first}!</h1>
@@ -87,7 +88,7 @@
 				</div>
 			</div>
 		</div>
-	</Train>
+	</Station>
 
 	{#if hackatimeError}
 		<section class="callout warn" role="alert">
@@ -125,7 +126,7 @@
 </div>
 
 <style>
-	/* The "Hi Max!" car from the Figma home frame; Train draws the car. */
+	/* The "Hi Max!" car from the Figma home frame; RailTrain draws the car. */
 	.home-hero {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

@@ -127,7 +127,7 @@ img { max-width: 100%; }
 	text-decoration: none;
 	white-space: nowrap;
 }
-.topbar .brand img { width: max(34px, calc(60 * var(--u))); height: auto; border-radius: 22%; }
+.topbar .brand img { width: max(38px, calc(68 * var(--u))); height: auto; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.6)); }
 .topbar .nav {
 	font-size: max(20px, calc(48 * var(--u)));
 	text-decoration: none;
