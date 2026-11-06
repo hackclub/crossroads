@@ -214,15 +214,13 @@
 				</div>
 			{/key}
 		</div>
-		<div class="destination">
-			<div aria-hidden="true">
-				<SplitFlapDisplay text={route[photo].place} columns={13} size="sm" centered lowercase />
-			</div>
-			<p class="doto credit" style="--size: 14">
-				Photo: <a href={route[photo].page} target="_blank" rel="noopener">{route[photo].author}</a>,
-				<a href={route[photo].licenseUrl} target="_blank" rel="noopener">{route[photo].license}</a>
-			</p>
+		<div class="destination" aria-hidden="true">
+			<SplitFlapDisplay text={route[photo].place} columns={13} size="sm" centered lowercase />
 		</div>
+		<p class="doto credit" style="--size: 11">
+			Photo: <a href={route[photo].page} target="_blank" rel="noopener">{route[photo].author}</a>,
+			<a href={route[photo].licenseUrl} target="_blank" rel="noopener">{route[photo].license}</a>
+		</p>
 
 		<!-- Film strips are baked from Figma's shader; the left ones include the effect's bleed past the strip. -->
 		<!-- .below moves them, and everything after them, with the height of the first screen. -->
@@ -550,20 +548,24 @@
 	}
 
 	/* The current photo's place, on a small board in the panel's bottom right
-	   corner, with its credit underneath: 48 in from the edge and 32 above the
-	   film strip. Not inside the panel, so it's at full strength. */
+	   corner: 48 in from the edge and 24 above the film strip. Not inside the
+	   panel, so it's at full strength. */
 	.destination {
 		position: absolute;
 		right: calc(48 * var(--u));
-		top: calc(var(--screen) - 179.75 * var(--u));
+		top: calc(var(--screen) - 171.75 * var(--u));
 		translate: 0 -100%;
 		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-		gap: calc(8 * var(--u));
 	}
 
+	/* The photo's credit, which its licence asks for: sitting on the top of
+	   the film strip, 12 in from the right edge. */
 	.credit {
+		position: absolute;
+		right: calc(12 * var(--u));
+		top: calc(var(--screen) - 151.75 * var(--u));
+		translate: 0 -100%;
+		margin: 0;
 		opacity: 0.7;
 		white-space: nowrap;
 	}
