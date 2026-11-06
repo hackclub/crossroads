@@ -2,12 +2,8 @@
 	// The public landing page, from the 1728x3060 Figma frame ("MacBook Pro 16\" - 6" in
 	// crossroads-draft). Positions are design pixels; --u scales them to the viewport, and
 	// below about 780px wide the page stops shrinking and crops the sides instead.
-	// The film-*.png strips are baked from Figma's film shader at 2x; re-export them from
-	// Figma if the design changes. "Get Started" goes to /signin.
-	import filmTopLeft from '#lib/assets/landing/film-top-left.png';
-	import filmTopRight from '#lib/assets/landing/film-top-right.png';
-	import filmBottomLeft from '#lib/assets/landing/film-bottom-left.png';
-	import filmBottomRight from '#lib/assets/landing/film-bottom-right.png';
+	// The film strips are film.svg, redrawn from the Figma strip without its colour bleed.
+	// "Get Started" goes to /signin.
 	import ticketShape from '#lib/assets/landing/ticket-shape.svg';
 	import ticketPerforation from '#lib/assets/landing/ticket-perforation.svg';
 	import ticketPhoto from '#lib/assets/landing/ticket-photo.jpg';
@@ -244,12 +240,9 @@
 			<a href={route[photo].licenseUrl} target="_blank" rel="noopener">{route[photo].license}</a>
 		</p>
 
-		<!-- Film strips are baked from Figma's shader; the left ones include the effect's bleed past the strip. -->
-		<!-- .below moves them, and everything after them, with the height of the first screen. -->
-		<img class="abs below" src={filmTopRight} alt="" style="--x: 640; --y: 1113; --w: 1088; --h: 295.5" />
-		<img class="abs below" src={filmBottomRight} alt="" style="--x: 637; --y: 2328; --w: 1091; --h: 295.5" />
-		<img class="abs below" src={filmTopLeft} alt="" style="--x: 0; --y: 1111; --w: 1094; --h: 295.5" />
-		<img class="abs below" src={filmBottomLeft} alt="" style="--x: 0; --y: 2326; --w: 1091; --h: 295.5" />
+		<!-- Film strips. .below moves them, and everything after them, with the height of the first screen. -->
+		<div class="film abs below" style="--x: 0; --y: 1111; --w: 1728; --h: 295.5"></div>
+		<div class="film abs below" style="--x: 0; --y: 2326; --w: 1728; --h: 295.5"></div>
 
 		<!-- Everything on the ticket is placed relative to the ticket so it can tilt as one piece. -->
 		<!-- The tilt is measured against this untransformed box, so the tilting ticket doesn't feed back into it. -->
@@ -301,7 +294,7 @@
 
 		<h2 class="doto centered below" style="--x: 875.5; --y: 1450; --w: 803; --size: 32">What is Hack Club Crossroads?</h2>
 		<p class="doto centered below" style="--x: 877.5; --y: 1510; --w: 803; --size: 24">
-			Crossroads is a <a href="https://hackclub.com" target="_blank" rel="noopener">Hack Club</a> Event running in February 2027
+			Crossroads is a <a href="https://hackclub.com" target="_blank" rel="noopener">Hack Club</a> event running in February 2027
 			where a group of 30 teens build projects for 65 hours, then travel by train across Europe together.
 			Everything (including train passes, food and accommodation) is totally free for teenagers who qualify by building a
 			project. Can't come? We're also providing funding and prizes for every teen who ships a technical project.
@@ -313,7 +306,7 @@
 			<span class="doto centered" style="--x: 114; --y: 15; --size: 32">Get Started</span>
 		</a>
 
-		<p class="doto centered nowrap below" style="--x: 856.5; --y: 3010; --size: 16">Fuffilment Bounty + Privacy and Terms</p>
+		<p class="doto centered nowrap below" style="--x: 856.5; --y: 3010; --size: 16"><a href="https://forms.hackclub.com/bounty" target="_blank">Fulfillment Bounty</a> + <a href="https://hackclub.com/privacy-and-terms" target="_blank">Privacy and Terms</a></p>
 	</div>
 
 	<svg class="filters" aria-hidden="true">
@@ -519,6 +512,11 @@
 
 	.line {
 		rotate: var(--angle);
+	}
+
+	/* One frame of film, repeated across the page and centred on it. */
+	.film {
+		background: url('../lib/assets/landing/film.svg') center top / calc(404 * var(--u)) 100% repeat-x;
 	}
 
 	/* From under Get Started down to the film strip, however far that is:
