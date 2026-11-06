@@ -139,7 +139,8 @@ Unknown fields in a request body are rejected with `400`, which catches typos ea
 ### Participant home
 
 - `GET /api/me` gives their name, `stamps` and verification status.
-- **Progress to the ticket:** find the item with `kind: "ticket"` in `GET /api/shop/items`; progress is `me.stamps / ticket.price`. Spending stamps on other things pushes the ticket further away, which is intended.
+- **Progress to the ticket:** find the item with `kind: "ticket"` in `GET /api/shop/items`; progress is `me.stamps / ticket.price`. Its price goes up as batches sell (or stays at their price lock), so read it rather than assuming 1,800. Spending stamps on other things pushes the ticket further away, which is intended.
+- **Hours:** `me.stamps_per_hour` turns any price into approved hours.
 - **Already have a ticket:** some order in `GET /api/orders` has `item.kind === "ticket"` and a status other than `"cancelled"`.
 - **Total approved hours:** add up `approved_seconds` over `GET /api/projects`.
 
@@ -195,7 +196,7 @@ Everything under `/api/admin` (ROUTES.md has the details). Before launch, an adm
 2. **Special stamp types:** at least one unlimited collectible, plus capped ones like a priority-review stamp.
 3. **Box types:** create one, then `PUT .../drops`. At least one drop has to be unlimited.
 4. **Milestones:** for example `{"name": "First 10 hours", "approved_seconds": 36000, "box_type_id": 1}`. People already past it get the box immediately.
-5. **Shop items:** the ticket (`kind: "ticket"`, price 1,800 at 30 stamps an hour for 60 hours), physical items (set `stock` if limited), and stipends (`stipend_cents`).
+5. **Shop items:** the ticket (`kind: "ticket"`, price 1,800 at 30 stamps an hour for 60 hours; stock 30 in batches of 6, each 150 more, so 60 hours up to 80), the price lock (`kind: "price_lock"`, price 150, 5 hours' worth), physical items (set `stock` if limited), and stipends (`stipend_cents`).
 
 Orders can be fulfilled from the admin API or by ticking **Fulfilled** in Airtable's Shop Orders table. Cancel through the API so stamps are refunded.
 
@@ -212,7 +213,6 @@ curl -b 'crossroads_session=PASTE_IT_HERE' -H 'Content-Type: application/json' \
 Things a frontend might expect that aren't there. Each is small to add (see the recipe in INTERNALS.md).
 
 - **Milestones aren't visible to participants.** Only admins can list them, so there's no "next box at 10 hours" yet.
-- **The stamps-per-hour rate isn't exposed.** For now it's the ticket price divided by 60.
 - **`/api/me` doesn't include their address or birthday,** so the shop can't show which address an order will ship to by default.
 - **No live updates.** Nothing is pushed; reload or poll.
 - **No pagination.** Lists return everything, which is fine at this event's size. Admin user search returns at most 50.

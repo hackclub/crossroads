@@ -104,6 +104,9 @@ func main() {
 		HoursStart:    hoursStart,
 	}
 
+	// Price locks are refunded if the tickets sell out before they're used.
+	go apiRoutes.RunPriceLockRefunds(ctx, 10*time.Minute)
+
 	// Each project's Hackatime time per day, for the admin activity page.
 	poller := &activity.Poller{Pool: pool, Queries: db.New(pool), Hackatime: apiRoutes.Hackatime, Start: hoursStart}
 	go poller.Run(ctx, 30*time.Minute)

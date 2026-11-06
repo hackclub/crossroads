@@ -124,6 +124,12 @@ insert into shop_items (kind, name, description, price, stipend_cents, stock, ma
     ('stipend', 'Travel stipend', 'Help getting to Paris, sent before the trip.', 300, 5000, null, 4, true),
     ('physical', 'Early-bird pin', 'Only for the first week. Sold out.', 90, null, 0, 1, false);
 
+-- The ticket sells in five batches of six, from 60 hours' worth up to 80, and
+-- a price lock costs 5 hours' worth.
+update shop_items set batch_size = 6, batch_step = 150 where kind = 'ticket';
+insert into shop_items (kind, name, description, price, max_per_user) values
+    ('price_lock', 'Price lock', 'Keep the ticket at the price it is now, however many batches sell before you buy.', 150, 1);
+
 -- Projects. Everything shipped has every field filled in, as shipping requires.
 insert into projects (user_id, name, description, repo_url, demo_url, screenshot_url, created_at)
 select pg_temp.uid(owner), name, description,

@@ -263,21 +263,27 @@ func RequireRole(roles ...db.UserRole) func(http.Handler) http.Handler {
 	}
 }
 
+// MeJSON is the signed-in user, as GET /api/me shows them.
+type MeJSON struct {
+	ID                 int64       `json:"id"`
+	Name               string      `json:"name"`
+	Email              string      `json:"email"`
+	SlackID            *string     `json:"slack_id"`
+	Role               db.UserRole `json:"role"`
+	Stamps             int32       `json:"stamps"`
+	VerificationStatus string      `json:"verification_status"`
+	YSWSEligible       bool        `json:"ysws_eligible"`
+	// Where physical items ship by default; null if Hack Club Auth has none.
+	Address json.RawMessage `json:"address"`
+}
+
+func ToMeJSON(user *db.User) MeJSON {
+	return MeJSON{user.ID, user.Name, user.Email, user.SlackID, user.Role, user.Stamps, user.VerificationStatus, user.YswsEligible, nullableJSON(user.Address)}
+}
+
 // Me responds with the signed-in user. Wrap it in RequireUser.
 func Me(w http.ResponseWriter, r *http.Request) {
-	user := User(r.Context())
-	respond.JSON(w, http.StatusOK, struct {
-		ID                 int64       `json:"id"`
-		Name               string      `json:"name"`
-		Email              string      `json:"email"`
-		SlackID            *string     `json:"slack_id"`
-		Role               db.UserRole `json:"role"`
-		Stamps             int32       `json:"stamps"`
-		VerificationStatus string      `json:"verification_status"`
-		YSWSEligible       bool        `json:"ysws_eligible"`
-		// Where physical items ship by default; null if Hack Club Auth has none.
-		Address json.RawMessage `json:"address"`
-	}{user.ID, user.Name, user.Email, user.SlackID, user.Role, user.Stamps, user.VerificationStatus, user.YswsEligible, nullableJSON(user.Address)})
+	respond.JSON(w, http.StatusOK, ToMeJSON(User(r.Context())))
 }
 
 // nullableJSON turns a missing jsonb value into a JSON null.

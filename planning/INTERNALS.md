@@ -67,7 +67,7 @@ Responses always use explicit JSON structs with `snake_case` tags. Never return 
 | `milestones` | Approved seconds → box type. |
 | `boxes` | Boxes people have, from a milestone or an admin; `opened_at`. |
 | `special_stamps` | Stamps people have, from a box or an admin; `submission_id` once used. |
-| `shop_items` | `kind` (`ticket`, `physical`, `stipend`), `price`, optional `stock` and `max_per_user`, `stipend_cents`, `active`. |
+| `shop_items` | `kind` (`ticket`, `price_lock`, `physical`, `stipend`), `price`, optional `stock` and `max_per_user`, `stipend_cents`, `active`. Tickets can have `batch_size` and `batch_step`. |
 | `project_activity` | Each project's Hackatime `seconds` per UTC `day`, written by the activity poller. Only days with time have rows. |
 | `platform_activity` | `(user_id, day)` for each UTC day a person made a signed-in request, written by `activity.Visits`. |
 | `orders` | `price` as paid, `status` (`pending`, `fulfilled`, `cancelled`), `shipping_address`, admin `notes`, Airtable bookkeeping. |
@@ -159,10 +159,17 @@ The queue puts submissions with a priority-review special stamp first, then olde
 2. Lock the buyer's `users` row, then the item.
 3. Fill in the shipping address from `users.address` if none was sent.
 4. Check `max_per_user`, stock, and the balance (only for a friendlier message).
-5. Create the order, then the purchase ledger entry. The ledger trigger is the real guard against overspending.
-6. Take one from stock.
+5. Work out the price (tickets and price locks, below).
+6. Create the order, then the purchase ledger entry. The ledger trigger is the real guard against overspending.
+7. Take one from stock.
 
 Orders keep the price paid. Admins can move a pending order to `fulfilled`, or to `cancelled`, which refunds the stamps and restocks the item.
+
+**Ticket batches and price locks** (`api/tickets.go`). A ticket with `batch_size` and `batch_step` costs `price + batch_step × floor(sold / batch_size)`, where `sold` counts its orders that weren't cancelled. That's counted under the ticket's row lock, so buyers at the same moment each get the right batch. A cancelled ticket goes back on sale, so it can bring the price back down a batch.
+
+A price lock is its own shop item. Buying one locks the ticket's row too (after the lock item's) to read the batch on sale, and saves that price as `orders.locked_price`. A lock order starts `fulfilled`, since there's nothing to send, so it never sits in the fulfilment queue. Buying the ticket then costs the lower of the batch on sale and their lock. Locks are refused once someone has a ticket, once the tickets are sold out, and on the last batch, where the price can't go up.
+
+A lock doesn't hold a ticket. When the tickets sell out, `RefundPriceLocks` cancels and refunds every lock whose holder has no ticket, each in its own transaction that locks the holder first. It runs right after the last ticket is bought, and every 10 minutes from `main.go`, which also catches an admin setting the stock to 0. Price lock orders aren't copied to Airtable.
 
 ## Signing in
 
@@ -211,7 +218,8 @@ Anything that changes a person's stamps, links or submissions locks their `users
 
 - projects: user → project → special stamp
 - reviewing: user → submission (the ledger trigger updates the same user row)
-- buying: user → shop item
+- buying: user → shop item (a price lock: user → price lock item → ticket)
+- refunding a price lock: user → order
 - cancelling an order: order → user (through the ledger) → shop item
 - opening a box: box → special stamp type
 
@@ -241,7 +249,7 @@ Say, letting participants see milestones (`GET /api/milestones`):
 Settled with the organizer while building this (Nov 3 and 4, 2026):
 
 - **Postgres as the source of truth, synced one way to Airtable.** The shop needs transactions so nobody can spend the same stamps twice, and Airtable has none (and a limit of 5 requests a second).
-- **Rates and qualifying:** 30 stamps per approved hour. The ticket costs 60 hours' worth (1,800). Qualifying means buying the ticket, so spending stamps on other things delays it.
+- **Rates and qualifying:** 30 stamps per approved hour. The ticket costs 60 hours' worth (1,800) in its first batch, then 5 hours more for each batch of 6 after that, up to 80 hours for the last of the 30. A price lock costs 5 hours' worth and is on top of the ticket, so it pays off only if the price would have gone up two batches or more (decided 2026-11-06). Qualifying means buying the ticket, so spending stamps on other things delays it.
 - **Hours count from midnight UTC on Nov 3 2026, and only approved hours count,** totaled across all of a person's projects.
 - **Verification:** submitting doesn't need Hack Club Auth verification. Buying needs a verified identity that HCA says is YSWS-eligible.
 - **Milestones count approved hours, not raw Hackatime hours,** so they can't be farmed. The catch is that the first box only arrives after the first approval.
@@ -263,7 +271,6 @@ Settled with the organizer while building this (Nov 3 and 4, 2026):
 
 - **Frontend-facing:**
   - participants can't list milestones
-  - the stamps-per-hour rate isn't exposed
   - `/api/me` doesn't include the address on file
   - there are no live updates and no pagination
 - **Cross-site deployment** would need CORS with credentials, `SameSite=None` cookies and CSRF tokens. Today it relies on being same-origin, plus `SameSite=Lax` and JSON bodies.

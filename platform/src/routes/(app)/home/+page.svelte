@@ -8,6 +8,7 @@
 	let projects = $state(null);
 	let details = $state({}); // project id → GET /projects/{id}, for unshipped time
 	let boxes = $state([]);
+	let ticket = $state(null);
 	let hackatimeError = $state('');
 	let error = $state('');
 	let innerWidth = $state(1440);
@@ -19,6 +20,10 @@
 			error = e.message;
 			return;
 		}
+		// The bar's goal is what their ticket costs now, which goes up in batches.
+		get('/shop/items')
+			.then((items) => (ticket = items.find((i) => i.kind === 'ticket') ?? null))
+			.catch(() => {});
 		// Check Hackatime early: nothing else works until it can be read.
 		get('/hackatime/projects').catch((e) => (hackatimeError = e.message));
 		// Unshipped time needs each project's live Hackatime numbers.
@@ -38,11 +43,12 @@
 	);
 	const unshippedH = $derived(Object.values(details).reduce((t, d) => t + (d.unsubmitted_seconds ?? 0), 0) / 3600);
 
-	const pct = (h) => Math.min((h / GOAL_HOURS) * 100, 100);
+	const goal = $derived(ticket ? ticket.price / session.me.stamps_per_hour : GOAL_HOURS);
+	const pct = (h) => Math.min((h / goal) * 100, 100);
 	const fmt = (h) => (Number.isInteger(h) ? h : h.toFixed(1)) + 'H';
 	const ticks = $derived(
 		[approvedH, approvedH + reviewH, approvedH + reviewH + unshippedH]
-			.filter((h, i, a) => h > 0 && h < GOAL_HOURS - 4 && a.indexOf(h) === i)
+			.filter((h, i, a) => h > 0 && h < goal - 4 && a.indexOf(h) === i)
 			.map((h) => ({ h, left: pct(h) }))
 			// Drop a tick that would print on top of the one before it.
 			.filter((t, i, a) => i === 0 || t.left - a[i - 1].left >= (innerWidth < 820 ? 16 : 7))
@@ -66,9 +72,9 @@
 			<div class="stack-sm hours">
 				<div class="hours-ticks" aria-hidden="true">
 					{#each ticks as t}<span style="left: {t.left}%">{fmt(t.h)}</span>{/each}
-					<span class="goal">{GOAL_HOURS}H</span>
+					<span class="goal">{fmt(goal)}</span>
 				</div>
-				<div class="hours-bar" role="img" aria-label="{fmt(approvedH)} approved, {fmt(reviewH)} in review, {fmt(unshippedH)} not shipped, of {GOAL_HOURS}H">
+				<div class="hours-bar" role="img" aria-label="{fmt(approvedH)} approved, {fmt(reviewH)} in review, {fmt(unshippedH)} not shipped, of {fmt(goal)}">
 					<span class="unshipped" style="width: {pct(approvedH + reviewH + unshippedH)}%"></span>
 					<span class="review" style="width: {pct(approvedH + reviewH)}%"></span>
 					<span class="approved" style="width: {pct(approvedH)}%"></span>

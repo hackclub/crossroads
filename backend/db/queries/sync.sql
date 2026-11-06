@@ -16,12 +16,15 @@ limit 100;
 update submissions set airtable_record_id = $2 where id = $1;
 
 -- name: ListOrdersToSync :many
--- Orders that are new or have changed since they were last copied.
+-- Orders that are new or have changed since they were last copied. Price
+-- locks stay out: there's nothing to send, and the ticket order says what
+-- was paid.
 select sqlc.embed(orders), sqlc.embed(shop_items), sqlc.embed(users)
 from orders
 join shop_items on shop_items.id = orders.shop_item_id
 join users on users.id = orders.user_id
-where orders.airtable_synced_at is null or orders.updated_at > orders.airtable_synced_at
+where (orders.airtable_synced_at is null or orders.updated_at > orders.airtable_synced_at)
+    and shop_items.kind <> 'price_lock'
 order by orders.id
 limit 100;
 

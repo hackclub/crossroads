@@ -38,7 +38,7 @@ type Role = "participant" | "reviewer" | "admin";
 type SubmissionStatus = "pending" | "approved" | "rejected";
 type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 type Effect = "none" | "priority_review";
-type ShopItemKind = "ticket" | "physical" | "stipend";
+type ShopItemKind = "ticket" | "price_lock" | "physical" | "stipend";
 type OrderStatus = "pending" | "fulfilled" | "cancelled";
 
 interface Me {
@@ -51,6 +51,7 @@ interface Me {
   verification_status: string; // "needs_submission" | "pending" | "verified" | "ineligible"
   ysws_eligible: boolean;
   address: Address | null; // from Hack Club Auth; where physical items ship by default
+  stamps_per_hour: number; // stamps paid per approved hour, for showing prices in hours
 }
 
 interface Project {
@@ -134,13 +135,24 @@ interface ShopItem {
   name: string;
   description: string;
   image_url: string | null;
-  price: number;                // stamps
+  price: number;                // stamps; for a ticket in GET /api/shop/items, what they'd pay now (see below)
   stipend_cents: number | null; // stipends only
   stock: number | null;         // left in stock; null is unlimited
-  max_per_user: number | null;  // null is unlimited; tickets are always 1
+  max_per_user: number | null;  // null is unlimited; tickets and price locks are always 1
   active: boolean;
   position: number;             // order in the shop: lower first, ties cheapest first
+  batch_size: number | null;    // tickets sold in batches: how many in each
+  batch_step: number | null;    // and how many stamps more each batch costs than the one before
+  batches: Batches | null;      // tickets sold in batches only
   bought: number;               // how many the signed-in person has (0 on admin routes)
+  locked_price: number | null;  // tickets: the price they locked in with a price lock (null on admin routes)
+}
+
+interface Batches {
+  size: number;          // tickets in each batch
+  prices: number[];      // each batch's price, first to last
+  current: number;       // the batch on sale, as an index into prices; the last once sold out
+  left_in_batch: number; // how many are left at the current price
 }
 
 interface Address {
@@ -159,6 +171,7 @@ interface Order {
   price: number;
   status: OrderStatus;
   shipping_address: Address | null; // physical items only
+  locked_price: number | null;       // price locks only: the ticket price it locked in
   created_at: string;
   updated_at: string;
 }
@@ -391,6 +404,10 @@ Rolls a special stamp from the box's type, among the stamp types that still have
 
 `200` → `ShopItem[]`: active items only, by `position` then cheapest first, each with how many they've `bought`. The event ticket is the item with `kind: "ticket"`.
 
+**Ticket batches.** A ticket with `batches` sells in batches: the first `batch_size` cost the first price, and each batch after costs `batch_step` more. The next batch goes on sale when one sells out, and `stock` counts what's left across all of them. The ticket's `price` here is what the signed-in person would pay now: the batch on sale, or their `locked_price` if that's lower.
+
+**Price locks.** The item with `kind: "price_lock"` fixes their ticket at the price of the batch on sale when they buy it, for whenever they buy the ticket. It's on top of the ticket's price, it doesn't hold a ticket, and it's one per person. If the tickets sell out before they buy one, the lock is cancelled and its stamps refunded automatically.
+
 ### `POST /api/shop/items/{id}/orders`
 
 Buys one. For physical items, the body can give a shipping address:
@@ -408,7 +425,7 @@ If it's left out, the address they gave Hack Club Auth is used. Name, `line_1`, 
 
 Buying needs a verified identity that Hack Club Auth says is eligible for YSWS programs. If what was saved at sign-in doesn't say that, the backend asks Hack Club Auth again first.
 
-`201` → `Order` (status `pending`). Their stamps go down by `price` straight away.
+`201` → `Order` (status `pending`; a price lock is `fulfilled` straight away, with its `locked_price`). Their stamps go down by `price` straight away.
 
 | Status | When |
 |---|---|
@@ -417,6 +434,7 @@ Buying needs a verified identity that Hack Club Auth says is eligible for YSWS p
 | 404 | No such item, or it's inactive |
 | 422 | A physical item with no address (and none on file), an incomplete address, or an address on a non-physical item |
 | 409 | Already have a ticket, already have `max_per_user` of it, or sold out |
+| 409 | Price locks: already have one, already have a ticket, the ticket's price doesn't change, the tickets are sold out, or the last batch is on sale (the price can't go up) |
 | 422 | Not enough stamps ("That costs 1800 stamps and you have 1500, so you need 300 more.") |
 
 ### `GET /api/orders`
@@ -597,7 +615,7 @@ interface Milestone { id: number; name: string; approved_seconds: number; box_ty
   "price": 1800, "stipend_cents": null, "stock": null, "max_per_user": 1, "active": true }
 ```
 
-`kind`, `name` and `price` are required. Stipends need `stipend_cents`, and nothing else can have it. Tickets are always one per person (`max_per_user` defaults to 1 for them, and anything else is rejected). `stock`, `max_per_user` and `image_url` are *nullable* (null = unlimited / none). `active` defaults to true and `position` to 0. → `201 ShopItem`.
+`kind`, `name` and `price` are required. Stipends need `stipend_cents`, and nothing else can have it. Tickets and price locks are always one per person (`max_per_user` defaults to 1 for them, and anything else is rejected). A ticket can sell in batches with `batch_size` and `batch_step` (both or neither, both above 0); its `price` is then the first batch's, and it needs a `stock`, the total across every batch. For Crossroads: price 1800, stock 30, `batch_size` 6, `batch_step` 150, which is 60 hours up to 80. The price lock is `{"kind": "price_lock", "name": "Price lock", "price": 150}`. `stock`, `max_per_user` and `image_url` are *nullable* (null = unlimited / none). `active` defaults to true and `position` to 0. → `201 ShopItem`.
 
 **`PATCH /api/admin/shop-items/{id}`**: any of the same fields. → `200`. Price changes don't affect existing orders. Set `active: false` to take something out of the shop.
 

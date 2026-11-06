@@ -6,7 +6,9 @@
 
 	let items = $state([]);
 	let msg = $state(null);
-	const blank = () => ({ kind: 'physical', name: '', description: '', image_url: '', price: 100, stipend_dollars: '', stock: '', max_per_user: '', position: 0, active: true });
+	const blank = () => ({ kind: 'physical', name: '', description: '', image_url: '', price: 100, stipend_dollars: '', stock: '', max_per_user: '', position: 0, active: true, batch_size: '', batch_step: '' });
+	// Tickets and price locks are one per person; the backend insists.
+	const onePerPerson = (kind) => kind === 'ticket' || kind === 'price_lock';
 	let form = $state(blank());
 	let editing = $state(null); // item id
 
@@ -30,9 +32,11 @@
 			price: Number(f.price),
 			stipend_cents: f.kind === 'stipend' ? Math.round(Number(f.stipend_dollars) * 100) : null,
 			stock: num(f.stock),
-			max_per_user: f.kind === 'ticket' ? 1 : num(f.max_per_user),
+			max_per_user: onePerPerson(f.kind) ? 1 : num(f.max_per_user),
 			active: f.active,
-			position: Number(f.position) || 0
+			position: Number(f.position) || 0,
+			batch_size: f.kind === 'ticket' ? num(f.batch_size) : null,
+			batch_step: f.kind === 'ticket' ? num(f.batch_step) : null
 		};
 	}
 
@@ -58,7 +62,23 @@
 
 	function edit(i) {
 		editing = i.id;
-		form = { ...i, image_url: i.image_url ?? '', stipend_dollars: i.stipend_cents == null ? '' : i.stipend_cents / 100, stock: i.stock ?? '', max_per_user: i.max_per_user ?? '' };
+		form = {
+			...i,
+			image_url: i.image_url ?? '',
+			stipend_dollars: i.stipend_cents == null ? '' : i.stipend_cents / 100,
+			stock: i.stock ?? '',
+			max_per_user: i.max_per_user ?? '',
+			batch_size: i.batch_size ?? '',
+			batch_step: i.batch_step ?? ''
+		};
+	}
+
+	// "Batch 2 of 5, 4 left at 1950", for a ticket sold in batches.
+	function batchNote(i) {
+		const b = i.batches;
+		if (!b) return '';
+		if (i.stock === 0) return 'Every batch sold';
+		return `Batch ${b.current + 1} of ${b.prices.length}, ${b.left_in_batch} left at ${b.prices[b.current]}`;
 	}
 </script>
 
@@ -73,14 +93,14 @@
 						<td>{i.position}</td>
 						<td>{i.name}</td>
 						<td>{i.kind}{i.stipend_cents ? ` (${money(i.stipend_cents)})` : ''}</td>
-						<td>{i.price}</td>
+						<td>{i.price}{i.batch_step ? ` (+${i.batch_step} a batch)` : ''}{#if i.batches}<br /><span class="small muted">{batchNote(i)}</span>{/if}</td>
 						<td>{i.stock ?? '∞'}</td>
 						<td>{i.max_per_user ?? '∞'}</td>
 						<td>{i.active ? 'Yes' : 'No'}</td>
 						<td><button class="btn small ghost" onclick={() => edit(i)}>Edit</button></td>
 					</tr>
 				{:else}
-					<tr><td colspan="7" class="muted">No items yet. Start with the ticket (kind ticket, price 1800).</td></tr>
+					<tr><td colspan="7" class="muted">No items yet. Start with the ticket (kind ticket, price 1800, stock 30, 6 per batch, 150 more a batch), then a price lock (150).</td></tr>
 				{/each}
 			</tbody>
 		</table>
@@ -90,15 +110,19 @@
 		<h2>{editing ? `Edit ${form.name}` : 'New item'}</h2>
 		<div class="grid-halves">
 			<label class="field"><span>Kind</span>
-				<select bind:value={form.kind} disabled={!!editing}><option>ticket</option><option>physical</option><option>stipend</option></select>
+				<select bind:value={form.kind} disabled={!!editing}><option>ticket</option><option value="price_lock">price lock</option><option>physical</option><option>stipend</option></select>
 			</label>
 			<label class="field"><span>Name</span><input required bind:value={form.name} /></label>
-			<label class="field"><span>Price (stamps)</span><input type="number" min="0" required bind:value={form.price} /></label>
+			<label class="field"><span>Price (stamps) {#if form.kind === 'ticket'}<em>the first batch</em>{/if}</span><input type="number" min="0" required bind:value={form.price} /></label>
 			{#if form.kind === 'stipend'}
 				<label class="field"><span>Stipend ($)</span><input type="number" min="0" step="0.01" required bind:value={form.stipend_dollars} /></label>
 			{/if}
 			<label class="field"><span>Stock <em>empty = unlimited</em></span><input type="number" min="0" bind:value={form.stock} /></label>
-			{#if form.kind !== 'ticket'}
+			{#if form.kind === 'ticket'}
+				<label class="field"><span>Tickets per batch <em>empty = one price</em></span><input type="number" min="1" bind:value={form.batch_size} /></label>
+				<label class="field"><span>Each batch costs more by <em>stamps</em></span><input type="number" min="1" required={form.batch_size !== ''} bind:value={form.batch_step} /></label>
+			{/if}
+			{#if !onePerPerson(form.kind)}
 				<label class="field"><span>Max per person <em>empty = unlimited</em></span><input type="number" min="1" bind:value={form.max_per_user} /></label>
 			{/if}
 			<label class="field"><span>Order in shop <em>lower shows first</em></span><input type="number" step="1" bind:value={form.position} /></label>

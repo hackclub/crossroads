@@ -74,9 +74,10 @@ func AllOrderStatusValues() []OrderStatus {
 type ShopItemKind string
 
 const (
-	ShopItemKindTicket   ShopItemKind = "ticket"
-	ShopItemKindPhysical ShopItemKind = "physical"
-	ShopItemKindStipend  ShopItemKind = "stipend"
+	ShopItemKindTicket    ShopItemKind = "ticket"
+	ShopItemKindPhysical  ShopItemKind = "physical"
+	ShopItemKindStipend   ShopItemKind = "stipend"
+	ShopItemKindPriceLock ShopItemKind = "price_lock"
 )
 
 func (e *ShopItemKind) Scan(src interface{}) error {
@@ -118,7 +119,8 @@ func (e ShopItemKind) Valid() bool {
 	switch e {
 	case ShopItemKindTicket,
 		ShopItemKindPhysical,
-		ShopItemKindStipend:
+		ShopItemKindStipend,
+		ShopItemKindPriceLock:
 		return true
 	}
 	return false
@@ -129,6 +131,7 @@ func AllShopItemKindValues() []ShopItemKind {
 		ShopItemKindTicket,
 		ShopItemKindPhysical,
 		ShopItemKindStipend,
+		ShopItemKindPriceLock,
 	}
 }
 
@@ -488,6 +491,7 @@ type Order struct {
 	UpdatedAt        time.Time
 	AirtableRecordID *string
 	AirtableSyncedAt *time.Time
+	LockedPrice      *int32
 }
 
 type PlatformActivity struct {
@@ -541,6 +545,8 @@ type ShopItem struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	Position     int32
+	BatchSize    *int32
+	BatchStep    *int32
 }
 
 type SpecialStamp struct {

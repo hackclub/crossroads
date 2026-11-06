@@ -34,7 +34,7 @@ type API struct {
 func (a *API) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Use(auth.RequireUser)
-	r.Get("/me", auth.Me)
+	r.Get("/me", a.me)
 	r.Get("/hackatime/projects", a.listHackatimeProjects)
 	if a.Uploads != nil {
 		r.Post("/uploads", a.Uploads.Upload)
@@ -86,6 +86,15 @@ func (a *API) Routes() chi.Router {
 		r.Patch("/orders/{orderID}", a.adminUpdateOrder)
 	})
 	return r
+}
+
+// me is auth.Me plus the stamps paid per approved hour, so prices can be
+// shown in hours.
+func (a *API) me(w http.ResponseWriter, r *http.Request) {
+	respond.JSON(w, http.StatusOK, struct {
+		auth.MeJSON
+		StampsPerHour int `json:"stamps_per_hour"`
+	}{auth.ToMeJSON(auth.User(r.Context())), a.StampsPerHour})
 }
 
 // decode reads a JSON request body into v and rejects fields v doesn't have.
