@@ -34,8 +34,8 @@
 		{:else}
 			<ul>
 				{#each stamps as s (s.id)}
-					<li style="rotate: {tilt(s.id)}deg">
-						{#if s.type.image_url}<img src={s.type.image_url} alt="" />{:else}<span class="blank"></span>{/if}
+					<li>
+						{#if s.type.image_url}<img src={s.type.image_url} alt="" style="rotate: {tilt(s.id)}deg" decoding="async" />{:else}<span class="blank" style="rotate: {tilt(s.id)}deg"></span>{/if}
 						<span class="name">{s.type.name}</span>
 						{#if s.project_id}
 							<a class="where" href="/projects/{s.project_id}">On a project</a>
@@ -67,6 +67,8 @@
 	}
 	ul { display: flex; gap: 22px; margin: 0; padding: 4px 4px 0; list-style: none; }
 	li { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 120px; text-align: center; }
+	/* Only the picture tilts; tilting the names too made them (and the
+	   pictures) render soft. */
 	li img, .blank { height: 96px; width: auto; max-width: 120px; filter: drop-shadow(0 3px 6px rgb(0 0 0 / 0.55)); }
 	.blank { width: 76px; border: 2px dashed rgb(255 255 255 / 0.5); filter: none; }
 	.name { margin-top: 6px; font-size: 20px; }

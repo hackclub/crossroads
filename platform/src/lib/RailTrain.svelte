@@ -177,8 +177,10 @@
 	.front .coupler { left: -33px; }
 
 	/* Arriving from another page (or a fresh load): the train is a quarter of
-	   the window to the left and rolls into place, slowing to a stop. */
-	.arrive { animation: roll-in 1.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+	   the window to the left and rolls into place, slowing to a stop. "backwards",
+	   not "both": once it stops, nothing keeps the train on its own GPU layer,
+	   which made the stamps and text in the cars render blurry. */
+	.arrive { animation: roll-in 1.6s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
 	@keyframes roll-in {
 		from { translate: -25cqw 0; }
 	}
