@@ -10,7 +10,7 @@ import (
 )
 
 const adminListOrders = `-- name: AdminListOrders :many
-select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address
+select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address
 from orders
 join shop_items on shop_items.id = orders.shop_item_id
 join users on users.id = orders.user_id
@@ -57,6 +57,7 @@ func (q *Queries) AdminListOrders(ctx context.Context, status *OrderStatus) ([]A
 			&i.ShopItem.Active,
 			&i.ShopItem.CreatedAt,
 			&i.ShopItem.UpdatedAt,
+			&i.ShopItem.Position,
 			&i.User.ID,
 			&i.User.HcaID,
 			&i.User.SlackID,
@@ -171,9 +172,9 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 }
 
 const createShopItem = `-- name: CreateShopItem :one
-insert into shop_items (kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-returning id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at
+insert into shop_items (kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, position)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+returning id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position
 `
 
 type CreateShopItemParams struct {
@@ -186,6 +187,7 @@ type CreateShopItemParams struct {
 	Stock        *int32
 	MaxPerUser   *int32
 	Active       bool
+	Position     int32
 }
 
 func (q *Queries) CreateShopItem(ctx context.Context, arg CreateShopItemParams) (ShopItem, error) {
@@ -199,6 +201,7 @@ func (q *Queries) CreateShopItem(ctx context.Context, arg CreateShopItemParams) 
 		arg.Stock,
 		arg.MaxPerUser,
 		arg.Active,
+		arg.Position,
 	)
 	var i ShopItem
 	err := row.Scan(
@@ -214,12 +217,13 @@ func (q *Queries) CreateShopItem(ctx context.Context, arg CreateShopItemParams) 
 		&i.Active,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Position,
 	)
 	return i, err
 }
 
 const getShopItem = `-- name: GetShopItem :one
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at from shop_items where id = $1
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position from shop_items where id = $1
 `
 
 func (q *Queries) GetShopItem(ctx context.Context, id int64) (ShopItem, error) {
@@ -238,12 +242,13 @@ func (q *Queries) GetShopItem(ctx context.Context, id int64) (ShopItem, error) {
 		&i.Active,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Position,
 	)
 	return i, err
 }
 
 const listAllShopItems = `-- name: ListAllShopItems :many
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at from shop_items order by id
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position from shop_items order by position, price, id
 `
 
 func (q *Queries) ListAllShopItems(ctx context.Context) ([]ShopItem, error) {
@@ -268,6 +273,7 @@ func (q *Queries) ListAllShopItems(ctx context.Context) ([]ShopItem, error) {
 			&i.Active,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Position,
 		); err != nil {
 			return nil, err
 		}
@@ -280,7 +286,7 @@ func (q *Queries) ListAllShopItems(ctx context.Context) ([]ShopItem, error) {
 }
 
 const listOrders = `-- name: ListOrders :many
-select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at
+select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position
 from orders
 join shop_items on shop_items.id = orders.shop_item_id
 where orders.user_id = $1
@@ -325,6 +331,7 @@ func (q *Queries) ListOrders(ctx context.Context, userID int64) ([]ListOrdersRow
 			&i.ShopItem.Active,
 			&i.ShopItem.CreatedAt,
 			&i.ShopItem.UpdatedAt,
+			&i.ShopItem.Position,
 		); err != nil {
 			return nil, err
 		}
@@ -337,7 +344,7 @@ func (q *Queries) ListOrders(ctx context.Context, userID int64) ([]ListOrdersRow
 }
 
 const listShopItems = `-- name: ListShopItems :many
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at from shop_items where active order by price, id
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position from shop_items where active order by position, price, id
 `
 
 func (q *Queries) ListShopItems(ctx context.Context) ([]ShopItem, error) {
@@ -362,6 +369,7 @@ func (q *Queries) ListShopItems(ctx context.Context) ([]ShopItem, error) {
 			&i.Active,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Position,
 		); err != nil {
 			return nil, err
 		}
@@ -397,7 +405,7 @@ func (q *Queries) LockOrder(ctx context.Context, id int64) (Order, error) {
 }
 
 const lockShopItem = `-- name: LockShopItem :one
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at from shop_items where id = $1 for update
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position from shop_items where id = $1 for update
 `
 
 func (q *Queries) LockShopItem(ctx context.Context, id int64) (ShopItem, error) {
@@ -416,6 +424,7 @@ func (q *Queries) LockShopItem(ctx context.Context, id int64) (ShopItem, error) 
 		&i.Active,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Position,
 	)
 	return i, err
 }
@@ -506,9 +515,9 @@ func (q *Queries) TakeShopItemStock(ctx context.Context, id int64) error {
 const updateShopItem = `-- name: UpdateShopItem :one
 update shop_items set
     kind = $2, name = $3, description = $4, image_url = $5, price = $6,
-    stipend_cents = $7, stock = $8, max_per_user = $9, active = $10
+    stipend_cents = $7, stock = $8, max_per_user = $9, active = $10, position = $11
 where id = $1
-returning id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at
+returning id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position
 `
 
 type UpdateShopItemParams struct {
@@ -522,6 +531,7 @@ type UpdateShopItemParams struct {
 	Stock        *int32
 	MaxPerUser   *int32
 	Active       bool
+	Position     int32
 }
 
 func (q *Queries) UpdateShopItem(ctx context.Context, arg UpdateShopItemParams) (ShopItem, error) {
@@ -536,6 +546,7 @@ func (q *Queries) UpdateShopItem(ctx context.Context, arg UpdateShopItemParams) 
 		arg.Stock,
 		arg.MaxPerUser,
 		arg.Active,
+		arg.Position,
 	)
 	var i ShopItem
 	err := row.Scan(
@@ -551,6 +562,7 @@ func (q *Queries) UpdateShopItem(ctx context.Context, arg UpdateShopItemParams) 
 		&i.Active,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Position,
 	)
 	return i, err
 }

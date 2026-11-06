@@ -24,7 +24,7 @@ func (q *Queries) FulfillOrderFromAirtable(ctx context.Context, airtableRecordID
 }
 
 const listOrdersToSync = `-- name: ListOrdersToSync :many
-select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address
+select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address
 from orders
 join shop_items on shop_items.id = orders.shop_item_id
 join users on users.id = orders.user_id
@@ -73,6 +73,7 @@ func (q *Queries) ListOrdersToSync(ctx context.Context) ([]ListOrdersToSyncRow, 
 			&i.ShopItem.Active,
 			&i.ShopItem.CreatedAt,
 			&i.ShopItem.UpdatedAt,
+			&i.ShopItem.Position,
 			&i.User.ID,
 			&i.User.HcaID,
 			&i.User.SlackID,

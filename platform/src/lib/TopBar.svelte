@@ -19,7 +19,7 @@
 
 <header class="topbar" style="background-image: url({film})">
 	<div class="window w-left">
-		<a class="brand" href="/home"><img src={flag} alt="Hack Club" width="60" height="60" />Crossroads</a>
+		<a class="brand" href="/"><img src={flag} alt="Hack Club" width="60" height="60" />Crossroads</a>
 	</div>
 	<nav class="window w-mid" aria-label="Main">
 		{#each links as [href, label]}
