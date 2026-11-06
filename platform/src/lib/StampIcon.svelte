@@ -1,11 +1,11 @@
 <script module>
 	// One stamp per page load, shared by every icon on the page, and never
 	// the same one as the last load, so a reload always shows a new stamp.
-	import papua from './assets/stamps/papua.webp';
-	import divan from './assets/stamps/divan.webp';
+	import olive from './assets/stamps/olive.webp';
+	import vanitas from './assets/stamps/vanitas.webp';
 	import monet from './assets/stamps/monet.webp';
 
-	const stamps = [papua, divan, monet];
+	const stamps = [olive, vanitas, monet];
 	let last = -1;
 	try {
 		last = Number(sessionStorage.getItem('stamp-icon') ?? -1);

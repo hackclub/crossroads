@@ -1,8 +1,8 @@
 <script>
 	
 	import StampBox from '#lib/StampBox.svelte';
-	import papua from '#lib/assets/stamps/papua.webp';
-	import divan from '#lib/assets/stamps/divan.webp';
+	import olive from '#lib/assets/stamps/olive.webp';
+	import vanitas from '#lib/assets/stamps/vanitas.webp';
 	import monet from '#lib/assets/stamps/monet.webp';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -42,7 +42,7 @@
 
 	// Postage for the ship postcards: the special stamps' own art, so new
 	// special stamps show up here too. The local copies stand in until it loads.
-	let postage = $state([papua, divan, monet]);
+	let postage = $state([olive, vanitas, monet]);
 	onMount(async () => {
 		try {
 			const art = [...new Set((await get('/box-types')).flatMap((t) => t.odds.map((o) => o.special_stamp_type.image_url)).filter(Boolean))];

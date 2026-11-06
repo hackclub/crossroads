@@ -7,12 +7,12 @@
 	import { api, get } from './api.js';
 	import { hours } from './format.js';
 	import ImageDrop from './ImageDrop.svelte';
-	import papua from './assets/stamps/papua.webp';
-	import divan from './assets/stamps/divan.webp';
+	import olive from './assets/stamps/olive.webp';
+	import vanitas from './assets/stamps/vanitas.webp';
 	import monet from './assets/stamps/monet.webp';
 
 	// Postage for the card: one of the stamps, picked when the page opens.
-	const postage = [papua, divan, monet][Math.floor(Math.random() * 3)];
+	const postage = [olive, vanitas, monet][Math.floor(Math.random() * 3)];
 
 	let { project: projectProp = null } = $props();
 	// The form starts from the project once; edits live in the fields below.
