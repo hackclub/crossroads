@@ -145,7 +145,7 @@ func main() {
 	r.Handle("/uploads/*", http.StripPrefix("/uploads", uploadStore.Files()))
 	if devMode {
 		r.Get("/dev/login", a.DevLogin)
-		r.Mount("/dev/hackatime", devhackatime.New().Routes())
+		r.Mount("/dev/hackatime", devhackatime.New(cmp.Or(os.Getenv("DEV_HACKATIME_FILE"), "data/devhackatime.json")).Routes())
 		r.With(auth.RequireUser).Post("/dev/box", apiRoutes.DevGrantBox)
 	}
 
