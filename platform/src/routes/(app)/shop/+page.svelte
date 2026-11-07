@@ -143,40 +143,22 @@
 		{@const pct = Math.min(Math.max(stamps / ticket.price, 0), 1) * 100}
 		<!-- The ticket is a car of the train in the layout. -->
 		<Station name="shop">
-		<div class="ticket">
-				<div class="stack-sm">
+		<!-- Up to three columns side by side, so the car stays as low as the
+		     other cars of the train: the trip, your progress, then the batches
+		     and the price lock. -->
+		<div class="ticket" class:laddered={!hasTicket && (batches || ticket.locked_price)}>
+				<div class="trip stack-sm">
 					<span class="kind">The trip</span>
 					<h2 id="ticket-name">{ticket.name}</h2>
 					<span>Berlin, then across Europe by train · February 2027</span>
 					{#if ticket.description}<span class="small">{ticket.description}</span>{/if}
+					{#if !hasTicket}<span class="small">Buying the ticket is how you qualify. Everything else here spends stamps the ticket needs.</span>{/if}
 				</div>
-				<div class="stack">
+				<div class="progress stack">
 					{#if hasTicket}
 						<p class="big-line">You have your ticket. See you in Berlin!</p>
 						<a class="btn ghost" href="/shop/orders">See your order</a>
 					{:else}
-						{#if batches}
-							<div class="stack-sm">
-								<ol class="batches" aria-label="Ticket batches, {batches.size} tickets each">
-									{#each batches.prices as price, i}
-										<li class:sold={i < batches.current} class:now={i === batches.current} aria-current={i === batches.current ? 'step' : undefined}>
-											{inHours(price)}<span class="visually-hidden">{i < batches.current ? ', sold out' : i === batches.current ? ', on sale now' : ''}</span>
-										</li>
-									{/each}
-								</ol>
-								<span class="small">
-									{#if ticket.stock === 0}
-										Every batch has sold out.
-									{:else}
-										Batch {batches.current + 1} of {batches.prices.length}: {batches.left_in_batch} left at {inHours(batches.prices[batches.current])}.
-										{lastBatch ? 'This is the last batch.' : `Then ${inHours(batches.prices[batches.current + 1])}.`}
-									{/if}
-								</span>
-							</div>
-						{/if}
-						{#if ticket.locked_price}
-							<p class="callout info small">Your price is locked at {inHours(ticket.locked_price)} ({ticket.locked_price} stamps).</p>
-						{/if}
 						<div class="row between"><span>{Math.max(stamps, 0)} / {ticket.price} stamps</span><span>{short > 0 ? `${short} to go · about ${hoursFor(short)}h` : 'You can buy it now'}</span></div>
 						<div class="bar" role="img" aria-label="{Math.round(pct)}% of the way to your ticket"><span class="seg approved" style="width: {pct}%"></span></div>
 						{#if soldOutReason(ticket)}
@@ -186,23 +168,48 @@
 						{:else}
 							<button class="btn primary" disabled={buying === ticket.id} onclick={() => ask(ticket)}>{buying === ticket.id ? 'Buying…' : `Buy your ticket for ${ticket.price}`}</button>
 						{/if}
-						<span class="small">Buying the ticket is how you qualify. Everything else here spends stamps the ticket needs.</span>
+					{/if}
+				</div>
+				{#if !hasTicket && (batches || ticket.locked_price)}
+					<div class="ladder stack-sm">
+						{#if batches}
+							<ol class="batches" aria-label="Ticket batches, {batches.size} tickets each">
+								{#each batches.prices as price, i}
+									<li class:sold={i < batches.current} class:now={i === batches.current} aria-current={i === batches.current ? 'step' : undefined}>
+										{inHours(price)}<span class="visually-hidden">{i < batches.current ? ', sold out' : i === batches.current ? ', on sale now' : ''}</span>
+									</li>
+								{/each}
+							</ol>
+							<span class="small">
+								{#if ticket.stock === 0}
+									Every batch has sold out.
+								{:else}
+									Batch {batches.current + 1} of {batches.prices.length}: {batches.left_in_batch} left at {inHours(batches.prices[batches.current])}.
+									{lastBatch ? 'This is the last batch.' : `Then ${inHours(batches.prices[batches.current + 1])}.`}
+								{/if}
+							</span>
+						{/if}
+						{#if ticket.locked_price}
+							<p class="callout info small">Your price is locked at {inHours(ticket.locked_price)} ({ticket.locked_price} stamps).</p>
+						{/if}
 						{#if canLock}
 							<div class="lock">
-								<span>Lock in {inHours(batches.prices[batches.current])} for {inHours(lock.price)}</span>
+								<div class="lock-head">
+									<span>Lock in {inHours(batches.prices[batches.current])} for {inHours(lock.price)}</span>
+									{#if stamps < lock.price}
+										<button class="btn" disabled>Need {lock.price - stamps} more</button>
+									{:else}
+										<button class="btn ghost" disabled={buying === lock.id} onclick={() => ask(lock)}>{buying === lock.id ? 'Locking…' : `Lock for ${lock.price}`}</button>
+									{/if}
+								</div>
 								<span class="small">
 									Keeps this price however many batches sell before you're ready. It's on top of the ticket, and if the tickets sell out
 									before you buy one, you get the {lock.price} stamps back.
 								</span>
-								{#if stamps < lock.price}
-									<button class="btn" disabled>Need {lock.price - stamps} more stamps to lock</button>
-								{:else}
-									<button class="btn ghost" disabled={buying === lock.id} onclick={() => ask(lock)}>{buying === lock.id ? 'Locking…' : `Lock for ${lock.price}`}</button>
-								{/if}
 							</div>
 						{/if}
-					{/if}
-				</div>
+					</div>
+				{/if}
 		</div>
 		</Station>
 	{/if}
@@ -402,11 +409,17 @@
 	.ticket {
 		display: grid;
 		grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-		gap: 20px 40px;
+		gap: 18px 32px;
 		align-items: center;
-		padding: 24px 32px 28px;
+		padding: 20px 28px 22px;
 	}
+	/* With batches and the lock: three columns. The lock's note sits under
+	   its title and button, so the column stays short. */
+	.ticket.laddered { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr); }
 	.ticket h2 { font-size: clamp(40px, 4vw, 64px); }
+	.ticket.laddered h2 { font-size: clamp(36px, 3vw, 52px); }
+	.lock-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+	.lock-head > span { font-size: 26px; }
 	.ticket .kind { font-size: 24px; }
 	.ticket .bar { height: 20px; }
 	.ticket .btn.ghost { box-shadow: inset 0 0 0 2px var(--head); align-self: flex-start; }
@@ -416,14 +429,18 @@
 	.batches li { padding: 2px 12px; font-size: 22px; background: var(--navy-deep); border-radius: 8px; }
 	.batches li.sold { color: var(--muted); text-decoration: line-through; }
 	.batches li.now { background: var(--head); color: var(--ink); text-shadow: none; }
-	.lock { display: flex; flex-direction: column; gap: 6px; padding: 14px 18px; background: rgb(0 0 0 / 0.35); border-radius: 14px; }
-	.lock > span:first-child { font-size: 28px; }
-	.lock .btn { align-self: flex-start; }
+	.lock { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; background: rgb(0 0 0 / 0.35); border-radius: 14px; }
+	.lock .btn { flex: none; }
 	.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 	.card-foot { margin-top: auto; padding-top: 8px; display: flex; }
 	.card-foot .btn { width: 100%; white-space: normal; }
+	/* Not room for three: the trip across the top, the other two under it. */
+	@media (max-width: 960px) {
+		.ticket.laddered { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+		.ticket.laddered .trip { grid-column: 1 / -1; }
+	}
 	@media (max-width: 820px) {
-		.ticket { grid-template-columns: 1fr; padding-inline: 18px; }
+		.ticket, .ticket.laddered { grid-template-columns: 1fr; padding-inline: 18px; }
 		/* Inside the page's narrow gutter. */
 		.sticker { right: -10px; }
 	}

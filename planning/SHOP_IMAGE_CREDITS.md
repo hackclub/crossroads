@@ -34,7 +34,7 @@ In `platform/src/lib/assets/stamps/`, supplied by the team. All look to be publi
 
 | Stamp | Used for | What it is |
 |---|---|---|
-| `olive.webp` | Ship postcards, stamp icons; the Ticket Stub special stamp | Claude Monet's *Olive Trees in the Moreno Garden* (1884), framed as a stamp |
+| `olive.webp` | Ship postcards, stamp icons; the Monet Stamp #1 special stamp (was Ticket Stub) | Claude Monet's *Olive Trees in the Moreno Garden* (1884), framed as a stamp |
 | `vanitas.webp` | Ship postcards, stamp icons; the Golden Spike special stamp | A 17th-century vanitas still life (skull, crown, books and music), framed as a stamp; confirm the painting and artist |
 | `monet.webp` | Ship postcards, stamp icons; the Express special stamp | Claude Monet's *Arrival of the Normandy Train, Gare Saint-Lazare* (1877), framed as a stamp |
 
