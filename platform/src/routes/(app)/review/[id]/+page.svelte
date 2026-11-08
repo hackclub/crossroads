@@ -17,7 +17,7 @@
 	async function load() {
 		try {
 			d = await get(`/review/submissions/${page.params.id}`);
-			approvedHours = +(d.submission.new_seconds / 3600).toFixed(2);
+			approvedHours = Math.round(d.submission.new_seconds / 36) / 100;
 		} catch (e) {
 			error = e.message;
 		}
@@ -30,7 +30,9 @@
 		busy = true;
 		const body = { status: decision, feedback: feedback || undefined, internal_notes: notes || undefined };
 		if (decision === 'approved') {
-			body.approved_seconds = Math.min(Math.round(approvedHours * 3600), d.submission.new_seconds);
+			// The field works in hundredths of an hour, so a value that rounds to the claim approves all of it.
+			const full = d.submission.new_seconds;
+			body.approved_seconds = Math.round(approvedHours * 100) >= Math.round(full / 36) ? full : Math.round(approvedHours * 3600);
 			// Cut time is gone for good, so make sure it's on purpose.
 			const cut = d.submission.new_seconds - body.approved_seconds;
 			if (cut > 0 && !confirm(`You're approving ${hours(body.approved_seconds)} of the ${hours(d.submission.new_seconds)} claimed. The ${hours(cut)} you cut can't be shipped again. Approve?`)) {
@@ -103,7 +105,7 @@
 						{#if decision === 'approved'}
 							<label class="field">
 								<span>Hours to approve <em>up to {hours(d.submission.new_seconds)}</em></span>
-								<input type="number" min="0" step="0.01" max={d.submission.new_seconds / 3600} bind:value={approvedHours} style="max-width: 160px" />
+								<input type="number" min="0" step="0.01" max={Math.round(d.submission.new_seconds / 36) / 100} bind:value={approvedHours} style="max-width: 160px" />
 								<small>Time you cut is gone for good: it can't be shipped again.</small>
 							</label>
 						{/if}
