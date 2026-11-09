@@ -24,6 +24,8 @@ It borrows from two Hack Club projects: [Sidekick](https://github.com/hackclub/s
 
 A reviewer who can also sign off (an admin, or someone with `can_hq_review`) skips the HQ stage when nothing flags the ship: their approval is the sign-off. A flagged ship always goes through the fraud check first, whoever approved it.
 
+**More than Hackatime tracked.** At the first stage and at HQ, a reviewer can tick "Approve more than Hackatime tracked" and approve more hours than the ship claimed, for work Hackatime can't see (soldering, design, testing hardware). They have to say why. An approval over Hackatime **always waits for HQ sign-off**, even from someone who could sign off themselves, and HQ sees the reason first. The fraud check can only cut. The reason goes on the timeline and into the Unified YSWS justification, but not to the participant. In Sidekick, the same thing is the "Why more hours than Hackatime tracked?" field when approving. Going over doesn't change the time-accounting: the next ship still only claims Hackatime time nobody has claimed yet.
+
 **Sent back** clears every decision on the ship and puts it back in the review queue. The timeline keeps the old approval, and the person sending it back has to say why.
 
 Participants see three states: **In review** (`pending`), **Approved, final check** (`fraud_check` or `awaiting_hq`: a reviewer approved it and it's waiting to be signed off), and **Approved** or **Rejected**. They aren't told when a ship is at the fraud check. They see the feedback on each decision and any comment a reviewer marks for them.
@@ -94,4 +96,5 @@ Not supported: rewarded hours overrides (refused with 400), and the shop and ful
 - **HQ reviewers skip HQ sign-off on unflagged ships.** That matches Sidekick's `isHq`. If every ship should get a second person, change the `perms.HQReview` case in `decide` to always go to `awaiting_hq`.
 - **Hackatime being down sends ships to the fraud check.** That's the safe choice, but an outage during a busy day fills the fraud queue.
 - **The limits** (20h per ship, 14h per day) are guesses. Change them on the admin page.
+- **Overrides have no upper limit**, only a required reason and HQ sign-off. If you want a cap (say, Hackatime's hours plus 50%), it goes in `checkOverride` in `stages.go`.
 - **The fraud check is hidden from participants.** They see "final check" for both later stages.

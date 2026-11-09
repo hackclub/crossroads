@@ -84,7 +84,7 @@ func TestSidekickTwoStageReview(t *testing.T) {
 	}
 	var detail skProjectOut
 	e.sidekick(t, "FETCH_PROJECT_DETAIL", map[string]any{"projectId": list.Projects[0].ID}, &detail)
-	if len(detail.Ships[0].Checks) == 0 || len(detail.Ships[0].ApproveFields) != 1 {
+	if len(detail.Ships[0].Checks) == 0 || len(detail.Ships[0].ApproveFields) != 2 {
 		t.Errorf("the ship in review has no checks or fields: %+v", detail.Ships[0])
 	}
 
@@ -151,6 +151,28 @@ func TestSidekickTwoStageReview(t *testing.T) {
 	}
 	_ = reviewer
 	_ = hq
+}
+
+func TestSidekickHoursOverride(t *testing.T) {
+	e := newEnv(t)
+	e.newUser(t, "UREVIEWER")
+	_, id := e.shipFor(t, "U1", 2)
+	approve := map[string]any{"shipId": itoa(id), "reviewerId": "UREVIEWER", "action": "approve",
+		"hoursAssigned": 3, "feedbackMessage": "ok", "justification": "ok", "isHq": true}
+	if status := e.sidekick(t, "SUBMIT_REVIEW_ACTION", approve, nil); status != http.StatusBadRequest {
+		t.Errorf("over Hackatime without a reason: got %d, want 400", status)
+	}
+	approve["fields"] = map[string]any{"hours_override_reason": "Wired the LED matrix by hand."}
+	if status := e.sidekick(t, "SUBMIT_REVIEW_ACTION", approve, nil); status != http.StatusOK {
+		t.Fatalf("over Hackatime with a reason: got %d", status)
+	}
+	var list struct {
+		TotalCount int `json:"totalCount"`
+	}
+	e.sidekick(t, "FETCH_PROJECTS", map[string]any{"status": "pending_hq"}, &list)
+	if list.TotalCount != 1 {
+		t.Error("an isHq override didn't wait for HQ sign-off")
+	}
 }
 
 func TestSidekickCantAuthorizePastTheFraudCheck(t *testing.T) {

@@ -96,6 +96,7 @@ interface Submission {
   reviewer_id?: number | null;
   checks?: Check[];             // the automatic checks when the reviewer decided
   fraud_reasons?: string[];     // why it went to the fraud check: check IDs, "manual", "everything"
+  override_reason?: string;     // why it's approved for more than Hackatime tracked
   fraud_reviewer_id?: number;
   fraud_reviewed_at?: string;
   hq_reviewer_id?: number;
@@ -524,6 +525,7 @@ interface Queue {
     submitted_at: string; reviewed_at: string | null;
     reviewer_name: string | null;
     fraud_reasons: string[];
+    override_reason: string | null; // approved for more than Hackatime tracked
     priority: boolean;     // a priority review (Express) stamp is on it
     claim: Claim | null;   // who's on it right now
     skipped_by_me: boolean;
@@ -595,7 +597,8 @@ interface ShipEvent {
   "approved_seconds": 7200,
   "feedback": "Great work!",
   "internal_notes": "Hackatime matches the commits.",
-  "send_to_fraud": false
+  "send_to_fraud": false,
+  "override_reason": "3 hours soldering the board, which Hackatime can't track."
 }
 ```
 
@@ -605,6 +608,7 @@ interface ShipEvent {
 - `feedback`: shown to the participant. Required to reject.
 - `internal_notes`: reviewers only. Required to send back.
 - `send_to_fraud`: first-stage approvals only.
+- `override_reason`: approving more than Hackatime tracked (`new_seconds`) needs a reason, at the first stage or at HQ. At HQ the reviewer's reason carries over, so it's only needed for a new one. The fraud check can't go over. An approval over Hackatime always waits for HQ sign-off, even from someone who could sign off themselves. The reason isn't shown to the participant; it goes to HQ, the timeline and the Unified YSWS justification.
 
 Signing off pays stamps for the approved time and grants a box for every milestone the person's approved total has now reached, all at once. Nothing is paid before that.
 
@@ -620,7 +624,7 @@ interface ReviewResult {
 
 | Status | When |
 |---|---|
-| 422 | Bad action, missing feedback or reason, hours out of range |
+| 422 | Bad action, missing feedback or reason, hours out of range, or more than Hackatime tracked without an `override_reason` |
 | 404 | No such submission |
 | 403 | Their own project, or a stage they can't decide |
 | 409 | Already decided, moved on from `stage`, someone else holds it, or sending back a ship that's already pending |

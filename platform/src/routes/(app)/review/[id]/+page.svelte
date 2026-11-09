@@ -21,6 +21,9 @@
 	let feedback = $state('');
 	let notes = $state('');
 	let sendToFraud = $state(false);
+	// Approving more hours than Hackatime tracked, with a reason.
+	let overriding = $state(false);
+	let overrideReason = $state('');
 	let busy = $state(false);
 	let formError = $state('');
 	let result = $state(null);
@@ -49,6 +52,8 @@
 	const passing = $derived(d?.checks.filter((c) => c.status === 'pass') ?? []);
 	// The most hours this stage can approve.
 	const maxSeconds = $derived(!sub ? 0 : stage === 'fraud' ? sub.approved_seconds : sub.new_seconds);
+	// The fraud check can only cut, so only the first review and HQ can go over.
+	const canOverride = $derived(stage === 'review' || stage === 'hq');
 
 	async function load() {
 		error = '';
@@ -56,6 +61,9 @@
 			d = await get(`/review/submissions/${id}`);
 			const start = d.stage === 'review' ? d.submission.new_seconds : (d.submission.approved_seconds ?? d.submission.new_seconds);
 			approvedHours = toHours(start);
+			// At HQ, a reviewer's override carries over until HQ changes it.
+			overriding = d.stage === 'hq' && !!d.submission.override_reason;
+			overrideReason = overriding ? d.submission.override_reason : '';
 		} catch (e) {
 			error = e.message;
 		}
@@ -66,6 +74,8 @@
 		action = 'approve';
 		feedback = notes = '';
 		sendToFraud = false;
+		overriding = false;
+		overrideReason = '';
 		load();
 	});
 	onMount(() => {
@@ -123,7 +133,19 @@
 		formError = '';
 		const body = { action, stage: sub.status, feedback: feedback || undefined, internal_notes: notes || undefined };
 		if (action === 'approve') {
-			body.approved_seconds = toSeconds(approvedHours, maxSeconds);
+			const asked = Math.round(Number(approvedHours) * 3600);
+			if (!overriding && asked > maxSeconds) {
+				formError = canOverride
+					? `That's more than the ${hours(maxSeconds)} Hackatime tracked. Tick "Approve more than Hackatime tracked" and say why.`
+					: `The fraud check can only lower the hours: at most ${hours(maxSeconds)}.`;
+				return;
+			}
+			if (overriding && asked > sub.new_seconds && !overrideReason.trim()) {
+				formError = 'Say why you\'re approving more than Hackatime tracked.';
+				return;
+			}
+			body.approved_seconds = overriding ? Math.max(0, asked) : toSeconds(approvedHours, maxSeconds);
+			if (overriding && body.approved_seconds > sub.new_seconds) body.override_reason = overrideReason.trim();
 			const before = stage === 'review' ? sub.new_seconds : sub.approved_seconds;
 			const cut = before - body.approved_seconds;
 			// Cut time is gone for good, so make sure it's on purpose.
@@ -171,7 +193,9 @@
 	const approveWord = $derived(stage === 'fraud' ? 'Pass' : stage === 'hq' ? 'Sign off' : 'Approve');
 	const whatNext = $derived.by(() => {
 		if (stage === 'review') {
+			const over = overriding && Number(approvedHours) * 3600 > sub.new_seconds;
 			if (sendToFraud) return 'It goes to the fraud check, then HQ.';
+			if (over && !failing.some((c) => c.fraud)) return 'Approving more than Hackatime tracked always waits for HQ sign-off, even if you have it yourself. Stamps are paid then.';
 			return failing.some((c) => c.fraud)
 				? 'The automatic checks flagged it, so it goes to the fraud check, then HQ.'
 				: session.me.can_hq_review
@@ -256,7 +280,10 @@
 						{#if stage !== 'review'}
 							<div class="chain small">
 								{#if approval}<p>{approval.actor?.name ?? 'A reviewer'} approved <strong>{hours(approval.seconds)}</strong> of {hours(sub.new_seconds)} · {date(approval.created_at)}</p>{/if}
-								{#if approval?.internal}<p class="muted">Their notes: {approval.internal}</p>{/if}
+								{#if approval?.internal}<p class="muted pre">Their notes: {approval.internal}</p>{/if}
+								{#if sub.override_reason}
+									<p class="override">Approved for <strong>more than Hackatime tracked</strong> ({hours(sub.approved_seconds)} of {hours(sub.new_seconds)}): {sub.override_reason}</p>
+								{/if}
 								{#if sub.fraud_reasons?.length}
 									<p>Sent to the fraud check for: {#each sub.fraud_reasons as r, i}{i ? ', ' : ''}<span class="badge warn">{reasonLabel(r)}</span>{/each}</p>
 								{/if}
@@ -274,10 +301,23 @@
 						</div>
 						{#if action === 'approve'}
 							<label class="field">
-								<span>Hours <em>up to {hours(maxSeconds)}</em></span>
-								<input type="number" min="0" step="0.01" max={maxSeconds / 3600} bind:value={approvedHours} style="max-width: 180px" />
+								<span>Hours <em>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}` : `up to ${hours(maxSeconds)}`}</em></span>
+								<input type="number" min="0" step="0.01" max={overriding ? undefined : maxSeconds / 3600} bind:value={approvedHours} style="max-width: 180px" />
 								<small>{stage === 'fraud' ? 'Lower it to cut hours. ' : ''}Time you cut is gone for good: it can't be shipped again.</small>
 							</label>
+							{#if canOverride}
+								<label class="check small">
+									<input type="checkbox" bind:checked={overriding} />
+									Approve more than Hackatime tracked ({hours(sub.new_seconds)})
+								</label>
+								{#if overriding}
+									<label class="field">
+										<span>Why more than Hackatime? <em>required to go over</em></span>
+										<textarea bind:value={overrideReason} required={Number(approvedHours) * 3600 > sub.new_seconds} placeholder="For example: 3 hours soldering and testing the board, which Hackatime can't track. The build log has photos."></textarea>
+										<small>HQ sees this before signing off, and it goes to the Unified YSWS DB. The participant doesn't see it.</small>
+									</label>
+								{/if}
+							{/if}
 							{#if stage === 'review'}
 								<label class="check small"><input type="checkbox" bind:checked={sendToFraud} /> Send it to the fraud check anyway</label>
 							{/if}
@@ -448,6 +488,7 @@
 	.timeline li.internal { background: transparent; border: 2px dashed var(--deep); }
 	.timeline li.other { opacity: 0.7; }
 	.pre { white-space: pre-wrap; }
+	.override { padding: 8px 12px; border: 1px solid var(--warn); background: var(--warn-bg); border-radius: 6px; }
 	.tiny { font-size: 17px; padding: 0 8px; }
 	.check-row { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border: 1px solid var(--warn); background: var(--warn-bg); border-radius: 6px; }
 	.check-row.info { border-color: var(--info); background: var(--info-bg); }

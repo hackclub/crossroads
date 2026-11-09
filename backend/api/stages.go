@@ -121,6 +121,10 @@ type decision struct {
 	InternalNotes   string `json:"internal_notes"` // reviewers only; required to send back
 	// First stage only: send it to the fraud check even if nothing's flagged.
 	SendToFraud bool `json:"send_to_fraud"`
+	// Why approved_seconds is more than Hackatime tracked (new_seconds).
+	// Required to approve more than that, at the first stage or HQ; the fraud
+	// check can't. An approval over Hackatime always waits for HQ sign-off.
+	OverrideReason string `json:"override_reason"`
 }
 
 type decisionOutcome struct {
@@ -137,6 +141,7 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 	var out decisionOutcome
 	d.Feedback = strings.TrimSpace(d.Feedback)
 	d.InternalNotes = strings.TrimSpace(d.InternalNotes)
+	d.OverrideReason = strings.TrimSpace(d.OverrideReason)
 	switch {
 	case d.Action != "approve" && d.Action != "reject" && d.Action != "send_back":
 		return out, problem(http.StatusUnprocessableEntity, `action has to be "approve", "reject" or "send_back".`)
@@ -150,7 +155,9 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		return out, problem(http.StatusUnprocessableEntity, "Only approvals take approved_seconds.")
 	case d.Action != "approve" && d.SendToFraud:
 		return out, problem(http.StatusUnprocessableEntity, "Only approvals can be sent to the fraud check.")
-	case len(d.Feedback) > 5000 || len(d.InternalNotes) > 5000:
+	case d.Action != "approve" && d.OverrideReason != "":
+		return out, problem(http.StatusUnprocessableEntity, "Only approvals can go over Hackatime's hours.")
+	case len(d.Feedback) > 5000 || len(d.InternalNotes) > 5000 || len(d.OverrideReason) > 5000:
 		return out, problem(http.StatusUnprocessableEntity, "Keep feedback and notes under 5,000 characters.")
 	}
 
@@ -240,10 +247,11 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		if d.ApprovedSeconds != nil {
 			seconds = *d.ApprovedSeconds
 		}
-		if seconds < 0 || seconds > s.NewSeconds {
-			return out, problem(http.StatusUnprocessableEntity, "approved_seconds has to be between 0 and the submission's new_seconds.")
+		if err := checkOverride(&s, seconds, d.OverrideReason); err != nil {
+			return out, err
 		}
 		event.Kind, event.Seconds = db.ShipEventKindApproval, &seconds
+		event.Internal = withOverride(event.Internal, s, seconds)
 		s.ApprovedSeconds, s.Feedback, s.InternalNotes = &seconds, nonEmpty(d.Feedback), nonEmpty(d.InternalNotes)
 		s.ReviewerID, s.ReviewedAt = &reviewer.ID, &now
 		s.Checks, err = json.Marshal(report.Checks)
@@ -262,7 +270,8 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 			s.Status = db.SubmissionStatusFraudCheck
 			flagged = &db.AddShipEventParams{SubmissionID: s.ID, Kind: db.ShipEventKindFlagged,
 				Stage: db.SubmissionStatusFraudCheck, Internal: new(fraudReasonText(s.FraudReasons, report.Checks))}
-		case perms.HQReview:
+		case perms.HQReview && s.OverrideReason == nil:
+			// Over Hackatime always takes a second person, so no shortcut.
 			s.Status, s.HqReviewerID, s.HqReviewedAt = db.SubmissionStatusApproved, &reviewer.ID, &now
 			finalize = true
 		default:
@@ -270,6 +279,9 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		}
 
 	case s.Status == db.SubmissionStatusFraudCheck: // passing the fraud check
+		if d.OverrideReason != "" {
+			return out, problem(http.StatusUnprocessableEntity, "The fraud check can only cut hours, so it can't go over Hackatime.")
+		}
 		seconds := *s.ApprovedSeconds
 		if d.ApprovedSeconds != nil {
 			seconds = *d.ApprovedSeconds
@@ -279,6 +291,9 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		}
 		event.Kind, event.Seconds = db.ShipEventKindFraudPass, &seconds
 		s.ApprovedSeconds = &seconds
+		if seconds <= s.NewSeconds {
+			s.OverrideReason = nil // cut back to what Hackatime tracked
+		}
 		s.FraudReviewerID, s.FraudReviewedAt = &reviewer.ID, &now
 		s.Status = db.SubmissionStatusAwaitingHq
 
@@ -287,10 +302,13 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		if d.ApprovedSeconds != nil {
 			seconds = *d.ApprovedSeconds
 		}
-		if seconds < 0 || seconds > s.NewSeconds {
-			return out, problem(http.StatusUnprocessableEntity, "approved_seconds has to be between 0 and the submission's new_seconds.")
+		if err := checkOverride(&s, seconds, d.OverrideReason); err != nil {
+			return out, err
 		}
 		event.Kind, event.Seconds = db.ShipEventKindFinalApproval, &seconds
+		if d.OverrideReason != "" {
+			event.Internal = withOverride(event.Internal, s, seconds)
+		}
 		s.ApprovedSeconds = &seconds
 		if d.Feedback != "" {
 			s.Feedback = nonEmpty(d.Feedback)
@@ -303,6 +321,7 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		ID: s.ID, Status: s.Status, ApprovedSeconds: s.ApprovedSeconds, Feedback: s.Feedback, InternalNotes: s.InternalNotes,
 		ReviewerID: s.ReviewerID, ReviewedAt: s.ReviewedAt, Checks: s.Checks, FraudReasons: s.FraudReasons,
 		FraudReviewerID: s.FraudReviewerID, FraudReviewedAt: s.FraudReviewedAt, HqReviewerID: s.HqReviewerID, HqReviewedAt: s.HqReviewedAt,
+		OverrideReason: s.OverrideReason,
 	})
 	if err != nil {
 		return out, err
@@ -334,7 +353,39 @@ func sentBack(s db.Submission) db.Submission {
 	s.Checks, s.FraudReasons = nil, []string{}
 	s.FraudReviewerID, s.FraudReviewedAt = nil, nil
 	s.HqReviewerID, s.HqReviewedAt = nil, nil
+	s.OverrideReason = nil
 	return s
+}
+
+// checkOverride checks approving seconds on a ship, and sets or clears its
+// override reason. More than Hackatime tracked needs a reason: a new one, or
+// (at HQ) the one the reviewer already gave.
+func checkOverride(s *db.Submission, seconds int32, reason string) error {
+	switch {
+	case seconds < 0:
+		return problem(http.StatusUnprocessableEntity, "approved_seconds can't be negative.")
+	case seconds <= s.NewSeconds:
+		s.OverrideReason = nil
+	case reason != "":
+		s.OverrideReason = &reason
+	case s.OverrideReason == nil:
+		return problem(http.StatusUnprocessableEntity,
+			"That's more than the %s Hackatime tracked. Tick the override and say why.", hoursText(int(s.NewSeconds)))
+	}
+	return nil
+}
+
+// withOverride adds the override reason to an approval's notes, so the
+// timeline shows it.
+func withOverride(notes *string, s db.Submission, seconds int32) *string {
+	if s.OverrideReason == nil {
+		return notes
+	}
+	line := fmt.Sprintf("Over Hackatime (%s of %s tracked): %s", hoursText(int(seconds)), hoursText(int(s.NewSeconds)), *s.OverrideReason)
+	if notes == nil {
+		return &line
+	}
+	return new(*notes + "\n" + line)
 }
 
 // checkClaim refuses to let reviewer act on a ship someone else is holding.
@@ -453,8 +504,8 @@ func (a *API) editDecision(ctx context.Context, actor *db.User, submissionID int
 			return problem(http.StatusBadRequest, "Only approvals have hours.")
 		case !current || (s.Status != db.SubmissionStatusFraudCheck && s.Status != db.SubmissionStatusAwaitingHq):
 			return problem(http.StatusBadRequest, "Hours can only change before the approval is signed off; stamps may already have been paid on it.")
-		case *seconds < 0 || *seconds > s.NewSeconds:
-			return problem(http.StatusBadRequest, "Hours have to be between 0 and what the ship claimed.")
+		case *seconds < 0 || (*seconds > s.NewSeconds && s.OverrideReason == nil):
+			return problem(http.StatusBadRequest, "Hours have to be between 0 and what Hackatime tracked, unless the approval gave a reason for going over.")
 		}
 		event.Seconds = seconds
 		s.ApprovedSeconds = seconds

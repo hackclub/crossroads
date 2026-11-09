@@ -11,6 +11,7 @@ select
     submissions.submitted_at,
     submissions.reviewed_at,
     submissions.fraud_reasons,
+    submissions.override_reason,
     submissions.claimed_by,
     submissions.claim_expires_at,
     projects.name as project_name,
@@ -115,6 +116,7 @@ update submissions set
     fraud_reviewed_at = $11,
     hq_reviewer_id = $12,
     hq_reviewed_at = $13,
+    override_reason = $14,
     claimed_by = null,
     claim_expires_at = null
 where id = $1

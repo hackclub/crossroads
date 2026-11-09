@@ -442,6 +442,9 @@ func (a *API) skFetchProjectDetail(w http.ResponseWriter, r *http.Request, input
 			ship.ApproveFields = []skField{{
 				Name: "send_to_fraud", Label: "Send to Crossroads' fraud check", Type: "boolean",
 				Placeholder: "Even if no automatic check flags it.",
+			}, {
+				Name: "hours_override_reason", Label: "Why more hours than Hackatime tracked?", Type: "markdown",
+				Placeholder: "Only if you're approving more than the hours submitted. HQ will have to sign it off.",
 			}}
 		}
 		project.Ships[i] = ship
@@ -766,8 +769,9 @@ func (a *API) skSubmitReviewAction(w http.ResponseWriter, r *http.Request, input
 			return
 		}
 		sendToFraud, _ := in.Fields["send_to_fraud"].(bool)
+		overrideReason, _ := in.Fields["hours_override_reason"].(string)
 		d = decision{Action: "approve", Stage: status, ApprovedSeconds: seconds, Feedback: in.FeedbackMessage,
-			InternalNotes: in.Justification, SendToFraud: sendToFraud}
+			InternalNotes: in.Justification, SendToFraud: sendToFraud, OverrideReason: overrideReason}
 		perms = permissions{Review: true, HQReview: in.IsHq}
 	case "reject":
 		d = decision{Action: "reject", Stage: status, Feedback: in.FeedbackMessage, InternalNotes: in.InternalMessage}

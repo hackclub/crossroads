@@ -190,6 +190,13 @@ func TestApprovedSecondsCantExceedNewSeconds(t *testing.T) {
 		new_seconds, approved_seconds, reviewer_id, reviewed_at) values ($1, '{}', 'approved', 7200, 3600, 7200, $2, now())`,
 		project, reviewer)
 	wantViolation(t, err, "submissions_approved_within_new")
+
+	// Going over is allowed with a reason.
+	if _, err := pool.Exec(context.Background(), `insert into submissions (project_id, hackatime_projects, status, hackatime_seconds,
+		new_seconds, approved_seconds, reviewer_id, reviewed_at, override_reason) values ($1, '{}', 'approved', 7200, 3600, 7200, $2, now(), 'soldering')`,
+		project, reviewer); err != nil {
+		t.Errorf("approving over Hackatime with a reason: %v", err)
+	}
 }
 
 func TestHackatimeProjectCountsTowardOneProject(t *testing.T) {

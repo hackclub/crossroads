@@ -72,6 +72,8 @@ type submissionJSON struct {
 	FraudReviewedAt *time.Time      `json:"fraud_reviewed_at,omitempty"`
 	HQReviewerID    *int64          `json:"hq_reviewer_id,omitempty"`
 	HQReviewedAt    *time.Time      `json:"hq_reviewed_at,omitempty"`
+	// Why it's approved for more than Hackatime tracked.
+	OverrideReason *string `json:"override_reason,omitempty"`
 }
 
 // messageJSON is something a reviewer said to the participant.

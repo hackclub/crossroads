@@ -187,6 +187,13 @@ func (s *Syncer) justification(row db.ListSubmissionsToSyncRow) string {
 	if row.ReviewerName != "" {
 		fmt.Fprintf(&b, " Reviewer %s approved %s.", row.ReviewerName, h(reviewerSeconds))
 	}
+	if sub.OverrideReason != nil && *sub.ApprovedSeconds > sub.NewSeconds {
+		fmt.Fprintf(&b, " Approved for more than Hackatime tracked (%s of %s), because: %s",
+			h(*sub.ApprovedSeconds), h(sub.NewSeconds), strings.TrimSpace(*sub.OverrideReason))
+		if !strings.HasSuffix(*sub.OverrideReason, ".") {
+			b.WriteString(".")
+		}
+	}
 	if sub.InternalNotes != nil {
 		fmt.Fprintf(&b, " Reviewer's notes: %s", strings.TrimSpace(*sub.InternalNotes))
 		if !strings.HasSuffix(*sub.InternalNotes, ".") {

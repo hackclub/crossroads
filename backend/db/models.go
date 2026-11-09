@@ -736,6 +736,7 @@ type Submission struct {
 	ClaimedBy          *int64
 	ClaimExpiresAt     *time.Time
 	UnifiedSubmittedAt *time.Time
+	OverrideReason     *string
 }
 
 type User struct {

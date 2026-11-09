@@ -249,7 +249,7 @@ func (q *Queries) ListProjectsWithOwnerByUser(ctx context.Context, arg ListProje
 }
 
 const listSubmissionsForProjects = `-- name: ListSubmissionsForProjects :many
-select id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at from submissions where project_id = any($1::bigint[])
+select id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at, override_reason from submissions where project_id = any($1::bigint[])
 order by project_id, id
 `
 
@@ -285,6 +285,7 @@ func (q *Queries) ListSubmissionsForProjects(ctx context.Context, projectIds []i
 			&i.ClaimedBy,
 			&i.ClaimExpiresAt,
 			&i.UnifiedSubmittedAt,
+			&i.OverrideReason,
 		); err != nil {
 			return nil, err
 		}

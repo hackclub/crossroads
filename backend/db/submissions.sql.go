@@ -29,7 +29,7 @@ func (q *Queries) ClaimedSecondsForUser(ctx context.Context, userID int64) (int6
 const createSubmission = `-- name: CreateSubmission :one
 insert into submissions (project_id, hackatime_projects, hackatime_seconds, new_seconds)
 values ($1, $2, $3, $4)
-returning id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at
+returning id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at, override_reason
 `
 
 type CreateSubmissionParams struct {
@@ -70,12 +70,13 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 		&i.ClaimedBy,
 		&i.ClaimExpiresAt,
 		&i.UnifiedSubmittedAt,
+		&i.OverrideReason,
 	)
 	return i, err
 }
 
 const listSubmissions = `-- name: ListSubmissions :many
-select id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at from submissions where project_id = $1 order by id desc
+select id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at, override_reason from submissions where project_id = $1 order by id desc
 `
 
 func (q *Queries) ListSubmissions(ctx context.Context, projectID int64) ([]Submission, error) {
@@ -110,6 +111,7 @@ func (q *Queries) ListSubmissions(ctx context.Context, projectID int64) ([]Submi
 			&i.ClaimedBy,
 			&i.ClaimExpiresAt,
 			&i.UnifiedSubmittedAt,
+			&i.OverrideReason,
 		); err != nil {
 			return nil, err
 		}
@@ -122,7 +124,7 @@ func (q *Queries) ListSubmissions(ctx context.Context, projectID int64) ([]Submi
 }
 
 const listSubmissionsForUser = `-- name: ListSubmissionsForUser :many
-select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at from submissions
+select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason from submissions
 join projects on projects.id = submissions.project_id
 where projects.user_id = $1
 order by submissions.id desc
@@ -160,6 +162,7 @@ func (q *Queries) ListSubmissionsForUser(ctx context.Context, userID int64) ([]S
 			&i.ClaimedBy,
 			&i.ClaimExpiresAt,
 			&i.UnifiedSubmittedAt,
+			&i.OverrideReason,
 		); err != nil {
 			return nil, err
 		}

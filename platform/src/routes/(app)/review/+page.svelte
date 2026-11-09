@@ -88,8 +88,11 @@
 							<td>
 								<div class="stack-sm">
 									<span>{#if q.priority}<span class="badge warn">Priority</span> {/if}{q.project_name}</span>
-									{#if q.fraud_reasons?.length}
-										<span class="pill-row">{#each q.fraud_reasons as r}<span class="badge warn tiny">{reasonLabel(r)}</span>{/each}</span>
+									{#if q.fraud_reasons?.length || q.override_reason}
+										<span class="pill-row">
+											{#each q.fraud_reasons as r}<span class="badge warn tiny">{reasonLabel(r)}</span>{/each}
+											{#if q.override_reason}<span class="badge info tiny" title={q.override_reason}>Over Hackatime</span>{/if}
+										</span>
 									{/if}
 								</div>
 							</td>

@@ -40,6 +40,7 @@ func toReviewerSubmissionJSON(s db.Submission) submissionJSON {
 	out.FraudReviewedAt = s.FraudReviewedAt
 	out.HQReviewerID = s.HqReviewerID
 	out.HQReviewedAt = s.HqReviewedAt
+	out.OverrideReason = s.OverrideReason
 	return out
 }
 
@@ -84,6 +85,7 @@ type queueItemJSON struct {
 	ReviewedAt        *time.Time `json:"reviewed_at"`
 	ReviewerName      *string    `json:"reviewer_name"`
 	FraudReasons      []string   `json:"fraud_reasons"`
+	OverrideReason    *string    `json:"override_reason"` // set when it's approved for more than Hackatime tracked
 	Priority          bool       `json:"priority"`
 	Claim             *claimJSON `json:"claim"`
 	SkippedByMe       bool       `json:"skipped_by_me"`
@@ -160,6 +162,7 @@ func (a *API) reviewQueue(w http.ResponseWriter, r *http.Request) {
 			ReviewedAt:        row.ReviewedAt,
 			ReviewerName:      nonEmpty(row.ReviewerName),
 			FraudReasons:      row.FraudReasons,
+			OverrideReason:    row.OverrideReason,
 			Priority:          row.Priority,
 			Claim:             activeClaim(row.ClaimedBy, row.ClaimExpiresAt, row.ClaimedByName),
 			SkippedByMe:       row.Skipped,

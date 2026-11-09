@@ -437,3 +437,63 @@ func TestSimultaneousNextsGiveDifferentShips(t *testing.T) {
 		t.Errorf("reviewers got %v, want six different ships", got)
 	}
 }
+
+func TestApprovingMoreThanHackatime(t *testing.T) {
+	e := newEnv(t)
+	reviewer := e.newReviewer(t) // can sign off too, but an override still waits for HQ
+	user, id := e.shipFor(t, "U1", 3)
+
+	status, result := e.decide(t, reviewer, id, map[string]any{"action": "approve", "approved_seconds": 5 * 3600})
+	if status != http.StatusUnprocessableEntity || !strings.Contains(result.Error, "say why") {
+		t.Errorf("going over without a reason: got %d %q, want 422", status, result.Error)
+	}
+	status, result = e.decide(t, reviewer, id, map[string]any{"action": "approve", "approved_seconds": 5 * 3600,
+		"override_reason": "Two hours soldering the PCB, which Hackatime can't see.", "send_to_fraud": true})
+	if status != http.StatusOK || result.Submission.Status != "fraud_check" || *result.Submission.ApprovedSeconds != 5*3600 {
+		t.Fatalf("going over with a reason: got %d %+v", status, result.Submission)
+	}
+	// The fraud check can't go over, but passing keeps the reviewer's hours.
+	if status, _ := e.decide(t, reviewer, id, map[string]any{"action": "approve", "override_reason": "more"}); status != http.StatusUnprocessableEntity {
+		t.Errorf("overriding at the fraud check: got %d, want 422", status)
+	}
+	status, result = e.decide(t, reviewer, id, map[string]any{"action": "approve"})
+	if status != http.StatusOK || result.Submission.Status != "awaiting_hq" || *result.Submission.ApprovedSeconds != 5*3600 {
+		t.Fatalf("fraud pass: got %d %+v", status, result.Submission)
+	}
+	if e.stamps(t, user) != 0 {
+		t.Error("paid before HQ signed off")
+	}
+	// HQ keeps the override without restating it.
+	status, result = e.decide(t, reviewer, id, map[string]any{"action": "approve"})
+	if status != http.StatusOK || result.StampsPaid != 50 {
+		t.Errorf("sign-off: got %d, paid %d, want 50 for 5 hours", status, result.StampsPaid)
+	}
+	var reason string
+	e.pool.QueryRow(context.Background(), "select override_reason from submissions where id = $1", id).Scan(&reason)
+	if !strings.Contains(reason, "soldering") {
+		t.Errorf("override reason is %q", reason)
+	}
+	found := false
+	for _, ev := range e.detail(t, reviewer, id).Events {
+		if ev.Kind == "approval" && ev.Internal != nil && strings.Contains(*ev.Internal, "Over Hackatime (5h of 3h tracked)") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("the approval on the timeline doesn't mention the override")
+	}
+
+	// Without the fraud check, an override by someone with HQ powers still
+	// waits for HQ, rather than paying straight away.
+	_, id = e.shipFor(t, "U2", 2)
+	_, result = e.decide(t, reviewer, id, map[string]any{"action": "approve", "approved_seconds": 3 * 3600, "override_reason": "design work in Figma"})
+	if result.Submission.Status != "awaiting_hq" {
+		t.Errorf("HQ reviewer's override: got %q, want awaiting_hq", result.Submission.Status)
+	}
+	// HQ cutting it back to Hackatime's hours drops the override.
+	_, result = e.decide(t, reviewer, id, map[string]any{"action": "approve", "approved_seconds": 2 * 3600})
+	e.pool.QueryRow(context.Background(), "select coalesce(override_reason, '') from submissions where id = $1", id).Scan(&reason)
+	if result.Submission.Status != "approved" || reason != "" {
+		t.Errorf("after HQ cut it back: %q, override %q", result.Submission.Status, reason)
+	}
+}
