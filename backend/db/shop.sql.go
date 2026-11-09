@@ -10,7 +10,7 @@ import (
 )
 
 const adminListOrders = `-- name: AdminListOrders :many
-select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, shop_items.batch_size, shop_items.batch_step, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address
+select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, shop_items.batch_size, shop_items.batch_step, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note
 from orders
 join shop_items on shop_items.id = orders.shop_item_id
 join users on users.id = orders.user_id
@@ -77,6 +77,10 @@ func (q *Queries) AdminListOrders(ctx context.Context, status *OrderStatus) ([]A
 			&i.User.Birthday,
 			&i.User.PhoneNumber,
 			&i.User.Address,
+			&i.User.CanReview,
+			&i.User.CanFraudReview,
+			&i.User.CanHqReview,
+			&i.User.ReviewerNote,
 		); err != nil {
 			return nil, err
 		}
@@ -674,7 +678,7 @@ func (q *Queries) SetOrderStatus(ctx context.Context, arg SetOrderStatusParams) 
 
 const setUserVerification = `-- name: SetUserVerification :one
 update users set verification_status = $2, ysws_eligible = $3 where id = $1
-returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note
 `
 
 type SetUserVerificationParams struct {
@@ -703,6 +707,10 @@ func (q *Queries) SetUserVerification(ctx context.Context, arg SetUserVerificati
 		&i.Birthday,
 		&i.PhoneNumber,
 		&i.Address,
+		&i.CanReview,
+		&i.CanFraudReview,
+		&i.CanHqReview,
+		&i.ReviewerNote,
 	)
 	return i, err
 }

@@ -35,7 +35,10 @@ TypeScript definitions of everything the API returns. Copy them into the fronten
 
 ```ts
 type Role = "participant" | "reviewer" | "admin";
-type SubmissionStatus = "pending" | "approved" | "rejected";
+// What participants see. Reviewer routes show the real stage instead
+// (ReviewStatus, below): "final_check" is "fraud_check" or "awaiting_hq".
+type SubmissionStatus = "pending" | "final_check" | "approved" | "rejected";
+type ReviewStatus = "pending" | "fraud_check" | "awaiting_hq" | "approved" | "rejected";
 type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 type Effect = "none" | "priority_review" | "stamp_multiplier";
 type ShopItemKind = "ticket" | "price_lock" | "physical" | "stipend";
@@ -52,6 +55,10 @@ interface Me {
   ysws_eligible: boolean;
   address: Address | null; // from Hack Club Auth; where physical items ship by default
   stamps_per_hour: number; // stamps paid per approved hour, for showing prices in hours
+  // Which review stages they can decide: all for admins, none for participants.
+  can_review: boolean;
+  can_fraud_review: boolean;
+  can_hq_review: boolean;
 }
 
 interface Project {
@@ -78,13 +85,21 @@ interface Submission {
   hackatime_projects: string[]; // what it counted, as of submitting
   hackatime_seconds: number;    // the project's Hackatime total when submitted
   new_seconds: number;          // what this submission claims
-  approved_seconds: number | null; // what the reviewer accepted (approved only)
-  feedback: string | null;      // from the reviewer
+  approved_seconds: number | null; // what it pays (or will, in final_check) once signed off
+  feedback: string | null;      // the latest decision's message to them
   submitted_at: string;
-  reviewed_at: string | null;
-  // Reviewer routes only:
+  reviewed_at: string | null;   // when the first reviewer decided
+  // Only on GET /api/projects/{id}: what reviewers said to them about this ship.
+  messages?: { kind: string; message: string; created_at: string }[];
+  // Reviewer routes only (and status is a ReviewStatus there):
   internal_notes?: string | null;
   reviewer_id?: number | null;
+  checks?: Check[];             // the automatic checks when the reviewer decided
+  fraud_reasons?: string[];     // why it went to the fraud check: check IDs, "manual", "everything"
+  fraud_reviewer_id?: number;
+  fraud_reviewed_at?: string;
+  hq_reviewer_id?: number;
+  hq_reviewed_at?: string;
 }
 
 interface HackatimeProject {
@@ -213,12 +228,25 @@ Reviewer and admin shapes are listed with their routes below.
 | GET | `/api/shop/items` | signed in | What's in the shop |
 | POST | `/api/shop/items/{id}/orders` | signed in, verified | Buy something |
 | GET | `/api/orders` | signed in | Their orders |
-| GET | `/api/review/queue` | reviewer | Pending submissions |
-| GET | `/api/review/submissions/{id}` | reviewer | Everything about one submission |
-| POST | `/api/review/submissions/{id}` | reviewer | Approve or reject |
+| GET | `/api/review/queue?stage=` | reviewer | One review queue, and how many are in each |
+| POST | `/api/review/next` | reviewer | Claim the next ship in a queue |
+| GET | `/api/review/submissions/{id}` | reviewer | Everything about one ship |
+| POST | `/api/review/submissions/{id}` | reviewer | Decide it at its stage: approve, reject or send back |
+| POST | `/api/review/submissions/{id}/claim` | reviewer | Claim it (or keep it longer) |
+| DELETE | `/api/review/submissions/{id}/claim` | reviewer | Let go of it |
+| POST | `/api/review/submissions/{id}/skip` | reviewer | Let go, and don't get it from Next for 3 hours |
+| POST | `/api/review/submissions/{id}/comments` | reviewer | Comment, for the participant or reviewers only |
+| PUT | `/api/review/users/{id}/note` | reviewer | The reviewers-only note on a person |
+| GET | `/api/review/templates` | reviewer | Feedback templates |
+| POST | `/api/review/templates` | reviewer | Add one |
+| PATCH | `/api/review/templates/{id}` | reviewer | Change one |
+| DELETE | `/api/review/templates/{id}` | reviewer | Delete one |
+| POST | `/api/sidekick` | Sidekick (shared secret) | Sidekick's protocol; see "Sidekick" below |
 | GET | `/api/admin/activity?days=&min_minutes=` | admin | Participants on the platform and working on projects, per day |
 | GET | `/api/admin/users?q=` | admin | Find people |
-| PATCH | `/api/admin/users/{id}` | admin | Change someone's role |
+| PATCH | `/api/admin/users/{id}` | admin | Change someone's role and review stages |
+| GET | `/api/admin/review-settings` | admin | Fraud check settings |
+| PATCH | `/api/admin/review-settings` | admin | Change them |
 | POST | `/api/admin/users/{id}/stamp-adjustments` | admin | Add or take away stamps |
 | POST | `/api/admin/users/{id}/boxes` | admin | Give someone a box |
 | POST | `/api/admin/users/{id}/special-stamps` | admin | Give someone a special stamp |
@@ -454,24 +482,69 @@ Buying needs a verified identity that Hack Club Auth says is eligible for YSWS p
 
 ## Reviewing (`/api/review`, reviewers and admins)
 
-### `GET /api/review/queue`
+A ship goes through up to three stages before it counts. See [REVIEW_FLOW.md](REVIEW_FLOW.md) for why, and `backend/api/stages.go` for the rules.
 
-`200` → pending submissions, with priority-review ones first, then oldest first:
+| Stage (queue) | Status | Who decides | Approving it… |
+|---|---|---|---|
+| `review` | `pending` | `can_review` | decides the hours. Goes to `fraud_check` if anything flagged it, else to `awaiting_hq`, or straight to `approved` if the reviewer can also sign off. |
+| `fraud` | `fraud_check` | `can_fraud_review` | passes it, maybe cutting hours (never adding). Goes to `awaiting_hq`. |
+| `hq` | `awaiting_hq` | `can_hq_review` | signs it off at any hours up to `new_seconds`: `approved`, stamps and boxes paid, sent to Unified YSWS. |
+
+Admins can decide every stage. Reviewers can see every queue, but only decide the stages they have a flag for. Nobody can decide their own project. At every stage a ship can be **rejected** (feedback required), and at the fraud and HQ stages it can be **sent back** to `pending` (a reason for the next reviewer required), which clears every decision on it; the timeline keeps them.
+
+A ship goes to the fraud check when a fraud check fails or can't run (`fraud: true` below), when the reviewer ticks `send_to_fraud`, or when an admin has switched on `fraud_check_everything`.
 
 ```ts
-interface QueueItem {
-  id: number;            // submission ID
-  project_id: number;
-  project_name: string;
-  user_id: number;
-  user_name: string;
-  slack_id: string | null;
-  hackatime_projects: string[];
-  new_seconds: number;
-  submitted_at: string;
-  priority: boolean;     // a priority review stamp was used on it
+interface Check {
+  id: "hackatime_flagged" | "hackatime_dropped" | "shared_links" | "large_ship" | "long_day" | "identity";
+  name: string;
+  status: "pass" | "fail" | "inconclusive";
+  severity: "info" | "warn" | "fail" | "critical"; // how bad it is when it doesn't pass
+  summary?: string; // why, when it doesn't pass
+  fraud: boolean;   // a fraud signal: failing or inconclusive sends it to the fraud check
+}
+interface Claim { user_id: number; name: string; expires_at: string }
+```
+
+### `GET /api/review/queue?stage=review|fraud|hq`
+
+`stage` defaults to `review`. `200` →
+
+```ts
+interface Queue {
+  counts: { review: number; fraud: number; hq: number };
+  items: {
+    id: number;            // submission ID
+    project_id: number; project_name: string;
+    user_id: number; user_name: string; slack_id: string | null;
+    status: ReviewStatus;
+    hackatime_projects: string[];
+    new_seconds: number;
+    approved_seconds: number | null; // the reviewer's number, at the later stages
+    submitted_at: string; reviewed_at: string | null;
+    reviewer_name: string | null;
+    fraud_reasons: string[];
+    priority: boolean;     // a priority review (Express) stamp is on it
+    claim: Claim | null;   // who's on it right now
+    skipped_by_me: boolean;
+    mine: boolean;         // their own project
+  }[];
 }
 ```
+
+Priority review first, then oldest first. `422` for an unknown stage.
+
+### `POST /api/review/next`
+
+`{"stage": "review"}` claims the next ship in that queue for 30 minutes and answers `200 {submission_id, claim}`: their own live claim if they have one, otherwise the first ship (priority first, then oldest) that nobody's holding, isn't theirs, and they haven't skipped in the last 3 hours. `204` when there's nothing left. `403` for a stage they can't decide. Two reviewers asking at once never get the same ship.
+
+### Claims
+
+- **`POST /api/review/submissions/{id}/claim`** → `200 Claim`. Claims it, or renews their claim, for 30 minutes. `409` if someone else holds it ("Ana is reviewing this right now (until 14:05 UTC).") or it's been decided. `403` for their own project or a stage they can't decide.
+- **`DELETE /api/review/submissions/{id}/claim`** → `204`. Lets go of their claim; admins can clear anyone's.
+- **`POST /api/review/submissions/{id}/skip`** → `204`. Lets go, and Next won't give it to them for 3 hours.
+
+Claims are advisory but enforced at decision time: nobody can decide a ship someone else holds. Deciding drops the claim. Opening the review page doesn't claim.
 
 ### `GET /api/review/submissions/{id}`
 
@@ -479,22 +552,35 @@ interface QueueItem {
 
 ```ts
 interface ReviewDetail {
-  submission: Submission;  // with internal_notes and reviewer_id
-  project: Project;        // its submissions include internal_notes and reviewer_id too
+  submission: Submission;  // with the reviewer-only fields; status is a ReviewStatus
+  stage: "review" | "fraud" | "hq" | ""; // "" once decided
+  project: Project;        // its submissions have the reviewer-only fields too
   user: {
     id: number; name: string; email: string; slack_id: string | null;
     verification_status: string; ysws_eligible: boolean;
+    reviewer_note: string | null; // see PUT /api/review/users/{id}/note
   };
-  // Other projects, anyone's, with the same repo or demo link (ignoring
-  // http/https, www., case, trailing slashes and .git): copied projects, or
-  // one project split up to be paid twice.
-  projects_sharing_links: {
-    id: number; name: string; repo_url: string | null; demo_url: string | null;
-    user_id: number; user_name: string;
-  }[];
-  // Fresh from Hackatime, for the submission's Hackatime projects:
+  events: ShipEvent[];     // the project's whole timeline, oldest first
+  checks: Check[];         // run just now
+  projects_sharing_links: { id: number; name: string; repo_url: string | null; demo_url: string | null; user_id: number; user_name: string }[];
   hackatime: { seconds: number; projects: { name: string; seconds: number; project_id: null }[]; convicted: boolean } | null;
-  hackatime_error?: string; // set when hackatime is null
+  hackatime_error?: string;
+  claim: Claim | null;
+  can_decide: boolean;     // whether the viewer can decide it right now
+  cant_decide_reason?: string;
+}
+
+interface ShipEvent {
+  id: number;
+  submission_id: number;
+  kind: "comment" | "internal_comment" | "flagged" | "approval" | "fraud_pass" | "sent_back" | "final_approval" | "rejection";
+  stage: ReviewStatus;     // the ship's status when it happened
+  actor: { id: number; name: string } | null; // null for "flagged", which the checks did
+  seconds: number | null;  // approvals: the hours from then on
+  message: string | null;  // what the participant sees
+  internal: string | null; // reviewers only: justification, notes, reasons
+  created_at: string;
+  edited_at: string | null;
 }
 ```
 
@@ -504,36 +590,54 @@ interface ReviewDetail {
 
 ```json
 {
-  "status": "approved",
+  "action": "approve",
+  "stage": "pending",
   "approved_seconds": 7200,
-  "feedback": "Great project! Only counted the first two hours.",
-  "internal_notes": "third hour was idle time"
+  "feedback": "Great work!",
+  "internal_notes": "Hackatime matches the commits.",
+  "send_to_fraud": false
 }
 ```
 
-- `status`: `"approved"` or `"rejected"`.
-- `approved_seconds`: approvals only, between 0 and the submission's `new_seconds`. Defaults to all of `new_seconds`.
+- `action`: `approve`, `reject` or `send_back`. What approving means depends on the stage (table above).
+- `stage`: optional, the status the reviewer was looking at. If the ship has moved on since, `409` instead of applying the decision to a stage they didn't mean. The review pages always send it.
+- `approved_seconds`: approvals only. Defaults to all of `new_seconds` at the first stage and to the current `approved_seconds` after that. The fraud check can only lower it; HQ can set anything up to `new_seconds`.
 - `feedback`: shown to the participant. Required to reject.
-- `internal_notes`: reviewers only.
+- `internal_notes`: reviewers only. Required to send back.
+- `send_to_fraud`: first-stage approvals only.
 
-Approving pays stamps for the approved time and grants a box for every milestone the person's approved total has now reached, all at once.
+Signing off pays stamps for the approved time and grants a box for every milestone the person's approved total has now reached, all at once. Nothing is paid before that.
 
 `200` →
 
 ```ts
 interface ReviewResult {
-  submission: Submission; // with internal_notes and reviewer_id
-  stamps_paid: number;
+  submission: Submission; // with the reviewer-only fields
+  stamps_paid: number;    // 0 unless this signed it off
   boxes_granted: Box[];
 }
 ```
 
 | Status | When |
 |---|---|
-| 422 | Bad `status`, rejecting without feedback, `approved_seconds` on a rejection or out of range, feedback or notes over 5,000 characters |
+| 422 | Bad action, missing feedback or reason, hours out of range |
 | 404 | No such submission |
-| 403 | It's the reviewer's own project |
-| 409 | It's already been reviewed |
+| 403 | Their own project, or a stage they can't decide |
+| 409 | Already decided, moved on from `stage`, someone else holds it, or sending back a ship that's already pending |
+
+### Comments, notes and templates
+
+- **`POST /api/review/submissions/{id}/comments`** `{"message": "Can you add a README?", "internal": false}` → `201 ShipEvent`. Not internal: the participant sees it on their project. `422` for an empty or 5,000+ character message, `403` on their own project.
+- **`PUT /api/review/users/{id}/note`** `{"note": "Hackatime was broken until Nov 5"}` → `200 {note}`. A note about the person that reviewers see on all their ships. `""` clears it.
+- **`GET /api/review/templates`** → `200 FeedbackTemplate[]` (`{id, title, body, created_by, updated_at}`), by title. **`POST`** `{title, body}` → `201`, **`PATCH /{id}`** `{title, body}` → `200`, **`DELETE /{id}`** → `204`. Shared by everyone who reviews. `422` for an empty title or body.
+
+## Sidekick (`POST /api/sidekick`)
+
+The master endpoint for [Sidekick](https://github.com/hackclub/sidekick), Hack Club's review platform, following its `docs/PROTOCOL.md`. It's only there when `SIDEKICK_SECRET` is set, and every request needs `Authorization: Bearer <SIDEKICK_SECRET>`. Errors are `{"error": "NOT_FOUND" | "CONFLICT" | "FORBIDDEN" | "VALIDATION_ERROR" | "INVALID_ACTION" | "UNAUTHORIZED", "message": "..."}`.
+
+Supported actions: `HEALTH_CHECK`, `GET_PROGRAM_STATS`, `FETCH_PROJECTS`, `FETCH_PROJECT_DETAIL`, `FETCH_PROJECT_TIMELINE`, `FETCH_AUTHOR_PROJECTS`, `FETCH_USER_NOTE`, `UPDATE_USER_NOTE`, `SUBMIT_REVIEW_ACTION`, `UPDATE_REVIEW_ACTION`. The shop actions answer `INVALID_ACTION`: orders are fulfilled through Airtable.
+
+How Crossroads maps onto it is in [REVIEW_FLOW.md](REVIEW_FLOW.md#sidekick). The short version: `fraud_check` and `awaiting_hq` both look like `pending_hq`, Sidekick decisions go through the same rules as the review pages, and the reviewer has to have signed in to Crossroads once.
 
 ## Admin (`/api/admin`, admins only)
 
@@ -543,6 +647,7 @@ Admin user shape, used by several routes below:
 interface AdminUser {
   id: number; name: string; email: string; slack_id: string | null;
   role: Role; stamps: number; verification_status: string; ysws_eligible: boolean;
+  can_review: boolean; can_fraud_review: boolean; can_hq_review: boolean; // review stages; admins can do all
 }
 ```
 
@@ -550,7 +655,22 @@ interface AdminUser {
 
 **`GET /api/admin/users?q=heidi`** → `200 AdminUser[]`. Matches part of a name or email, or a whole Slack ID. Without `q`, the newest 50 people.
 
-**`PATCH /api/admin/users/{id}`** with `{"role": "reviewer"}` → `200 AdminUser`. `422` for an unknown role, or for an admin removing their own admin role. `404` for no such user. Role changes apply on the person's next request.
+**`PATCH /api/admin/users/{id}`** with any of `{"role": "reviewer", "can_review": true, "can_fraud_review": false, "can_hq_review": false}` → `200 AdminUser`. Fields left out don't change. `422` for an unknown role, an admin removing their own admin role, or review stages on a participant. `404` for no such user. Changes apply on the person's next request.
+
+### Review settings
+
+**`GET /api/admin/review-settings`** → `200`, and **`PATCH`** with any of the fields → `200`:
+
+```ts
+interface ReviewSettings {
+  fraud_check_everything: boolean; // every approved ship goes through the fraud check
+  large_ship_seconds: number;      // ships claiming more than this get a fraud check (default 20h)
+  long_day_seconds: number;        // so do ships with a UTC day over this on the project (default 14h)
+  updated_at: string;
+}
+```
+
+`422` unless `large_ship_seconds` is over 0 and `long_day_seconds` is 1 to 86,400. Changes apply to approvals from then on.
 
 **`POST /api/admin/users/{id}/stamp-adjustments`** with `{"amount": -300, "note": "clawback: copied project"}` → `201 AdminUser` (with their new balance). The amount can be negative, and can take them below zero. A note is required (1,000 characters max). `422` for a zero amount or no note, `404` for no such user.
 

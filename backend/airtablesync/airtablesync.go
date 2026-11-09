@@ -20,11 +20,13 @@ import (
 )
 
 const (
-	// The YSWS template table that feeds the Unified YSWS DB. A person ticks
-	// its "Automation - Submit to Unified YSWS" box after checking a row; the
-	// sync never does.
-	submissionsTable = "YSWS Project Submission"
-	ordersTable      = "Shop Orders"
+	// The YSWS template table that feeds the Unified YSWS DB. The sync ticks
+	// its "Automation - Submit to Unified YSWS" box on rows HQ has signed off
+	// on Crossroads, once the person is YSWS-eligible. Rows from before HQ
+	// sign-off existed are left for a person to tick.
+	submissionsTable   = "YSWS Project Submission"
+	submitUnifiedField = "Automation - Submit to Unified YSWS"
+	ordersTable        = "Shop Orders"
 )
 
 type Syncer struct {
@@ -53,6 +55,7 @@ func (s *Syncer) Run(ctx context.Context, interval time.Duration) {
 func (s *Syncer) SyncOnce(ctx context.Context) error {
 	return errors.Join(
 		s.syncSubmissions(ctx),
+		s.submitUnified(ctx),
 		// Before pushing orders, so a newly fulfilled one shows as fulfilled
 		// in the same pass.
 		s.pullFulfilled(ctx),
@@ -80,6 +83,41 @@ func (s *Syncer) syncSubmissions(ctx context.Context) error {
 			}); err != nil {
 				return err
 			}
+			if readyForUnified(batch[i]) {
+				if err := s.Queries.MarkUnifiedSubmitted(ctx, batch[i].Submission.ID); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// readyForUnified says whether a new row can go straight to the Unified YSWS
+// DB: HQ signed it off, and its owner is YSWS-eligible.
+func readyForUnified(row db.ListSubmissionsToSyncRow) bool {
+	return row.Submission.HqReviewerID != nil && row.User.YswsEligible
+}
+
+// submitUnified ticks the Unified YSWS box on rows that went into Airtable
+// before their owner was YSWS-eligible, now that they are.
+func (s *Syncer) submitUnified(ctx context.Context) error {
+	rows, err := s.Queries.ListSubmissionsToSubmitUnified(ctx)
+	if err != nil {
+		return err
+	}
+	for batch := range chunks(rows) {
+		records := make([]airtable.Record, len(batch))
+		for i, row := range batch {
+			records[i] = airtable.Record{ID: *row.AirtableRecordID, Fields: airtable.Fields{submitUnifiedField: true}}
+		}
+		if err := s.Airtable.Update(ctx, submissionsTable, records); err != nil {
+			return fmt.Errorf("submitting to Unified YSWS: %w", err)
+		}
+		for _, row := range batch {
+			if err := s.Queries.MarkUnifiedSubmitted(ctx, row.ID); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -102,10 +140,8 @@ func (s *Syncer) submissionFields(row db.ListSubmissionsToSyncRow) airtable.Fiel
 		"YSWS Eligible":   user.YswsEligible,
 		"Hackatime List":  hackatimeProjects,
 
-		"Optional - Override Hours Spent": hours,
-		"Optional - Override Hours Spent Justification": fmt.Sprintf(
-			"Reviewed on Crossroads. The reviewer approved %.2f of the %.2f new Hackatime hours on this submission.",
-			hours, float64(sub.NewSeconds)/3600),
+		"Optional - Override Hours Spent":               hours,
+		"Optional - Override Hours Spent Justification": s.justification(row),
 		"Justification - Hackatime Project Name(s) + Date Range(s)": fmt.Sprintf("%s, %s to %s",
 			hackatimeProjects, s.HoursStart.Format(time.DateOnly), sub.SubmittedAt.UTC().Format(time.DateOnly)),
 		"Justification - Submitter Hackatime ID": user.SlackID,
@@ -115,6 +151,9 @@ func (s *Syncer) submissionFields(row db.ListSubmissionsToSyncRow) airtable.Fiel
 	}
 	if user.Birthday != nil {
 		f["Birthday"] = user.Birthday.Format(time.DateOnly)
+	}
+	if readyForUnified(row) {
+		f[submitUnifiedField] = true
 	}
 	if row.EarlierApprovals > 0 {
 		f["Optional - Override Duplicate Justification"] = "An update to a project already approved on Crossroads. " +
@@ -130,6 +169,43 @@ func (s *Syncer) submissionFields(row db.ListSubmissionsToSyncRow) airtable.Fiel
 		f["Country"] = address.Country
 	}
 	return f
+}
+
+// justification explains the hours to whoever audits the Unified YSWS DB:
+// where the time came from, and who checked it at each stage.
+func (s *Syncer) justification(row db.ListSubmissionsToSyncRow) string {
+	sub := row.Submission
+	h := func(seconds int32) string { return fmt.Sprintf("%.2fh", float64(seconds)/3600) }
+	var b strings.Builder
+	fmt.Fprintf(&b, "Reviewed on Crossroads. Hackatime counted %s of new time on this ship (Hackatime projects: %s; %s on them from %s to %s, minus time already paid for).",
+		h(sub.NewSeconds), strings.Join(sub.HackatimeProjects, ", "), h(sub.HackatimeSeconds),
+		s.HoursStart.Format(time.DateOnly), sub.SubmittedAt.UTC().Format(time.DateOnly))
+	reviewerSeconds := *sub.ApprovedSeconds
+	if row.ReviewerSeconds != nil {
+		reviewerSeconds = *row.ReviewerSeconds
+	}
+	if row.ReviewerName != "" {
+		fmt.Fprintf(&b, " Reviewer %s approved %s.", row.ReviewerName, h(reviewerSeconds))
+	}
+	if sub.InternalNotes != nil {
+		fmt.Fprintf(&b, " Reviewer's notes: %s", strings.TrimSpace(*sub.InternalNotes))
+		if !strings.HasSuffix(*sub.InternalNotes, ".") {
+			b.WriteString(".")
+		}
+	}
+	switch {
+	case row.FraudReviewerName != "":
+		fmt.Fprintf(&b, " Flagged for a fraud check (%s), which %s passed.", strings.Join(sub.FraudReasons, ", "), row.FraudReviewerName)
+	case sub.HqReviewerID != nil:
+		b.WriteString(" No automatic check flagged it for a fraud check (Hackatime trust level, shared links, ship size, longest day, Hackatime time going down).")
+	}
+	if row.HqReviewerName != "" {
+		fmt.Fprintf(&b, " Signed off by %s at %s.", row.HqReviewerName, h(*sub.ApprovedSeconds))
+	}
+	if row.EarlierApprovals > 0 {
+		b.WriteString(" This is an update to a project already approved on Crossroads: only time added since then is counted.")
+	}
+	return b.String()
 }
 
 // githubUsername returns the owner of a github.com repo link, or nil.

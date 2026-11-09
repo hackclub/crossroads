@@ -11,7 +11,7 @@ import (
 )
 
 const getUser = `-- name: GetUser :one
-select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address from users where id = $1
+select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note from users where id = $1
 `
 
 func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
@@ -34,12 +34,16 @@ func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
 		&i.Birthday,
 		&i.PhoneNumber,
 		&i.Address,
+		&i.CanReview,
+		&i.CanFraudReview,
+		&i.CanHqReview,
+		&i.ReviewerNote,
 	)
 	return i, err
 }
 
 const searchUsers = `-- name: SearchUsers :many
-select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address from users
+select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note from users
 where $1::text = ''
     or name ilike '%' || $1::text || '%'
     or email ilike '%' || $1::text || '%'
@@ -76,6 +80,10 @@ func (q *Queries) SearchUsers(ctx context.Context, query string) ([]User, error)
 			&i.Birthday,
 			&i.PhoneNumber,
 			&i.Address,
+			&i.CanReview,
+			&i.CanFraudReview,
+			&i.CanHqReview,
+			&i.ReviewerNote,
 		); err != nil {
 			return nil, err
 		}
@@ -87,9 +95,54 @@ func (q *Queries) SearchUsers(ctx context.Context, query string) ([]User, error)
 	return items, nil
 }
 
+const setUserPermissions = `-- name: SetUserPermissions :one
+update users set can_review = $2, can_fraud_review = $3, can_hq_review = $4 where id = $1
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note
+`
+
+type SetUserPermissionsParams struct {
+	ID             int64
+	CanReview      bool
+	CanFraudReview bool
+	CanHqReview    bool
+}
+
+func (q *Queries) SetUserPermissions(ctx context.Context, arg SetUserPermissionsParams) (User, error) {
+	row := q.db.QueryRow(ctx, setUserPermissions,
+		arg.ID,
+		arg.CanReview,
+		arg.CanFraudReview,
+		arg.CanHqReview,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.HcaID,
+		&i.SlackID,
+		&i.Email,
+		&i.Name,
+		&i.VerificationStatus,
+		&i.YswsEligible,
+		&i.Role,
+		&i.Stamps,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.FirstName,
+		&i.LastName,
+		&i.Birthday,
+		&i.PhoneNumber,
+		&i.Address,
+		&i.CanReview,
+		&i.CanFraudReview,
+		&i.CanHqReview,
+		&i.ReviewerNote,
+	)
+	return i, err
+}
+
 const setUserRole = `-- name: SetUserRole :one
 update users set role = $2 where id = $1
-returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note
 `
 
 type SetUserRoleParams struct {
@@ -117,6 +170,10 @@ func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (User,
 		&i.Birthday,
 		&i.PhoneNumber,
 		&i.Address,
+		&i.CanReview,
+		&i.CanFraudReview,
+		&i.CanHqReview,
+		&i.ReviewerNote,
 	)
 	return i, err
 }
@@ -138,7 +195,7 @@ on conflict (hca_id) do update set
     address = excluded.address,
     verification_status = excluded.verification_status,
     ysws_eligible = excluded.ysws_eligible
-returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note
 `
 
 type UpsertUserFromHCAParams struct {
@@ -187,6 +244,10 @@ func (q *Queries) UpsertUserFromHCA(ctx context.Context, arg UpsertUserFromHCAPa
 		&i.Birthday,
 		&i.PhoneNumber,
 		&i.Address,
+		&i.CanReview,
+		&i.CanFraudReview,
+		&i.CanHqReview,
+		&i.ReviewerNote,
 	)
 	return i, err
 }

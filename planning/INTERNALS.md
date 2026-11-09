@@ -17,7 +17,10 @@ backend/
   api/              every /api handler
     api.go            the routes, decode(), idParam()
     projects.go       projects, Hackatime links, submitting, hours accounting
-    review.go         review queue, review page, approving (payouts, milestone boxes)
+    stages.go         the review stages: decide (every decision), payouts, automatic checks, comments
+    review.go         the review pages' routes: queues, Next and claims, the review page, notes
+    templates.go      feedback templates
+    sidekick.go       POST /api/sidekick, Sidekick's protocol, on top of stages.go
     boxes.go          boxes, odds, opening, special stamps
     admin.go          admin people, stamp types, box types, drop tables, milestones, grants
     shop.go           shop, orders, verification check, admin shop items, orders, stamp adjustments
@@ -56,11 +59,15 @@ Responses always use explicit JSON structs with `snake_case` tags. Never return 
 
 | Table | What |
 |---|---|
-| `users` | Everyone. `hca_id` (unique) is their Hack Club Auth identity; the profile (Slack ID, names, email, birthday, phone, address as `db.Address` JSON, verification) is refreshed at every sign-in. `role` is `participant`, `reviewer` or `admin`. `stamps` is their balance, kept up to date by a trigger. |
+| `users` | Everyone. `can_review`, `can_fraud_review` and `can_hq_review` are a reviewer's stages (admins have all of them whatever these say); `reviewer_note` is the reviewers-only note on a person. `hca_id` (unique) is their Hack Club Auth identity; the profile (Slack ID, names, email, birthday, phone, address as `db.Address` JSON, verification) is refreshed at every sign-in. `role` is `participant`, `reviewer` or `admin`. `stamps` is their balance, kept up to date by a trigger. |
 | `sessions` | `token_hash` (SHA-256 of the cookie value) and `expires_at`. |
 | `projects` | Name, description, repo, demo and screenshot links. |
 | `project_hackatime_projects` | Which Hackatime projects count toward which project. The primary key is `(user_id, hackatime_project)`, so each counts toward at most one of the person's projects. |
-| `submissions` | Each time a project is sent for review: `status`, a snapshot of `hackatime_projects`, `hackatime_seconds` (the project's total then), `new_seconds` (what it claims), `approved_seconds` (what the reviewer accepted), `feedback`, `internal_notes`, reviewer, `airtable_record_id`. |
+| `submissions` | Each time a project is sent for review: `status` (its stage, see REVIEW_FLOW.md), a snapshot of `hackatime_projects`, `hackatime_seconds` (the project's total then), `new_seconds` (what it claims), `approved_seconds` (what it pays once signed off), `feedback`, `internal_notes`, the first reviewer, `checks` and `fraud_reasons`, the fraud and HQ reviewers, the claim (`claimed_by`, `claim_expires_at`), `airtable_record_id`, `unified_submitted_at`. |
+| `ship_events` | A ship's timeline: comments (public or internal), `flagged`, and every decision (`approval`, `fraud_pass`, `sent_back`, `final_approval`, `rejection`) with its hours, `message` for the participant and `internal` notes. `submissions` is where a ship is now; this is how it got there. |
+| `review_skips` | Who skipped which ship when, so Next leaves it alone for 3 hours. |
+| `feedback_templates` | Shared feedback snippets. |
+| `review_settings` | One row: `fraud_check_everything`, `large_ship_seconds`, `long_day_seconds`. |
 | `stamp_ledger` | Every stamp change ever: `payout` (a submission), `purchase` and `refund` (an order), `adjustment` (an admin, with a note). Append-only. |
 | `special_stamp_types` | Collectible kinds: `rarity`, `effect` (`none` or `priority_review`), optional `supply_cap`, `issued_count`. |
 | `box_types`, `box_drops` | Box kinds, and their loot tables (a weight per stamp type). |
@@ -78,7 +85,14 @@ Rules live in the database wherever possible, so a bug in Go can't break them. S
 
 | Rule | Enforced by |
 |---|---|
-| One pending submission per project | unique partial index `submissions_one_pending_per_project` |
+| One ship in review per project, at any stage | unique partial index `submissions_one_open_per_project` |
+| A ship's hours are set exactly when it's past the first stage and not rejected | check `submissions_approved_seconds_set` |
+| Each stage's reviewer and time are set together | checks `submissions_reviewer_set`, `submissions_reviewed_at_set`, `submissions_fraud_review_complete`, `submissions_hq_review_complete`, `submissions_claim_complete` |
+| Nothing pays before HQ signs off | Go: `decide` only calls `payOut` when the ship becomes `approved` |
+| The fraud check only cuts hours | Go: `decide` |
+| A decision applies to the stage the reviewer saw | Go: `decide` checks `stage` against the locked row |
+| Nobody decides a ship someone else holds | Go: `checkClaim`, under the submission's row lock |
+| Two Nexts never claim the same ship | `FOR UPDATE SKIP LOCKED` in `ClaimNextSubmission` |
 | A reviewer can't approve more than the submission claimed | check `submissions_approved_within_new` |
 | A Hackatime project counts toward one project, and only one of its owner's | primary key on `project_hackatime_projects`, plus a composite foreign key to `projects (id, user_id)` |
 | A submission pays out once | unique index `stamp_ledger_one_payout_per_submission` |
@@ -94,7 +108,7 @@ Rules live in the database wherever possible, so a bug in Go can't break them. S
 | Every box type keeps an unlimited stamp type | Go: `adminSetBoxDrops` and `adminUpdateSpecialStampType` (`BoxTypesOnlyUncappedBy`) |
 | Paid-out Hackatime projects can't be unlinked | Go: `setHackatimeLinks`, using the paid set from `accountedFor` |
 | Projects can't change while waiting for review; submitted ones can't be deleted | Go: `updateProject`, `deleteProject` |
-| Nobody reviews their own project | Go: `reviewSubmission` |
+| Nobody reviews their own project | Go: `decide`, `addComment`, `claimSubmission`, and Next's query |
 
 ## Hours accounting
 
@@ -131,13 +145,20 @@ Other protections:
 
 ## Reviewing
 
-`reviewSubmission`, in one transaction:
-1. Look up the submission and its owner, refusing self-review.
-2. Lock the owner's `users` row, then the submission. Approvals for one person go one at a time, so running totals are right.
-3. Check it's still pending, and save the decision.
-4. For an approval: read the new running total, pay the difference in stamps, and grant a box for every milestone at or below the new total (`GrantMilestoneBoxes`; one per milestone is guaranteed by the unique constraint).
+The stages, the checks and Sidekick are explained in [REVIEW_FLOW.md](REVIEW_FLOW.md). The code:
 
-The queue puts submissions with a priority-review special stamp first, then oldest first.
+`decide` (`stages.go`) applies every decision, from the review pages and from Sidekick alike:
+1. Validate the decision. For a first-stage approval, run the automatic checks (`runChecks`, which asks Hackatime) **before** taking any locks, because Hackatime is slow.
+2. Lock the owner's `users` row, then the submission. Decisions for one person go one at a time, so running totals are right.
+3. Refuse it if the ship isn't in review, has moved on from the `stage` the reviewer saw, is a stage they can't decide (`permissions`), or someone else holds it (`checkClaim`).
+4. Work out the ship's new state in Go, then write it all with `SaveSubmissionReview`, which also drops the claim. Add the `ship_events` row for the decision (and a `flagged` one if the checks sent it to the fraud check).
+5. If it's now `approved`, `payOut`: read the new running total, pay the difference in stamps plus any Golden Spike bonus, and grant a box for every milestone at or below the new total.
+
+Sidekick passes its own `permissions`: it vouches for its reviewers, so `isHq` decides whether an approval signs off. Everything else is the same code.
+
+`runChecks` is also what the review page and Sidekick's project detail show, run fresh on each load. What it said at the moment of approval is saved on the submission (`checks`).
+
+The queues put submissions with a priority-review special stamp first, then oldest first. `ClaimNextSubmission` uses the same order, after the reviewer's own live claim.
 
 ## Boxes and special stamps
 

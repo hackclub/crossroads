@@ -177,7 +177,7 @@ func TestOnePendingSubmissionPerProject(t *testing.T) {
 	submit := `insert into submissions (project_id, hackatime_projects, hackatime_seconds, new_seconds) values ($1, '{}', 3600, 3600)`
 	insert(t, pool, submit, project)
 	_, err := pool.Exec(context.Background(), submit, project)
-	wantViolation(t, err, "submissions_one_pending_per_project")
+	wantViolation(t, err, "submissions_one_open_per_project")
 }
 
 func TestApprovedSecondsCantExceedNewSeconds(t *testing.T) {

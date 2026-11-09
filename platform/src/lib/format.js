@@ -31,7 +31,11 @@ export function stampHours(stamps, rate) {
 
 export const approvedSeconds = (projects) => projects.reduce((t, p) => t + p.approved_seconds, 0);
 
-export const pending = (project) => project.submissions?.[0]?.status === 'pending';
+// A ship still in review: waiting for a reviewer, or approved by one and
+// waiting for its final check (final_check) before stamps are paid.
+export const inReview = (status) => status === 'pending' || status === 'final_check';
+
+export const pending = (project) => inReview(project.submissions?.[0]?.status);
 
 // The status a project shows: its latest submission, or "not shipped".
 export function projectStatus(project) {
@@ -39,6 +43,7 @@ export function projectStatus(project) {
 	if (!latest) return { label: 'Not shipped', tone: '' };
 	return {
 		pending: { label: 'In review', tone: 'info' },
+		final_check: { label: 'Approved, final check', tone: 'info' },
 		approved: { label: 'Approved', tone: 'good' },
 		rejected: { label: 'Rejected', tone: 'warn' }
 	}[latest.status];

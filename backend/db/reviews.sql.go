@@ -10,6 +10,48 @@ import (
 	"time"
 )
 
+const addShipEvent = `-- name: AddShipEvent :one
+insert into ship_events (submission_id, kind, actor_id, stage, seconds, message, internal)
+values ($1, $2, $3, $4, $5, $6, $7)
+returning id, submission_id, kind, actor_id, stage, seconds, message, internal, created_at, edited_at
+`
+
+type AddShipEventParams struct {
+	SubmissionID int64
+	Kind         ShipEventKind
+	ActorID      *int64
+	Stage        SubmissionStatus
+	Seconds      *int32
+	Message      *string
+	Internal     *string
+}
+
+func (q *Queries) AddShipEvent(ctx context.Context, arg AddShipEventParams) (ShipEvent, error) {
+	row := q.db.QueryRow(ctx, addShipEvent,
+		arg.SubmissionID,
+		arg.Kind,
+		arg.ActorID,
+		arg.Stage,
+		arg.Seconds,
+		arg.Message,
+		arg.Internal,
+	)
+	var i ShipEvent
+	err := row.Scan(
+		&i.ID,
+		&i.SubmissionID,
+		&i.Kind,
+		&i.ActorID,
+		&i.Stage,
+		&i.Seconds,
+		&i.Message,
+		&i.Internal,
+		&i.CreatedAt,
+		&i.EditedAt,
+	)
+	return i, err
+}
+
 const approvedSecondsForUser = `-- name: ApprovedSecondsForUser :one
 select coalesce(sum(submissions.approved_seconds), 0)::bigint
 from submissions
@@ -17,6 +59,7 @@ join projects on projects.id = submissions.project_id
 where projects.user_id = $1 and submissions.status = 'approved'
 `
 
+// Only signed-off ships count.
 func (q *Queries) ApprovedSecondsForUser(ctx context.Context, userID int64) (int64, error) {
 	row := q.db.QueryRow(ctx, approvedSecondsForUser, userID)
 	var column_1 int64
@@ -24,8 +67,239 @@ func (q *Queries) ApprovedSecondsForUser(ctx context.Context, userID int64) (int
 	return column_1, err
 }
 
+const claimNextSubmission = `-- name: ClaimNextSubmission :one
+update submissions set claimed_by = $1, claim_expires_at = now() + interval '30 minutes'
+where submissions.id = (
+    select s.id from submissions s
+    join projects p on p.id = s.project_id
+    where s.status = $2
+        and p.user_id <> $1
+        and (s.claimed_by is null or s.claimed_by = $1 or s.claim_expires_at <= now())
+        and not exists (
+            select 1 from review_skips k
+            where k.submission_id = s.id and k.user_id = $1
+                and k.skipped_at > now() - interval '3 hours'
+        )
+    order by
+        coalesce(s.claimed_by = $1 and s.claim_expires_at > now(), false) desc,
+        exists (
+            select 1 from special_stamps
+            join special_stamp_types on special_stamp_types.id = special_stamps.special_stamp_type_id
+            where special_stamps.submission_id = s.id and special_stamp_types.effect = 'priority_review'
+        ) desc,
+        s.submitted_at, s.id
+    limit 1
+    for update of s skip locked
+)
+returning id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at
+`
+
+type ClaimNextSubmissionParams struct {
+	UserID *int64
+	Status SubmissionStatus
+}
+
+// Claims the next ship at a stage for a reviewer: their own live claim if they
+// have one, otherwise the first one nobody's holding that isn't theirs and
+// that they haven't skipped lately, priority review first, then oldest first.
+// SKIP LOCKED keeps two reviewers asking at once from getting the same ship.
+func (q *Queries) ClaimNextSubmission(ctx context.Context, arg ClaimNextSubmissionParams) (Submission, error) {
+	row := q.db.QueryRow(ctx, claimNextSubmission, arg.UserID, arg.Status)
+	var i Submission
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Status,
+		&i.HackatimeProjects,
+		&i.HackatimeSeconds,
+		&i.NewSeconds,
+		&i.ApprovedSeconds,
+		&i.ReviewerID,
+		&i.ReviewedAt,
+		&i.Feedback,
+		&i.InternalNotes,
+		&i.SubmittedAt,
+		&i.AirtableRecordID,
+		&i.Checks,
+		&i.FraudReasons,
+		&i.FraudReviewerID,
+		&i.FraudReviewedAt,
+		&i.HqReviewerID,
+		&i.HqReviewedAt,
+		&i.ClaimedBy,
+		&i.ClaimExpiresAt,
+		&i.UnifiedSubmittedAt,
+	)
+	return i, err
+}
+
+const claimSubmission = `-- name: ClaimSubmission :one
+update submissions set claimed_by = $1, claim_expires_at = now() + interval '30 minutes'
+where id = $2
+    and status in ('pending', 'fraud_check', 'awaiting_hq')
+    and (claimed_by is null or claimed_by = $1 or claim_expires_at <= now())
+returning id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at
+`
+
+type ClaimSubmissionParams struct {
+	UserID *int64
+	ID     int64
+}
+
+// Claims (or renews) a ship for a reviewer, unless someone else holds it.
+func (q *Queries) ClaimSubmission(ctx context.Context, arg ClaimSubmissionParams) (Submission, error) {
+	row := q.db.QueryRow(ctx, claimSubmission, arg.UserID, arg.ID)
+	var i Submission
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Status,
+		&i.HackatimeProjects,
+		&i.HackatimeSeconds,
+		&i.NewSeconds,
+		&i.ApprovedSeconds,
+		&i.ReviewerID,
+		&i.ReviewedAt,
+		&i.Feedback,
+		&i.InternalNotes,
+		&i.SubmittedAt,
+		&i.AirtableRecordID,
+		&i.Checks,
+		&i.FraudReasons,
+		&i.FraudReviewerID,
+		&i.FraudReviewedAt,
+		&i.HqReviewerID,
+		&i.HqReviewedAt,
+		&i.ClaimedBy,
+		&i.ClaimExpiresAt,
+		&i.UnifiedSubmittedAt,
+	)
+	return i, err
+}
+
+const countOpenSubmissions = `-- name: CountOpenSubmissions :many
+select status, count(*) as count from submissions
+where status in ('pending', 'fraud_check', 'awaiting_hq')
+group by status
+`
+
+type CountOpenSubmissionsRow struct {
+	Status SubmissionStatus
+	Count  int64
+}
+
+func (q *Queries) CountOpenSubmissions(ctx context.Context) ([]CountOpenSubmissionsRow, error) {
+	rows, err := q.db.Query(ctx, countOpenSubmissions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountOpenSubmissionsRow
+	for rows.Next() {
+		var i CountOpenSubmissionsRow
+		if err := rows.Scan(&i.Status, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const createFeedbackTemplate = `-- name: CreateFeedbackTemplate :one
+insert into feedback_templates (title, body, created_by) values ($1, $2, $3)
+returning id, title, body, created_by, created_at, updated_at
+`
+
+type CreateFeedbackTemplateParams struct {
+	Title     string
+	Body      string
+	CreatedBy *int64
+}
+
+func (q *Queries) CreateFeedbackTemplate(ctx context.Context, arg CreateFeedbackTemplateParams) (FeedbackTemplate, error) {
+	row := q.db.QueryRow(ctx, createFeedbackTemplate, arg.Title, arg.Body, arg.CreatedBy)
+	var i FeedbackTemplate
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Body,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteFeedbackTemplate = `-- name: DeleteFeedbackTemplate :execrows
+delete from feedback_templates where id = $1
+`
+
+func (q *Queries) DeleteFeedbackTemplate(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteFeedbackTemplate, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const editShipEvent = `-- name: EditShipEvent :one
+update ship_events set seconds = $2, message = $3, internal = $4, edited_at = now()
+where id = $1
+returning id, submission_id, kind, actor_id, stage, seconds, message, internal, created_at, edited_at
+`
+
+type EditShipEventParams struct {
+	ID       int64
+	Seconds  *int32
+	Message  *string
+	Internal *string
+}
+
+func (q *Queries) EditShipEvent(ctx context.Context, arg EditShipEventParams) (ShipEvent, error) {
+	row := q.db.QueryRow(ctx, editShipEvent,
+		arg.ID,
+		arg.Seconds,
+		arg.Message,
+		arg.Internal,
+	)
+	var i ShipEvent
+	err := row.Scan(
+		&i.ID,
+		&i.SubmissionID,
+		&i.Kind,
+		&i.ActorID,
+		&i.Stage,
+		&i.Seconds,
+		&i.Message,
+		&i.Internal,
+		&i.CreatedAt,
+		&i.EditedAt,
+	)
+	return i, err
+}
+
+const getReviewSettings = `-- name: GetReviewSettings :one
+select id, fraud_check_everything, large_ship_seconds, long_day_seconds, updated_at from review_settings
+`
+
+func (q *Queries) GetReviewSettings(ctx context.Context) (ReviewSetting, error) {
+	row := q.db.QueryRow(ctx, getReviewSettings)
+	var i ReviewSetting
+	err := row.Scan(
+		&i.ID,
+		&i.FraudCheckEverything,
+		&i.LargeShipSeconds,
+		&i.LongDaySeconds,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getSubmissionForReview = `-- name: GetSubmissionForReview :one
-select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address
+select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note
 from submissions
 join projects on projects.id = submissions.project_id
 join users on users.id = projects.user_id
@@ -55,6 +329,15 @@ func (q *Queries) GetSubmissionForReview(ctx context.Context, id int64) (GetSubm
 		&i.Submission.InternalNotes,
 		&i.Submission.SubmittedAt,
 		&i.Submission.AirtableRecordID,
+		&i.Submission.Checks,
+		&i.Submission.FraudReasons,
+		&i.Submission.FraudReviewerID,
+		&i.Submission.FraudReviewedAt,
+		&i.Submission.HqReviewerID,
+		&i.Submission.HqReviewedAt,
+		&i.Submission.ClaimedBy,
+		&i.Submission.ClaimExpiresAt,
+		&i.Submission.UnifiedSubmittedAt,
 		&i.Project.ID,
 		&i.Project.UserID,
 		&i.Project.Name,
@@ -80,6 +363,46 @@ func (q *Queries) GetSubmissionForReview(ctx context.Context, id int64) (GetSubm
 		&i.User.Birthday,
 		&i.User.PhoneNumber,
 		&i.User.Address,
+		&i.User.CanReview,
+		&i.User.CanFraudReview,
+		&i.User.CanHqReview,
+		&i.User.ReviewerNote,
+	)
+	return i, err
+}
+
+const getUserByActorID = `-- name: GetUserByActorID :one
+select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note from users where slack_id = $1::text or hca_id = $1::text
+order by (hca_id = $1::text) desc
+limit 1
+`
+
+// A Sidekick actor ID is a Slack ID (U…) or a Hack Club Auth identity ID
+// (ident!…).
+func (q *Queries) GetUserByActorID(ctx context.Context, actorID string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByActorID, actorID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.HcaID,
+		&i.SlackID,
+		&i.Email,
+		&i.Name,
+		&i.VerificationStatus,
+		&i.YswsEligible,
+		&i.Role,
+		&i.Stamps,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.FirstName,
+		&i.LastName,
+		&i.Birthday,
+		&i.PhoneNumber,
+		&i.Address,
+		&i.CanReview,
+		&i.CanFraudReview,
+		&i.CanHqReview,
+		&i.ReviewerNote,
 	)
 	return i, err
 }
@@ -117,6 +440,88 @@ func (q *Queries) GrantMilestoneBoxes(ctx context.Context, arg GrantMilestoneBox
 			&i.GrantedBy,
 			&i.GrantedAt,
 			&i.OpenedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFeedbackTemplates = `-- name: ListFeedbackTemplates :many
+select id, title, body, created_by, created_at, updated_at from feedback_templates order by title, id
+`
+
+func (q *Queries) ListFeedbackTemplates(ctx context.Context) ([]FeedbackTemplate, error) {
+	rows, err := q.db.Query(ctx, listFeedbackTemplates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FeedbackTemplate
+	for rows.Next() {
+		var i FeedbackTemplate
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Body,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProjectShipEvents = `-- name: ListProjectShipEvents :many
+select ship_events.id, ship_events.submission_id, ship_events.kind, ship_events.actor_id, ship_events.stage, ship_events.seconds, ship_events.message, ship_events.internal, ship_events.created_at, ship_events.edited_at, actor.name as actor_name, actor.slack_id as actor_slack_id, actor.hca_id as actor_hca_id
+from ship_events
+join submissions on submissions.id = ship_events.submission_id
+left join users actor on actor.id = ship_events.actor_id
+where submissions.project_id = $1
+order by ship_events.id
+`
+
+type ListProjectShipEventsRow struct {
+	ShipEvent    ShipEvent
+	ActorName    *string
+	ActorSlackID *string
+	ActorHcaID   *string
+}
+
+// A project's whole timeline, oldest first, with who did each thing.
+func (q *Queries) ListProjectShipEvents(ctx context.Context, projectID int64) ([]ListProjectShipEventsRow, error) {
+	rows, err := q.db.Query(ctx, listProjectShipEvents, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListProjectShipEventsRow
+	for rows.Next() {
+		var i ListProjectShipEventsRow
+		if err := rows.Scan(
+			&i.ShipEvent.ID,
+			&i.ShipEvent.SubmissionID,
+			&i.ShipEvent.Kind,
+			&i.ShipEvent.ActorID,
+			&i.ShipEvent.Stage,
+			&i.ShipEvent.Seconds,
+			&i.ShipEvent.Message,
+			&i.ShipEvent.Internal,
+			&i.ShipEvent.CreatedAt,
+			&i.ShipEvent.EditedAt,
+			&i.ActorName,
+			&i.ActorSlackID,
+			&i.ActorHcaID,
 		); err != nil {
 			return nil, err
 		}
@@ -190,41 +595,72 @@ const listReviewQueue = `-- name: ListReviewQueue :many
 select
     submissions.id,
     submissions.project_id,
+    submissions.status,
     submissions.hackatime_projects,
     submissions.new_seconds,
+    submissions.approved_seconds,
     submissions.submitted_at,
+    submissions.reviewed_at,
+    submissions.fraud_reasons,
+    submissions.claimed_by,
+    submissions.claim_expires_at,
     projects.name as project_name,
     users.id as user_id,
     users.name as user_name,
     users.slack_id,
+    coalesce(reviewer.name, '')::text as reviewer_name,
+    coalesce(claimer.name, '')::text as claimed_by_name,
     exists (
         select 1 from special_stamps
         join special_stamp_types on special_stamp_types.id = special_stamps.special_stamp_type_id
         where special_stamps.submission_id = submissions.id and special_stamp_types.effect = 'priority_review'
-    ) as priority
+    ) as priority,
+    exists (
+        select 1 from review_skips
+        where review_skips.submission_id = submissions.id
+            and review_skips.user_id = $1
+            and review_skips.skipped_at > now() - interval '3 hours'
+    ) as skipped
 from submissions
 join projects on projects.id = submissions.project_id
 join users on users.id = projects.user_id
-where submissions.status = 'pending'
+left join users reviewer on reviewer.id = submissions.reviewer_id
+left join users claimer on claimer.id = submissions.claimed_by
+where submissions.status = $2
 order by priority desc, submissions.submitted_at, submissions.id
 `
+
+type ListReviewQueueParams struct {
+	ViewerID int64
+	Status   SubmissionStatus
+}
 
 type ListReviewQueueRow struct {
 	ID                int64
 	ProjectID         int64
+	Status            SubmissionStatus
 	HackatimeProjects []string
 	NewSeconds        int32
+	ApprovedSeconds   *int32
 	SubmittedAt       time.Time
+	ReviewedAt        *time.Time
+	FraudReasons      []string
+	ClaimedBy         *int64
+	ClaimExpiresAt    *time.Time
 	ProjectName       string
 	UserID            int64
 	UserName          string
 	SlackID           *string
+	ReviewerName      string
+	ClaimedByName     string
 	Priority          bool
+	Skipped           bool
 }
 
-// Pending submissions, priority review first, then oldest first.
-func (q *Queries) ListReviewQueue(ctx context.Context) ([]ListReviewQueueRow, error) {
-	rows, err := q.db.Query(ctx, listReviewQueue)
+// Ships at one stage, priority review first, then oldest first. Claims are
+// returned as they are; expired ones are ignored in Go.
+func (q *Queries) ListReviewQueue(ctx context.Context, arg ListReviewQueueParams) ([]ListReviewQueueRow, error) {
+	rows, err := q.db.Query(ctx, listReviewQueue, arg.ViewerID, arg.Status)
 	if err != nil {
 		return nil, err
 	}
@@ -235,14 +671,23 @@ func (q *Queries) ListReviewQueue(ctx context.Context) ([]ListReviewQueueRow, er
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProjectID,
+			&i.Status,
 			&i.HackatimeProjects,
 			&i.NewSeconds,
+			&i.ApprovedSeconds,
 			&i.SubmittedAt,
+			&i.ReviewedAt,
+			&i.FraudReasons,
+			&i.ClaimedBy,
+			&i.ClaimExpiresAt,
 			&i.ProjectName,
 			&i.UserID,
 			&i.UserName,
 			&i.SlackID,
+			&i.ReviewerName,
+			&i.ClaimedByName,
 			&i.Priority,
+			&i.Skipped,
 		); err != nil {
 			return nil, err
 		}
@@ -254,8 +699,41 @@ func (q *Queries) ListReviewQueue(ctx context.Context) ([]ListReviewQueueRow, er
 	return items, nil
 }
 
+const lockLatestShipEvent = `-- name: LockLatestShipEvent :one
+select id, submission_id, kind, actor_id, stage, seconds, message, internal, created_at, edited_at from ship_events
+where submission_id = $1 and kind = $2 and actor_id = $3
+order by id desc
+limit 1
+for update
+`
+
+type LockLatestShipEventParams struct {
+	SubmissionID int64
+	Kind         ShipEventKind
+	ActorID      *int64
+}
+
+// A reviewer's latest event of a kind on a ship, for editing it.
+func (q *Queries) LockLatestShipEvent(ctx context.Context, arg LockLatestShipEventParams) (ShipEvent, error) {
+	row := q.db.QueryRow(ctx, lockLatestShipEvent, arg.SubmissionID, arg.Kind, arg.ActorID)
+	var i ShipEvent
+	err := row.Scan(
+		&i.ID,
+		&i.SubmissionID,
+		&i.Kind,
+		&i.ActorID,
+		&i.Stage,
+		&i.Seconds,
+		&i.Message,
+		&i.Internal,
+		&i.CreatedAt,
+		&i.EditedAt,
+	)
+	return i, err
+}
+
 const lockSubmission = `-- name: LockSubmission :one
-select id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id from submissions where id = $1 for update
+select id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at from submissions where id = $1 for update
 `
 
 func (q *Queries) LockSubmission(ctx context.Context, id int64) (Submission, error) {
@@ -275,12 +753,21 @@ func (q *Queries) LockSubmission(ctx context.Context, id int64) (Submission, err
 		&i.InternalNotes,
 		&i.SubmittedAt,
 		&i.AirtableRecordID,
+		&i.Checks,
+		&i.FraudReasons,
+		&i.FraudReviewerID,
+		&i.FraudReviewedAt,
+		&i.HqReviewerID,
+		&i.HqReviewedAt,
+		&i.ClaimedBy,
+		&i.ClaimExpiresAt,
+		&i.UnifiedSubmittedAt,
 	)
 	return i, err
 }
 
 const lockUser = `-- name: LockUser :one
-select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address from users where id = $1 for update
+select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note from users where id = $1 for update
 `
 
 func (q *Queries) LockUser(ctx context.Context, id int64) (User, error) {
@@ -303,39 +790,111 @@ func (q *Queries) LockUser(ctx context.Context, id int64) (User, error) {
 		&i.Birthday,
 		&i.PhoneNumber,
 		&i.Address,
+		&i.CanReview,
+		&i.CanFraudReview,
+		&i.CanHqReview,
+		&i.ReviewerNote,
 	)
 	return i, err
 }
 
-const reviewSubmission = `-- name: ReviewSubmission :one
+const longestProjectDay = `-- name: LongestProjectDay :one
+select day, seconds from project_activity
+where project_id = $1 and day >= $2::date
+order by seconds desc, day
+limit 1
+`
+
+type LongestProjectDayParams struct {
+	ProjectID int64
+	Since     time.Time
+}
+
+type LongestProjectDayRow struct {
+	Day     time.Time
+	Seconds int32
+}
+
+// The project's busiest UTC day on or after since, from the activity poller.
+func (q *Queries) LongestProjectDay(ctx context.Context, arg LongestProjectDayParams) (LongestProjectDayRow, error) {
+	row := q.db.QueryRow(ctx, longestProjectDay, arg.ProjectID, arg.Since)
+	var i LongestProjectDayRow
+	err := row.Scan(&i.Day, &i.Seconds)
+	return i, err
+}
+
+const releaseClaim = `-- name: ReleaseClaim :execrows
+update submissions set claimed_by = null, claim_expires_at = null
+where id = $1 and (claimed_by = $2 or $3::boolean)
+`
+
+type ReleaseClaimParams struct {
+	ID     int64
+	UserID *int64
+	Anyone bool
+}
+
+func (q *Queries) ReleaseClaim(ctx context.Context, arg ReleaseClaimParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseClaim, arg.ID, arg.UserID, arg.Anyone)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const saveSubmissionReview = `-- name: SaveSubmissionReview :one
 update submissions set
     status = $2,
     approved_seconds = $3,
     feedback = $4,
     internal_notes = $5,
     reviewer_id = $6,
-    reviewed_at = now()
-where id = $1 and status = 'pending'
-returning id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id
+    reviewed_at = $7,
+    checks = $8,
+    fraud_reasons = $9,
+    fraud_reviewer_id = $10,
+    fraud_reviewed_at = $11,
+    hq_reviewer_id = $12,
+    hq_reviewed_at = $13,
+    claimed_by = null,
+    claim_expires_at = null
+where id = $1
+returning id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at
 `
 
-type ReviewSubmissionParams struct {
+type SaveSubmissionReviewParams struct {
 	ID              int64
 	Status          SubmissionStatus
 	ApprovedSeconds *int32
 	Feedback        *string
 	InternalNotes   *string
 	ReviewerID      *int64
+	ReviewedAt      *time.Time
+	Checks          []byte
+	FraudReasons    []string
+	FraudReviewerID *int64
+	FraudReviewedAt *time.Time
+	HqReviewerID    *int64
+	HqReviewedAt    *time.Time
 }
 
-func (q *Queries) ReviewSubmission(ctx context.Context, arg ReviewSubmissionParams) (Submission, error) {
-	row := q.db.QueryRow(ctx, reviewSubmission,
+// Writes a ship's whole review state, worked out in Go (api/stages.go), and
+// drops any claim on it: deciding is the end of a reviewer's turn.
+func (q *Queries) SaveSubmissionReview(ctx context.Context, arg SaveSubmissionReviewParams) (Submission, error) {
+	row := q.db.QueryRow(ctx, saveSubmissionReview,
 		arg.ID,
 		arg.Status,
 		arg.ApprovedSeconds,
 		arg.Feedback,
 		arg.InternalNotes,
 		arg.ReviewerID,
+		arg.ReviewedAt,
+		arg.Checks,
+		arg.FraudReasons,
+		arg.FraudReviewerID,
+		arg.FraudReviewedAt,
+		arg.HqReviewerID,
+		arg.HqReviewedAt,
 	)
 	var i Submission
 	err := row.Scan(
@@ -352,6 +911,142 @@ func (q *Queries) ReviewSubmission(ctx context.Context, arg ReviewSubmissionPara
 		&i.InternalNotes,
 		&i.SubmittedAt,
 		&i.AirtableRecordID,
+		&i.Checks,
+		&i.FraudReasons,
+		&i.FraudReviewerID,
+		&i.FraudReviewedAt,
+		&i.HqReviewerID,
+		&i.HqReviewedAt,
+		&i.ClaimedBy,
+		&i.ClaimExpiresAt,
+		&i.UnifiedSubmittedAt,
+	)
+	return i, err
+}
+
+const setReviewerNote = `-- name: SetReviewerNote :one
+update users set reviewer_note = $2 where id = $1
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note
+`
+
+type SetReviewerNoteParams struct {
+	ID           int64
+	ReviewerNote *string
+}
+
+func (q *Queries) SetReviewerNote(ctx context.Context, arg SetReviewerNoteParams) (User, error) {
+	row := q.db.QueryRow(ctx, setReviewerNote, arg.ID, arg.ReviewerNote)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.HcaID,
+		&i.SlackID,
+		&i.Email,
+		&i.Name,
+		&i.VerificationStatus,
+		&i.YswsEligible,
+		&i.Role,
+		&i.Stamps,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.FirstName,
+		&i.LastName,
+		&i.Birthday,
+		&i.PhoneNumber,
+		&i.Address,
+		&i.CanReview,
+		&i.CanFraudReview,
+		&i.CanHqReview,
+		&i.ReviewerNote,
+	)
+	return i, err
+}
+
+const setSubmissionMessages = `-- name: SetSubmissionMessages :exec
+update submissions set approved_seconds = $2, feedback = $3, internal_notes = $4 where id = $1
+`
+
+type SetSubmissionMessagesParams struct {
+	ID              int64
+	ApprovedSeconds *int32
+	Feedback        *string
+	InternalNotes   *string
+}
+
+// Keeps the ship's current feedback and notes in step with an edited decision.
+func (q *Queries) SetSubmissionMessages(ctx context.Context, arg SetSubmissionMessagesParams) error {
+	_, err := q.db.Exec(ctx, setSubmissionMessages,
+		arg.ID,
+		arg.ApprovedSeconds,
+		arg.Feedback,
+		arg.InternalNotes,
+	)
+	return err
+}
+
+const skipSubmission = `-- name: SkipSubmission :exec
+insert into review_skips (user_id, submission_id) values ($1, $2)
+on conflict (user_id, submission_id) do update set skipped_at = now()
+`
+
+type SkipSubmissionParams struct {
+	UserID       int64
+	SubmissionID int64
+}
+
+func (q *Queries) SkipSubmission(ctx context.Context, arg SkipSubmissionParams) error {
+	_, err := q.db.Exec(ctx, skipSubmission, arg.UserID, arg.SubmissionID)
+	return err
+}
+
+const updateFeedbackTemplate = `-- name: UpdateFeedbackTemplate :one
+update feedback_templates set title = $2, body = $3 where id = $1
+returning id, title, body, created_by, created_at, updated_at
+`
+
+type UpdateFeedbackTemplateParams struct {
+	ID    int64
+	Title string
+	Body  string
+}
+
+func (q *Queries) UpdateFeedbackTemplate(ctx context.Context, arg UpdateFeedbackTemplateParams) (FeedbackTemplate, error) {
+	row := q.db.QueryRow(ctx, updateFeedbackTemplate, arg.ID, arg.Title, arg.Body)
+	var i FeedbackTemplate
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Body,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateReviewSettings = `-- name: UpdateReviewSettings :one
+update review_settings set
+    fraud_check_everything = $1,
+    large_ship_seconds = $2,
+    long_day_seconds = $3
+returning id, fraud_check_everything, large_ship_seconds, long_day_seconds, updated_at
+`
+
+type UpdateReviewSettingsParams struct {
+	FraudCheckEverything bool
+	LargeShipSeconds     int32
+	LongDaySeconds       int32
+}
+
+func (q *Queries) UpdateReviewSettings(ctx context.Context, arg UpdateReviewSettingsParams) (ReviewSetting, error) {
+	row := q.db.QueryRow(ctx, updateReviewSettings, arg.FraudCheckEverything, arg.LargeShipSeconds, arg.LongDaySeconds)
+	var i ReviewSetting
+	err := row.Scan(
+		&i.ID,
+		&i.FraudCheckEverything,
+		&i.LargeShipSeconds,
+		&i.LongDaySeconds,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

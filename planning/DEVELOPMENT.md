@@ -42,6 +42,8 @@ Postgres is on **5433**, not the usual 5432, so it doesn't collide with other pr
 | `STAMPS_PER_HOUR` | yes | Stamps paid per approved hour. **30** for Crossroads, so the 60-hour ticket costs 1,800. |
 | `AIRTABLE_TOKEN` | no | Turns on the Airtable sync. **Leave it empty in development** unless `AIRTABLE_BASE_ID` points at a test copy of the base; otherwise test data goes into the real one. Needs `data.records:read` and `data.records:write` on the base. |
 | `AIRTABLE_BASE_ID` | with the token | The real base is `appuxTrbdZ2tjCo0X` ("YSWS - Crossroads"). |
+| `SIDEKICK_SECRET` | no | Turns on `POST /api/sidekick` for Sidekick, Hack Club's review platform; the same secret goes into Sidekick. See REVIEW_FLOW.md. Ignored in dev mode. |
+| `PUBLIC_URL` | no | The site's address, for upload links and the links Sidekick shows reviewers. Defaults to the sign-in redirect's site. |
 | `TEST_DATABASE_URL` | for tests | Any Postgres the tests can create schemas in. The compose one works. |
 
 `.env` is gitignored. Keep secrets out of `.env.example`.
@@ -101,7 +103,9 @@ What's where:
 | `auth/auth_test.go` | Signing in and out, sessions, roles, the saved profile |
 | `api/projects_test.go` | Projects, linking Hackatime, submitting (plus the shared fakes and helpers) |
 | `api/dupes_test.go` | Every way of getting the same time paid twice |
-| `api/review_test.go` | The review queue, approvals, payouts, milestones |
+| `api/review_test.go` | The review queue, approvals, payouts, milestones (plus helpers for reviewers at each stage) |
+| `api/stages_test.go` | The stages: HQ sign-off, the fraud check, sending back, stale decisions, claims and Next, comments, templates, permissions |
+| `api/sidekick_test.go` | Sidekick's protocol: the secret, the two-stage flow, timelines, notes |
 | `api/boxes_test.go` | Boxes, supply caps, special stamps, admin setup |
 | `api/shop_test.go` | Verification, purchases, stock, refunds, adjustments |
 | `airtablesync/airtablesync_test.go` | What gets copied to Airtable, and fulfilling from there |

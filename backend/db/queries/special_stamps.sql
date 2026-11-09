@@ -91,5 +91,6 @@ select exists (
 );
 
 -- name: PendingSubmissionForProject :one
-select * from submissions where project_id = $1 and status = 'pending'
+-- The project's ship in review, at any stage.
+select * from submissions where project_id = $1 and status in ('pending', 'fraud_check', 'awaiting_hq')
 for update;

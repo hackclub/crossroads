@@ -211,11 +211,9 @@ func TestApplyingSpecialStamps(t *testing.T) {
 	theirs := e.createProject(t, other, completeProject("theirs"))
 	e.mustCall(t, other, http.StatusNotFound, "POST", submissions(theirs.ID), map[string]any{"special_stamp_id": plainStamp.ID}, nil)
 
-	var queue []struct {
-		ProjectID int64 `json:"project_id"`
-		Priority  bool  `json:"priority"`
-	}
-	e.mustCall(t, reviewer, http.StatusOK, "GET", "/api/review/queue", nil, &queue)
+	var resp queueResponse
+	e.mustCall(t, reviewer, http.StatusOK, "GET", "/api/review/queue", nil, &resp)
+	queue := resp.Items
 	if len(queue) != 1 || queue[0].ProjectID != first.ID || !queue[0].Priority {
 		t.Errorf("queue is %+v, want the first project with priority", queue)
 	}
@@ -249,11 +247,11 @@ func TestNewMilestonesReachPeopleAlreadyPastThem(t *testing.T) {
 	ahead := e.newUser(t, "U1")
 	p := e.createProject(t, ahead, completeProject("racer"))
 	id := e.submitHours(t, ahead, "U1", p, "racer", 12*3600)
-	e.decide(t, reviewer, id, map[string]any{"status": "approved"})
+	e.decide(t, reviewer, id, map[string]any{"action": "approve"})
 	behind := e.newUser(t, "U2")
 	p = e.createProject(t, behind, completeProject("racer"))
 	id = e.submitHours(t, behind, "U2", p, "racer", 3*3600)
-	e.decide(t, reviewer, id, map[string]any{"status": "approved"})
+	e.decide(t, reviewer, id, map[string]any{"action": "approve"})
 
 	var created struct {
 		BoxesGranted int `json:"boxes_granted"`

@@ -40,8 +40,9 @@ func TestOverlappingTimePaysOnce(t *testing.T) {
 		t.Fatalf("server claimed %d, want only the 1 hour that didn't overlap", second.NewSeconds)
 	}
 
-	e.decide(t, reviewer, first.ID, map[string]any{"status": "approved"})
-	e.decide(t, reviewer, second.ID, map[string]any{"status": "approved"})
+	// The two projects share a repo link, so they go through the fraud check.
+	e.approveAllTheWay(t, reviewer, first.ID)
+	e.approveAllTheWay(t, reviewer, second.ID)
 	if got := e.stamps(t, user); got != 11*10 {
 		t.Errorf("balance is %d, want %d for 11 hours at 10 an hour", got, 11*10)
 	}
@@ -58,7 +59,7 @@ func TestRenamedHackatimeProjectPaysOnce(t *testing.T) {
 	e.hackatime.set("U1", "old-name", 5*3600)
 	first := e.createProject(t, user, completeProject("old-name"))
 	_, s, _ := e.submit(t, user, first.ID)
-	e.decide(t, reviewer, s.ID, map[string]any{"status": "approved"})
+	e.decide(t, reviewer, s.ID, map[string]any{"action": "approve"})
 
 	// Renaming the project in Hackatime moves its time to the new name.
 	e.hackatime.set("U1", "old-name", 0)
@@ -87,7 +88,7 @@ func TestRejectedTimeGoesBackToThePool(t *testing.T) {
 	server := e.createProject(t, user, completeProject("server"))
 
 	_, s, _ := e.submit(t, user, client.ID)
-	e.decide(t, reviewer, s.ID, map[string]any{"status": "rejected", "feedback": "nope"})
+	e.decide(t, reviewer, s.ID, map[string]any{"action": "reject", "feedback": "nope"})
 	_, s, _ = e.submit(t, user, server.ID)
 	if s.NewSeconds != 4*3600 {
 		t.Errorf("server claimed %d, want all 4 hours now that the client was rejected", s.NewSeconds)

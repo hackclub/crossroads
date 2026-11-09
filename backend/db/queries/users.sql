@@ -34,3 +34,7 @@ limit 50;
 -- name: SetUserRole :one
 update users set role = $2 where id = $1
 returning *;
+
+-- name: SetUserPermissions :one
+update users set can_review = $2, can_fraud_review = $3, can_hq_review = $4 where id = $1
+returning *;

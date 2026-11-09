@@ -24,7 +24,7 @@ func (q *Queries) FulfillOrderFromAirtable(ctx context.Context, airtableRecordID
 }
 
 const listOrdersToSync = `-- name: ListOrdersToSync :many
-select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, shop_items.batch_size, shop_items.batch_step, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address
+select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, shop_items.batch_size, shop_items.batch_step, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note
 from orders
 join shop_items on shop_items.id = orders.shop_item_id
 join users on users.id = orders.user_id
@@ -96,6 +96,10 @@ func (q *Queries) ListOrdersToSync(ctx context.Context) ([]ListOrdersToSyncRow, 
 			&i.User.Birthday,
 			&i.User.PhoneNumber,
 			&i.User.Address,
+			&i.User.CanReview,
+			&i.User.CanFraudReview,
+			&i.User.CanHqReview,
+			&i.User.ReviewerNote,
 		); err != nil {
 			return nil, err
 		}
@@ -107,25 +111,82 @@ func (q *Queries) ListOrdersToSync(ctx context.Context) ([]ListOrdersToSyncRow, 
 	return items, nil
 }
 
-const listSubmissionsToSync = `-- name: ListSubmissionsToSync :many
-select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address,
-    (select count(*) from submissions earlier
-        where earlier.project_id = submissions.project_id
-            and earlier.status = 'approved'
-            and earlier.id < submissions.id) as earlier_approvals
+const listSubmissionsToSubmitUnified = `-- name: ListSubmissionsToSubmitUnified :many
+select submissions.id, submissions.airtable_record_id
 from submissions
 join projects on projects.id = submissions.project_id
 join users on users.id = projects.user_id
+where submissions.status = 'approved'
+    and submissions.airtable_record_id is not null
+    and submissions.unified_submitted_at is null
+    and submissions.hq_reviewer_id is not null
+    and users.ysws_eligible
+order by submissions.id
+limit 100
+`
+
+type ListSubmissionsToSubmitUnifiedRow struct {
+	ID               int64
+	AirtableRecordID *string
+}
+
+// Rows already in Airtable, signed off by HQ, whose owner has become
+// YSWS-eligible since: time to tick "Automation - Submit to Unified YSWS".
+// Ships approved before HQ sign-off existed (no hq_reviewer_id) are left for
+// a person to tick, as before.
+func (q *Queries) ListSubmissionsToSubmitUnified(ctx context.Context) ([]ListSubmissionsToSubmitUnifiedRow, error) {
+	rows, err := q.db.Query(ctx, listSubmissionsToSubmitUnified)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSubmissionsToSubmitUnifiedRow
+	for rows.Next() {
+		var i ListSubmissionsToSubmitUnifiedRow
+		if err := rows.Scan(&i.ID, &i.AirtableRecordID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSubmissionsToSync = `-- name: ListSubmissionsToSync :many
+select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note,
+    (select count(*) from submissions earlier
+        where earlier.project_id = submissions.project_id
+            and earlier.status = 'approved'
+            and earlier.id < submissions.id) as earlier_approvals,
+    coalesce(reviewer.name, '')::text as reviewer_name,
+    coalesce(fraud_reviewer.name, '')::text as fraud_reviewer_name,
+    coalesce(hq_reviewer.name, '')::text as hq_reviewer_name,
+    -- What the reviewer approved, before any fraud cut or HQ change.
+    (select ship_events.seconds from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'approval'
+        order by ship_events.id desc limit 1) as reviewer_seconds
+from submissions
+join projects on projects.id = submissions.project_id
+join users on users.id = projects.user_id
+left join users reviewer on reviewer.id = submissions.reviewer_id
+left join users fraud_reviewer on fraud_reviewer.id = submissions.fraud_reviewer_id
+left join users hq_reviewer on hq_reviewer.id = submissions.hq_reviewer_id
 where submissions.status = 'approved' and submissions.airtable_record_id is null
 order by submissions.id
 limit 100
 `
 
 type ListSubmissionsToSyncRow struct {
-	Submission       Submission
-	Project          Project
-	User             User
-	EarlierApprovals int64
+	Submission        Submission
+	Project           Project
+	User              User
+	EarlierApprovals  int64
+	ReviewerName      string
+	FraudReviewerName string
+	HqReviewerName    string
+	ReviewerSeconds   *int32
 }
 
 // Approved submissions not in Airtable yet, with everything their row needs.
@@ -152,6 +213,15 @@ func (q *Queries) ListSubmissionsToSync(ctx context.Context) ([]ListSubmissionsT
 			&i.Submission.InternalNotes,
 			&i.Submission.SubmittedAt,
 			&i.Submission.AirtableRecordID,
+			&i.Submission.Checks,
+			&i.Submission.FraudReasons,
+			&i.Submission.FraudReviewerID,
+			&i.Submission.FraudReviewedAt,
+			&i.Submission.HqReviewerID,
+			&i.Submission.HqReviewedAt,
+			&i.Submission.ClaimedBy,
+			&i.Submission.ClaimExpiresAt,
+			&i.Submission.UnifiedSubmittedAt,
 			&i.Project.ID,
 			&i.Project.UserID,
 			&i.Project.Name,
@@ -177,7 +247,15 @@ func (q *Queries) ListSubmissionsToSync(ctx context.Context) ([]ListSubmissionsT
 			&i.User.Birthday,
 			&i.User.PhoneNumber,
 			&i.User.Address,
+			&i.User.CanReview,
+			&i.User.CanFraudReview,
+			&i.User.CanHqReview,
+			&i.User.ReviewerNote,
 			&i.EarlierApprovals,
+			&i.ReviewerName,
+			&i.FraudReviewerName,
+			&i.HqReviewerName,
+			&i.ReviewerSeconds,
 		); err != nil {
 			return nil, err
 		}
@@ -203,6 +281,15 @@ type MarkOrderSyncedParams struct {
 // during the copy goes next time.
 func (q *Queries) MarkOrderSynced(ctx context.Context, arg MarkOrderSyncedParams) error {
 	_, err := q.db.Exec(ctx, markOrderSynced, arg.ID, arg.AirtableRecordID, arg.AirtableSyncedAt)
+	return err
+}
+
+const markUnifiedSubmitted = `-- name: MarkUnifiedSubmitted :exec
+update submissions set unified_submitted_at = now() where id = $1
+`
+
+func (q *Queries) MarkUnifiedSubmitted(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, markUnifiedSubmitted, id)
 	return err
 }
 

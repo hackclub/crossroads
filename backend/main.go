@@ -105,6 +105,12 @@ func main() {
 		BaseURL: strings.TrimSuffix(publicURL, "/") + "/uploads/",
 	}
 
+	// Sidekick is off in dev mode: dev data isn't for real reviewers.
+	sidekickSecret := os.Getenv("SIDEKICK_SECRET")
+	if devMode && sidekickSecret != "" {
+		log.Print("DEV_MODE is on, so /api/sidekick is off even though SIDEKICK_SECRET is set")
+		sidekickSecret = ""
+	}
 	apiRoutes := &api.API{
 		Pool:          pool,
 		Queries:       db.New(pool),
@@ -115,6 +121,10 @@ func main() {
 		HoursStart:    hoursStart,
 		CommunityGoal: communityGoal,
 		SaleEnd:       saleEnd,
+		// Off unless set. Sidekick is Hack Club's review platform; see
+		// api/sidekick.go and planning/REVIEW_FLOW.md.
+		SidekickSecret: sidekickSecret,
+		PublicURL:      publicURL,
 	}
 
 	// Price locks are refunded if the tickets sell out before they're used.
@@ -125,8 +135,11 @@ func main() {
 	go poller.Run(ctx, 30*time.Minute)
 
 	// Off unless there's a token, so a dev server doesn't write test data into
-	// the real base.
-	if token := os.Getenv("AIRTABLE_TOKEN"); token != "" {
+	// the real base. Never in dev mode either: the sync ticks "Submit to
+	// Unified YSWS", and test ships must never reach the Unified YSWS DB.
+	if token := os.Getenv("AIRTABLE_TOKEN"); devMode && token != "" {
+		log.Print("DEV_MODE is on, so the Airtable sync is off even though AIRTABLE_TOKEN is set: nothing goes to Airtable or the Unified YSWS DB")
+	} else if token != "" {
 		baseID := os.Getenv("AIRTABLE_BASE_ID")
 		if baseID == "" {
 			log.Fatal("AIRTABLE_BASE_ID has to be set along with AIRTABLE_TOKEN")

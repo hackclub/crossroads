@@ -71,6 +71,82 @@ func AllOrderStatusValues() []OrderStatus {
 	}
 }
 
+type ShipEventKind string
+
+const (
+	ShipEventKindComment         ShipEventKind = "comment"
+	ShipEventKindInternalComment ShipEventKind = "internal_comment"
+	ShipEventKindFlagged         ShipEventKind = "flagged"
+	ShipEventKindApproval        ShipEventKind = "approval"
+	ShipEventKindFraudPass       ShipEventKind = "fraud_pass"
+	ShipEventKindSentBack        ShipEventKind = "sent_back"
+	ShipEventKindFinalApproval   ShipEventKind = "final_approval"
+	ShipEventKindRejection       ShipEventKind = "rejection"
+)
+
+func (e *ShipEventKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ShipEventKind(s)
+	case string:
+		*e = ShipEventKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ShipEventKind: %T", src)
+	}
+	return nil
+}
+
+type NullShipEventKind struct {
+	ShipEventKind ShipEventKind
+	Valid         bool // Valid is true if ShipEventKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullShipEventKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.ShipEventKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ShipEventKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullShipEventKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ShipEventKind), nil
+}
+
+func (e ShipEventKind) Valid() bool {
+	switch e {
+	case ShipEventKindComment,
+		ShipEventKindInternalComment,
+		ShipEventKindFlagged,
+		ShipEventKindApproval,
+		ShipEventKindFraudPass,
+		ShipEventKindSentBack,
+		ShipEventKindFinalApproval,
+		ShipEventKindRejection:
+		return true
+	}
+	return false
+}
+
+func AllShipEventKindValues() []ShipEventKind {
+	return []ShipEventKind{
+		ShipEventKindComment,
+		ShipEventKindInternalComment,
+		ShipEventKindFlagged,
+		ShipEventKindApproval,
+		ShipEventKindFraudPass,
+		ShipEventKindSentBack,
+		ShipEventKindFinalApproval,
+		ShipEventKindRejection,
+	}
+}
+
 type ShopItemKind string
 
 const (
@@ -333,9 +409,11 @@ func AllStampEntryKindValues() []StampEntryKind {
 type SubmissionStatus string
 
 const (
-	SubmissionStatusPending  SubmissionStatus = "pending"
-	SubmissionStatusApproved SubmissionStatus = "approved"
-	SubmissionStatusRejected SubmissionStatus = "rejected"
+	SubmissionStatusPending    SubmissionStatus = "pending"
+	SubmissionStatusFraudCheck SubmissionStatus = "fraud_check"
+	SubmissionStatusAwaitingHq SubmissionStatus = "awaiting_hq"
+	SubmissionStatusApproved   SubmissionStatus = "approved"
+	SubmissionStatusRejected   SubmissionStatus = "rejected"
 )
 
 func (e *SubmissionStatus) Scan(src interface{}) error {
@@ -376,6 +454,8 @@ func (ns NullSubmissionStatus) Value() (driver.Value, error) {
 func (e SubmissionStatus) Valid() bool {
 	switch e {
 	case SubmissionStatusPending,
+		SubmissionStatusFraudCheck,
+		SubmissionStatusAwaitingHq,
 		SubmissionStatusApproved,
 		SubmissionStatusRejected:
 		return true
@@ -386,6 +466,8 @@ func (e SubmissionStatus) Valid() bool {
 func AllSubmissionStatusValues() []SubmissionStatus {
 	return []SubmissionStatus{
 		SubmissionStatusPending,
+		SubmissionStatusFraudCheck,
+		SubmissionStatusAwaitingHq,
 		SubmissionStatusApproved,
 		SubmissionStatusRejected,
 	}
@@ -477,6 +559,15 @@ type BoxType struct {
 	UpdatedAt   time.Time
 }
 
+type FeedbackTemplate struct {
+	ID        int64
+	Title     string
+	Body      string
+	CreatedBy *int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type Milestone struct {
 	ID              int64
 	Name            string
@@ -530,11 +621,38 @@ type ProjectHackatimeProject struct {
 	ProjectID        int64
 }
 
+type ReviewSetting struct {
+	ID                   bool
+	FraudCheckEverything bool
+	LargeShipSeconds     int32
+	LongDaySeconds       int32
+	UpdatedAt            time.Time
+}
+
+type ReviewSkip struct {
+	UserID       int64
+	SubmissionID int64
+	SkippedAt    time.Time
+}
+
 type Session struct {
 	TokenHash []byte
 	UserID    int64
 	CreatedAt time.Time
 	ExpiresAt time.Time
+}
+
+type ShipEvent struct {
+	ID           int64
+	SubmissionID int64
+	Kind         ShipEventKind
+	ActorID      *int64
+	Stage        SubmissionStatus
+	Seconds      *int32
+	Message      *string
+	Internal     *string
+	CreatedAt    time.Time
+	EditedAt     *time.Time
 }
 
 type ShopItem struct {
@@ -596,19 +714,28 @@ type StampLedger struct {
 }
 
 type Submission struct {
-	ID                int64
-	ProjectID         int64
-	Status            SubmissionStatus
-	HackatimeProjects []string
-	HackatimeSeconds  int32
-	NewSeconds        int32
-	ApprovedSeconds   *int32
-	ReviewerID        *int64
-	ReviewedAt        *time.Time
-	Feedback          *string
-	InternalNotes     *string
-	SubmittedAt       time.Time
-	AirtableRecordID  *string
+	ID                 int64
+	ProjectID          int64
+	Status             SubmissionStatus
+	HackatimeProjects  []string
+	HackatimeSeconds   int32
+	NewSeconds         int32
+	ApprovedSeconds    *int32
+	ReviewerID         *int64
+	ReviewedAt         *time.Time
+	Feedback           *string
+	InternalNotes      *string
+	SubmittedAt        time.Time
+	AirtableRecordID   *string
+	Checks             []byte
+	FraudReasons       []string
+	FraudReviewerID    *int64
+	FraudReviewedAt    *time.Time
+	HqReviewerID       *int64
+	HqReviewedAt       *time.Time
+	ClaimedBy          *int64
+	ClaimExpiresAt     *time.Time
+	UnifiedSubmittedAt *time.Time
 }
 
 type User struct {
@@ -628,4 +755,8 @@ type User struct {
 	Birthday           *time.Time
 	PhoneNumber        *string
 	Address            []byte
+	CanReview          bool
+	CanFraudReview     bool
+	CanHqReview        bool
+	ReviewerNote       *string
 }

@@ -86,6 +86,11 @@ on conflict (hca_id) do update set
     verification_status = excluded.verification_status,
     ysws_eligible = excluded.ysws_eligible;
 
+-- Rita can decide every review stage. For a reviewer who can only do some,
+-- sign in with /dev/login?name=…&role=reviewer&stages=fraud (or hq).
+update users set can_review = role = 'reviewer', can_fraud_review = role = 'reviewer', can_hq_review = role = 'reviewer'
+where hca_id like 'dev-%';
+
 -- The admin setup.
 insert into special_stamp_types (name, description, rarity, effect, supply_cap) values
     ('Ticket Punch', 'A clean hole through your first ticket.', 'common', 'none', null),
@@ -205,11 +210,28 @@ from (values
     ('Chess Engine', 'approved', 18, 18, 12, 'adam', 33,
         'We approved 12 of your 18 hours. About 6 hours went into a tutorial project that was copied into the repo, and copied work can''t count. The engine itself is great!',
         'Commits from the first day match the tutorial repo line for line.', 38),
-    ('Chess Engine', 'pending', 21, 3, null, null, null, null, null, 1),
+    ('Chess Engine', 'awaiting_hq', 21, 3, 3, 'rita', 0.5, 'Nice opening book!', 'Commits since the last ship are all engine work.', 1),
     ('Bus Times Display', 'approved', 26, 26, 26, 'rita', 43, null, null, 45),
     ('Quiz Night', 'approved', 8, 8, 8, 'rita', 32, null, null, 36),
-    ('Quiz Night Online', 'pending', 9, 9, null, null, null, null, null, 4)
+    ('Quiz Night Online', 'fraud_check', 9, 9, 9, 'rita', 1, 'Works great with four phones at once.', null, 4)
 ) as v (project, status, hackatime, new, approved, reviewer, reviewed, feedback, notes, submitted);
+
+-- Quiz Night Online and Quiz Night share a repo, which flags it for the fraud
+-- check (the repo is reused on purpose: the online one is an update).
+update submissions set fraud_reasons = '{shared_links}', checks = '[]'
+where project_id = pg_temp.project('Quiz Night Online') and status = 'fraud_check';
+
+-- The timeline behind each decision above.
+insert into ship_events (submission_id, kind, actor_id, stage, seconds, message, internal, created_at)
+select id, case when status = 'rejected' then 'rejection' else 'approval' end::ship_event_kind,
+    reviewer_id, 'pending', approved_seconds, feedback, internal_notes, reviewed_at
+from submissions
+where status <> 'pending' and reviewer_id is not null
+    and project_id in (select projects.id from projects join users on users.id = projects.user_id where users.hca_id like 'dev-%')
+order by id;
+insert into ship_events (submission_id, kind, stage, internal, created_at)
+select id, 'flagged', 'fraud_check', 'No other project uses the same repo or demo: also used by "Quiz Night".', reviewed_at
+from submissions where project_id = pg_temp.project('Quiz Night Online') and status = 'fraud_check';
 
 -- Payouts on each person's running total of approved time, like the backend,
 -- so rounding never loses a stamp.

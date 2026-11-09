@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -45,19 +46,48 @@ type projectJSON struct {
 }
 
 type submissionJSON struct {
-	ID                int64               `json:"id"`
-	Status            db.SubmissionStatus `json:"status"`
-	HackatimeProjects []string            `json:"hackatime_projects"`
-	HackatimeSeconds  int32               `json:"hackatime_seconds"`
-	NewSeconds        int32               `json:"new_seconds"`
-	ApprovedSeconds   *int32              `json:"approved_seconds"`
-	Feedback          *string             `json:"feedback"`
-	SubmittedAt       time.Time           `json:"submitted_at"`
-	ReviewedAt        *time.Time          `json:"reviewed_at"`
+	ID int64 `json:"id"`
+	// For participants: pending, final_check (a reviewer approved it, and it's
+	// waiting for the fraud check or HQ), approved or rejected. Reviewers see
+	// the real stage (see db.SubmissionStatus).
+	Status            string     `json:"status"`
+	HackatimeProjects []string   `json:"hackatime_projects"`
+	HackatimeSeconds  int32      `json:"hackatime_seconds"`
+	NewSeconds        int32      `json:"new_seconds"`
+	ApprovedSeconds   *int32     `json:"approved_seconds"`
+	Feedback          *string    `json:"feedback"`
+	SubmittedAt       time.Time  `json:"submitted_at"`
+	ReviewedAt        *time.Time `json:"reviewed_at"`
+
+	// Only on GET /projects/{id}: what reviewers have said to them about
+	// this ship, oldest first.
+	Messages []messageJSON `json:"messages,omitempty"`
 
 	// Only filled in for reviewers.
-	InternalNotes *string `json:"internal_notes,omitempty"`
-	ReviewerID    *int64  `json:"reviewer_id,omitempty"`
+	InternalNotes   *string         `json:"internal_notes,omitempty"`
+	ReviewerID      *int64          `json:"reviewer_id,omitempty"`
+	Checks          json.RawMessage `json:"checks,omitempty"` // the automatic checks when the reviewer decided
+	FraudReasons    []string        `json:"fraud_reasons,omitempty"`
+	FraudReviewerID *int64          `json:"fraud_reviewer_id,omitempty"`
+	FraudReviewedAt *time.Time      `json:"fraud_reviewed_at,omitempty"`
+	HQReviewerID    *int64          `json:"hq_reviewer_id,omitempty"`
+	HQReviewedAt    *time.Time      `json:"hq_reviewed_at,omitempty"`
+}
+
+// messageJSON is something a reviewer said to the participant.
+type messageJSON struct {
+	Kind      string    `json:"kind"` // comment, approval, final_approval, rejection, …
+	Message   string    `json:"message"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// participantStatus is how a participant sees a ship's stage. They aren't
+// told whether it's at the fraud check or waiting for HQ.
+func participantStatus(status db.SubmissionStatus) string {
+	if status == db.SubmissionStatusFraudCheck || status == db.SubmissionStatusAwaitingHq {
+		return "final_check"
+	}
+	return string(status)
 }
 
 func toProjectJSON(project db.Project, links []string, submissions []db.Submission) projectJSON {
@@ -88,7 +118,7 @@ func toProjectJSON(project db.Project, links []string, submissions []db.Submissi
 func toSubmissionJSON(s db.Submission) submissionJSON {
 	return submissionJSON{
 		ID:                s.ID,
-		Status:            s.Status,
+		Status:            participantStatus(s.Status),
 		HackatimeProjects: s.HackatimeProjects,
 		HackatimeSeconds:  s.HackatimeSeconds,
 		NewSeconds:        s.NewSeconds,
@@ -142,9 +172,10 @@ func linkNames(links []db.ProjectHackatimeProject) []string {
 	return names
 }
 
+// hasPending says whether a project has a ship in review, at any stage.
 func hasPending(submissions []db.Submission) bool {
 	return slices.ContainsFunc(submissions, func(s db.Submission) bool {
-		return s.Status == db.SubmissionStatusPending
+		return inReview(s.Status)
 	})
 }
 
@@ -325,6 +356,20 @@ func (a *API) getProject(w http.ResponseWriter, r *http.Request) {
 	if out.Stamps, err = a.projectStamps(r, a.Queries, project.ID); err != nil {
 		respond.ServerError(w, r, err)
 		return
+	}
+	events, err := a.Queries.ListProjectShipEvents(r.Context(), project.ID)
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	for i, sub := range out.Submissions {
+		for _, e := range events {
+			if e.ShipEvent.SubmissionID == sub.ID && e.ShipEvent.Message != nil {
+				out.Submissions[i].Messages = append(out.Submissions[i].Messages, messageJSON{
+					Kind: string(e.ShipEvent.Kind), Message: *e.ShipEvent.Message, CreatedAt: e.ShipEvent.CreatedAt,
+				})
+			}
+		}
 	}
 
 	if len(links) > 0 {

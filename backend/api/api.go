@@ -31,10 +31,23 @@ type API struct {
 	HoursStart    time.Time      // when Hackatime time starts counting; activity before it isn't shown
 	CommunityGoal CommunityGoal  // the home page's "Repair Bridge" goal
 	SaleEnd       time.Time      // until then the shop is on sale (sale.go); zero for no sale
+	// The secret Sidekick sends to POST /api/sidekick (sidekick.go). Empty
+	// turns the endpoint off.
+	SidekickSecret string
+	PublicURL      string // the site, for links Sidekick shows reviewers
 }
 
 func (a *API) Routes() chi.Router {
 	r := chi.NewRouter()
+	// Sidekick signs its requests with a shared secret instead of a session.
+	if a.SidekickSecret != "" {
+		r.Post("/sidekick", a.sidekick)
+	}
+	r.Group(func(r chi.Router) { a.signedInRoutes(r) })
+	return r
+}
+
+func (a *API) signedInRoutes(r chi.Router) {
 	r.Use(auth.RequireUser)
 	r.Get("/me", a.me)
 	r.Get("/hackatime/projects", a.listHackatimeProjects)
@@ -63,14 +76,28 @@ func (a *API) Routes() chi.Router {
 	r.Route("/review", func(r chi.Router) {
 		r.Use(auth.RequireRole(db.UserRoleReviewer, db.UserRoleAdmin))
 		r.Get("/queue", a.reviewQueue)
-		r.Get("/submissions/{submissionID}", a.getSubmissionForReview)
-		r.Post("/submissions/{submissionID}", a.reviewSubmission)
+		r.Post("/next", a.claimNext)
+		r.Route("/submissions/{submissionID}", func(r chi.Router) {
+			r.Get("/", a.getSubmissionForReview)
+			r.Post("/", a.reviewSubmission)
+			r.Post("/claim", a.claimSubmission)
+			r.Delete("/claim", a.releaseClaim)
+			r.Post("/skip", a.skipSubmission)
+			r.Post("/comments", a.commentOnSubmission)
+		})
+		r.Put("/users/{userID}/note", a.setReviewerNote)
+		r.Get("/templates", a.listFeedbackTemplates)
+		r.Post("/templates", a.createFeedbackTemplate)
+		r.Patch("/templates/{templateID}", a.updateFeedbackTemplate)
+		r.Delete("/templates/{templateID}", a.deleteFeedbackTemplate)
 	})
 	r.Route("/admin", func(r chi.Router) {
 		r.Use(auth.RequireRole(db.UserRoleAdmin))
 		r.Get("/activity", a.adminActivity)
 		r.Get("/users", a.adminListUsers)
 		r.Patch("/users/{userID}", a.adminUpdateUser)
+		r.Get("/review-settings", a.adminGetReviewSettings)
+		r.Patch("/review-settings", a.adminUpdateReviewSettings)
 		r.Post("/users/{userID}/boxes", a.adminGrantBox)
 		r.Post("/users/{userID}/special-stamps", a.adminGrantSpecialStamp)
 		r.Post("/users/{userID}/stamp-adjustments", a.adminAdjustStamps)
@@ -89,7 +116,6 @@ func (a *API) Routes() chi.Router {
 		r.Get("/orders", a.adminListOrders)
 		r.Patch("/orders/{orderID}", a.adminUpdateOrder)
 	})
-	return r
 }
 
 // me is auth.Me plus the stamps paid per approved hour, so prices can be

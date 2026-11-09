@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -573,6 +574,11 @@ type adminUserJSON struct {
 	Stamps             int32       `json:"stamps"`
 	VerificationStatus string      `json:"verification_status"`
 	YSWSEligible       bool        `json:"ysws_eligible"`
+	// Which review stages a reviewer can decide. Admins can decide all of
+	// them whatever these say.
+	CanReview      bool `json:"can_review"`
+	CanFraudReview bool `json:"can_fraud_review"`
+	CanHQReview    bool `json:"can_hq_review"`
 }
 
 func toAdminUserJSON(u db.User) adminUserJSON {
@@ -585,6 +591,9 @@ func toAdminUserJSON(u db.User) adminUserJSON {
 		Stamps:             u.Stamps,
 		VerificationStatus: u.VerificationStatus,
 		YSWSEligible:       u.YswsEligible,
+		CanReview:          u.CanReview,
+		CanFraudReview:     u.CanFraudReview,
+		CanHQReview:        u.CanHqReview,
 	}
 }
 
@@ -604,6 +613,8 @@ func (a *API) adminListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 // adminUpdateUser changes someone's role: {"role": "reviewer"}.
+// adminUpdateUser changes someone's role and which review stages they can
+// decide. Fields left out aren't changed.
 func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	admin := auth.User(r.Context())
 	userID, ok := idParam(w, r, "userID")
@@ -611,20 +622,23 @@ func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Role db.UserRole `json:"role"`
+		Role           *db.UserRole `json:"role"`
+		CanReview      *bool        `json:"can_review"`
+		CanFraudReview *bool        `json:"can_fraud_review"`
+		CanHQReview    *bool        `json:"can_hq_review"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	if !body.Role.Valid() {
+	if body.Role != nil && !body.Role.Valid() {
 		respond.Error(w, http.StatusUnprocessableEntity, fmt.Sprintf("role has to be one of %v.", db.AllUserRoleValues()))
 		return
 	}
-	if userID == admin.ID && body.Role != db.UserRoleAdmin {
+	if userID == admin.ID && body.Role != nil && *body.Role != db.UserRoleAdmin {
 		respond.Error(w, http.StatusUnprocessableEntity, "You can't take away your own admin access. Ask another admin.")
 		return
 	}
-	user, err := a.Queries.SetUserRole(r.Context(), db.SetUserRoleParams{ID: userID, Role: body.Role})
+	user, err := a.Queries.GetUser(r.Context(), userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		respond.Error(w, http.StatusNotFound, "That user doesn't exist.")
 		return
@@ -633,5 +647,102 @@ func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
+	if body.Role != nil {
+		user.Role = *body.Role
+	}
+	for field, value := range map[*bool]*bool{&user.CanReview: body.CanReview, &user.CanFraudReview: body.CanFraudReview, &user.CanHqReview: body.CanHQReview} {
+		if value != nil {
+			*field = *value
+		}
+	}
+	if user.Role == db.UserRoleParticipant && (user.CanReview || user.CanFraudReview || user.CanHqReview) {
+		respond.Error(w, http.StatusUnprocessableEntity, "Make them a reviewer before giving them review stages.")
+		return
+	}
+	tx, err := a.Pool.Begin(r.Context())
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	defer tx.Rollback(r.Context())
+	q := a.Queries.WithTx(tx)
+	if _, err := q.SetUserRole(r.Context(), db.SetUserRoleParams{ID: userID, Role: user.Role}); err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	user, err = q.SetUserPermissions(r.Context(), db.SetUserPermissionsParams{
+		ID: userID, CanReview: user.CanReview, CanFraudReview: user.CanFraudReview, CanHqReview: user.CanHqReview,
+	})
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
 	respond.JSON(w, http.StatusOK, toAdminUserJSON(user))
+}
+
+type reviewSettingsJSON struct {
+	// Every approved ship goes through the fraud check, flagged or not.
+	FraudCheckEverything bool `json:"fraud_check_everything"`
+	// Ships claiming more than this always get a fraud check.
+	LargeShipSeconds int32 `json:"large_ship_seconds"`
+	// So do ships whose project has a UTC day with more than this.
+	LongDaySeconds int32     `json:"long_day_seconds"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+func toReviewSettingsJSON(s db.ReviewSetting) reviewSettingsJSON {
+	return reviewSettingsJSON{s.FraudCheckEverything, s.LargeShipSeconds, s.LongDaySeconds, s.UpdatedAt}
+}
+
+func (a *API) adminGetReviewSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := a.Queries.GetReviewSettings(r.Context())
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	respond.JSON(w, http.StatusOK, toReviewSettingsJSON(settings))
+}
+
+// adminUpdateReviewSettings changes the fraud check settings. Fields left
+// out aren't changed. They apply to approvals from now on; ships already
+// past the first stage stay where they are.
+func (a *API) adminUpdateReviewSettings(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		FraudCheckEverything *bool  `json:"fraud_check_everything"`
+		LargeShipSeconds     *int32 `json:"large_ship_seconds"`
+		LongDaySeconds       *int32 `json:"long_day_seconds"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	settings, err := a.Queries.GetReviewSettings(r.Context())
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	if body.FraudCheckEverything != nil {
+		settings.FraudCheckEverything = *body.FraudCheckEverything
+	}
+	if body.LargeShipSeconds != nil {
+		settings.LargeShipSeconds = *body.LargeShipSeconds
+	}
+	if body.LongDaySeconds != nil {
+		settings.LongDaySeconds = *body.LongDaySeconds
+	}
+	if settings.LargeShipSeconds < 1 || settings.LongDaySeconds < 1 || settings.LongDaySeconds > 86400 {
+		respond.Error(w, http.StatusUnprocessableEntity, "large_ship_seconds has to be over 0, and long_day_seconds between 1 and 86,400 (a day).")
+		return
+	}
+	settings, err = a.Queries.UpdateReviewSettings(r.Context(), db.UpdateReviewSettingsParams{
+		FraudCheckEverything: settings.FraudCheckEverything, LargeShipSeconds: settings.LargeShipSeconds, LongDaySeconds: settings.LongDaySeconds,
+	})
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	respond.JSON(w, http.StatusOK, toReviewSettingsJSON(settings))
 }

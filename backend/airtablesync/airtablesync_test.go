@@ -293,3 +293,55 @@ func TestGithubUsername(t *testing.T) {
 		}
 	}
 }
+
+func TestHQSignedOffShipsGoToUnifiedYSWS(t *testing.T) {
+	e := newEnv(t)
+	e.exec(t, "update users set ysws_eligible = false where id = $1", e.user.ID)
+	project := e.exec(t, `insert into projects (user_id, name, description, repo_url) values ($1, 'Racer', 'A racing game', 'https://github.com/heidi/racer')`, e.user.ID)
+	reviewer := e.exec(t, "insert into users (hca_id, email, name, role) values ('ident!rev', 'r@example.com', 'Rita', 'reviewer')")
+	fraud := e.exec(t, "insert into users (hca_id, email, name, role) values ('ident!fraud', 'f@example.com', 'Fern', 'reviewer')")
+	hq := e.exec(t, "insert into users (hca_id, email, name, role) values ('ident!hq', 'h@example.com', 'Hugo', 'reviewer')")
+	ship := e.exec(t, `insert into submissions (project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds,
+		reviewer_id, reviewed_at, internal_notes, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at)
+		values ($1, 'approved', '{racer}', 36000, 36000, 25200, $2, now(), 'Commits match.', '{long_day}', $3, now(), $4, now())`,
+		project, reviewer, fraud, hq)
+	e.exec(t, `insert into ship_events (submission_id, kind, actor_id, stage, seconds) values ($1, 'approval', $2, 'pending', 32400)`, ship, reviewer)
+
+	e.sync(t)
+	records := e.airtable.records(submissionsTable)
+	if len(records) != 1 {
+		t.Fatalf("%d rows, want 1", len(records))
+	}
+	fields := records[0].Fields
+	if _, ok := fields[submitUnifiedField]; ok {
+		t.Error("ticked for Unified YSWS before they're YSWS-eligible")
+	}
+	justification, _ := fields["Optional - Override Hours Spent Justification"].(string)
+	for _, want := range []string{"10.00h of new time", "Reviewer Rita approved 9.00h", "Commits match.", "fraud check (long_day), which Fern passed", "Signed off by Hugo at 7.00h"} {
+		if !strings.Contains(justification, want) {
+			t.Errorf("justification %q doesn't say %q", justification, want)
+		}
+	}
+
+	// Once they're verified, the next pass ticks the box, once.
+	e.exec(t, "update users set ysws_eligible = true where id = $1", e.user.ID)
+	e.sync(t)
+	writes := e.airtable.writes()
+	e.sync(t)
+	if e.airtable.records(submissionsTable)[0].Fields[submitUnifiedField] != true {
+		t.Error("not ticked after they became eligible")
+	}
+	if e.airtable.writes() != writes {
+		t.Error("ticked again on the next pass")
+	}
+
+	// A new signed-off ship from someone eligible is ticked straight away.
+	e.exec(t, `insert into submissions (project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds,
+		reviewer_id, reviewed_at, hq_reviewer_id, hq_reviewed_at) values ($1, 'approved', '{racer}', 39600, 3600, 3600, $2, now(), $2, now())`,
+		project, hq)
+	e.sync(t)
+	records = e.airtable.records(submissionsTable)
+	if len(records) != 2 || records[1].Fields[submitUnifiedField] != true {
+		t.Errorf("the second ship's Unified box is %v", records[len(records)-1].Fields[submitUnifiedField])
+	}
+}

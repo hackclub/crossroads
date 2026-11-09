@@ -275,10 +275,17 @@ type MeJSON struct {
 	YSWSEligible       bool        `json:"ysws_eligible"`
 	// Where physical items ship by default; null if Hack Club Auth has none.
 	Address json.RawMessage `json:"address"`
+	// Which review stages they can decide: all of them for admins, none for
+	// participants.
+	CanReview      bool `json:"can_review"`
+	CanFraudReview bool `json:"can_fraud_review"`
+	CanHQReview    bool `json:"can_hq_review"`
 }
 
 func ToMeJSON(user *db.User) MeJSON {
-	return MeJSON{user.ID, user.Name, user.Email, user.SlackID, user.Role, user.Stamps, user.VerificationStatus, user.YswsEligible, nullableJSON(user.Address)}
+	admin, reviewer := user.Role == db.UserRoleAdmin, user.Role == db.UserRoleReviewer
+	return MeJSON{user.ID, user.Name, user.Email, user.SlackID, user.Role, user.Stamps, user.VerificationStatus, user.YswsEligible, nullableJSON(user.Address),
+		admin || reviewer && user.CanReview, admin || reviewer && user.CanFraudReview, admin || reviewer && user.CanHqReview}
 }
 
 // Me responds with the signed-in user. Wrap it in RequireUser.
