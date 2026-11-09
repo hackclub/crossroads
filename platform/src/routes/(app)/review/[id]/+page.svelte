@@ -449,6 +449,6 @@
 	.timeline li.other { opacity: 0.7; }
 	.pre { white-space: pre-wrap; }
 	.tiny { font-size: 17px; padding: 0 8px; }
-	.check-row { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-left: 4px solid var(--warn); background: var(--warn-bg); border-radius: 6px; }
+	.check-row { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border: 1px solid var(--warn); background: var(--warn-bg); border-radius: 6px; }
 	.check-row.info { border-color: var(--info); background: var(--info-bg); }
 </style>
