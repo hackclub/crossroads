@@ -31,8 +31,7 @@
 	const totalCommits = $derived(columns.reduce((s, c) => s + c.commits, 0));
 
 	const since = $derived(reship ? 'since the last approved ship' : 'since Crossroads started');
-	let showAll = $state(false);
-	const commits = $derived(github ? (showAll ? github.commits : github.commits.slice(0, 8)) : []);
+	const commits = $derived(github?.commits ?? []);
 
 	// In UTC, like the days in the charts.
 	function shortDate(iso) {
@@ -124,7 +123,7 @@
 
 	{#if github?.commits.length}
 		<div class="stack-sm">
-			<h3 class="small">Commits {since}</h3>
+			<h3 class="small">{github.commits.length}{github.truncated ? '+' : ''} commits {since}</h3>
 			<ul class="commits small">
 				{#each commits as c (c.sha)}
 					<li>
@@ -135,31 +134,30 @@
 					</li>
 				{/each}
 			</ul>
-			{#if github.commits.length > 8}
-				<button class="link-btn small" onclick={() => (showAll = !showAll)}>{showAll ? 'Show fewer' : `Show all ${github.commits.length}`}</button>
-			{/if}
 		</div>
 	{/if}
 </section>
 
 <style>
 	.facts { gap: 6px 10px; }
+	.facts .chip { font-size: 16px; padding: 0 12px; }
+	details summary { cursor: pointer; color: var(--muted); font-size: 16px; }
 	.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-	.tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border-radius: 10px; background: var(--navy); }
-	.tile .label { font-size: 18px; color: var(--muted); }
-	.tile strong { font-size: 24px; color: var(--text); }
-	.tile .authors { font-size: 18px; overflow-wrap: anywhere; }
+	.tile { display: flex; flex-direction: column; gap: 0; padding: 6px 12px; border-radius: 10px; background: var(--navy); }
+	.tile .label { font-size: 15px; color: var(--muted); }
+	.tile strong { font-size: 22px; font-weight: 400; color: var(--text); font-variant-numeric: tabular-nums; }
+	.tile .authors { font-size: 17px; overflow-wrap: anywhere; }
 	.strip-head { display: flex; justify-content: space-between; gap: 8px; }
-	.strip { display: flex; align-items: flex-end; gap: 2px; height: 90px; padding-bottom: 1px; border-bottom: 1px solid var(--deep); }
-	.strip.short { height: 50px; }
+	.strip { display: flex; align-items: flex-end; gap: 2px; height: 70px; padding-bottom: 1px; border-bottom: 1px solid var(--deep); }
+	.strip.short { height: 40px; }
 	.col { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 3px; }
 	.col:hover { background: rgb(255 255 255 / 0.06); }
 	.bar { width: 100%; min-height: 0; background: var(--info); border-radius: 4px 4px 0 0; }
 	.axis { display: flex; justify-content: space-between; }
 	table { width: 100%; border-collapse: collapse; margin-top: 6px; }
 	th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--deep); }
-	.commits { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-	.commits li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 6px 10px; border-radius: 8px; background: rgb(0 0 0 / 0.25); }
+	.commits { list-style: none; padding: 0 4px 0 0; margin: 0; display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; scrollbar-width: thin; }
+	.commits li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 4px 10px; border-radius: 8px; background: rgb(0 0 0 / 0.25); }
 	.sha { font-family: ui-monospace, monospace; }
 	.message { flex: 1 1 200px; overflow-wrap: anywhere; }
 	.add { color: var(--good); }

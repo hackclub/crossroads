@@ -208,166 +208,158 @@
 	});
 </script>
 
-<div class="crumbs"><a href="/review?stage={stage ?? 'review'}">Review</a> / Ship #{id}</div>
+{#snippet icon(state)}
+	<!-- A check's state as a shape as well as a color: tick, cross, bang, question. -->
+	<svg class="state {state}" viewBox="0 0 16 16" aria-hidden="true">
+		{#if state === 'pass'}<path d="M3.5 8.5l3 3 6-7" />
+		{:else if state === 'fail'}<path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+		{:else if state === 'warn'}<path d="M8 3.5v6M8 12.2v.3" />
+		{:else}<path d="M5.8 5.8a2.3 2.3 0 1 1 3 2.2c-.6.2-.8.6-.8 1.2v.6M8 12.2v.3" />{/if}
+	</svg>
+{/snippet}
 
 {#if error}
+	<div class="crumbs"><a href="/review?stage=review">Review</a> / Ship #{id}</div>
 	<p class="callout warn">{error}</p>
 {:else if d}
 	{@const p = d.project}
-	<div class="stack-lg">
-		<div class="page-head" style="margin: 0">
-			<div class="stack-sm">
+	<div class="review-page">
+		<header class="head">
+			<div class="title">
+				<a class="back" href="/review?stage={stage ?? 'review'}">
+					<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5" /></svg>
+					Queue
+				</a>
+				<span class="muted">#{id}</span>
 				<h1>{p.name}</h1>
-				<span class="muted">by {d.user.name} ({d.user.email}{d.user.slack_id ? `, Slack ${d.user.slack_id}` : ''}) · shipped {date(sub.submitted_at)}</span>
+				<span class="by">by <strong>{d.user.name}</strong></span>
+				<span class="badge {statusTone(sub.status)}">{STATUS_LABELS[sub.status] ?? sub.status}</span>
 			</div>
-			<span class="badge {statusTone(sub.status)}">{STATUS_LABELS[sub.status] ?? sub.status}</span>
-		</div>
-
-		{#if result}
-			<section class="callout good stack-sm" role="status">
-				<strong>Saved. It's now: {STATUS_LABELS[d.submission.status] ?? d.submission.status}.</strong>
-				{#if result.stamps_paid || result.boxes_granted.length}
-					<span>Paid {result.stamps_paid} stamps{result.boxes_granted.length ? ` and gave ${result.boxes_granted.length} box(es)` : ''}.</span>
-				{/if}
-				{#if result.stage && canDecideStage(session.me, result.stage)}
-					<div class="row"><button class="btn small primary" onclick={() => next(result.stage)}>Next in {STAGES[result.stage].label.toLowerCase()}</button></div>
-				{/if}
-			</section>
-		{/if}
-		{#if nextMsg}<p class="callout info small" role="status">{nextMsg}</p>{/if}
-
-		{#if stage}
-			<section class="card claim-bar">
-				<div class="row between">
+			{#if stage}
+				<div class="claim small">
 					{#if mine}
-						<span>You have this ship until {time(d.claim.expires_at)}. Nobody else can decide it until then.</span>
-						<div class="row">
-							<button class="btn small ghost" onclick={claim}>Keep it longer</button>
-							<button class="btn small ghost" onclick={release}>Let go</button>
-							<button class="btn small ghost" onclick={skip}>Skip</button>
-						</div>
+						<span>Yours until {time(d.claim.expires_at)}</span>
+						<button class="btn small ghost" onclick={claim}>Keep it longer</button>
+						<button class="btn small ghost" onclick={release}>Let go</button>
+						<button class="btn small ghost" onclick={skip}>Skip</button>
 					{:else if d.claim}
-						<span>{d.claim.name} is reviewing this until {time(d.claim.expires_at)}.</span>
+						<span>{d.claim.name} is reviewing this until {time(d.claim.expires_at)}</span>
 					{:else}
-						<span class="muted">Nobody is reviewing this right now.</span>
+						<span class="muted">Nobody is reviewing this</span>
 						{#if d.can_decide}
-							<div class="row">
-								<button class="btn small primary" onclick={claim}>Claim it</button>
-								<button class="btn small ghost" onclick={skip}>Skip</button>
-							</div>
+							<button class="btn small primary" onclick={claim}>Claim it</button>
+							<button class="btn small ghost" onclick={skip}>Skip</button>
 						{/if}
 					{/if}
 				</div>
-				{#if claimError}<p class="callout warn small">{claimError}</p>{/if}
-			</section>
-		{/if}
+			{/if}
+		</header>
+		{#if claimError}<p class="callout warn small">{claimError}</p>{/if}
+		{#if nextMsg}<p class="callout info small" role="status">{nextMsg}</p>{/if}
 
-		{#if d.projects_sharing_links.length}
-			<section class="callout warn">
-				<strong>Other projects use the same repo or demo link</strong>
-				<ul class="small">
-					{#each d.projects_sharing_links as o}<li>{o.name} by {o.user_name} · {o.repo_url ?? ''} {o.demo_url ?? ''}</li>{/each}
-				</ul>
-			</section>
-		{/if}
-		{#if d.hackatime?.convicted}<p class="callout warn"><strong>Hackatime has flagged this person as cheating.</strong></p>{/if}
-		{#if d.hackatime_error}<p class="callout warn">Hackatime: {d.hackatime_error}</p>{/if}
-
-		<div class="grid-2">
-			<div class="stack">
-				{#if stage && d.can_decide}
-					<form class="card" onsubmit={decide}>
-						<h2>{STAGES[stage].label}</h2>
-						{#if stage !== 'review'}
-							<div class="chain small">
-								{#if approval}<p>{approval.actor?.name ?? 'A reviewer'} approved <strong>{hours(approval.seconds)}</strong> of {hours(sub.new_seconds)} · {date(approval.created_at)}</p>{/if}
-								{#if approval?.internal}<p class="muted pre">Their notes: {approval.internal}</p>{/if}
-								{#if sub.override_reason}
-									<p class="override">Approved for <strong>more than Hackatime tracked</strong> ({hours(sub.approved_seconds)} of {hours(sub.new_seconds)}): {sub.override_reason}</p>
-								{/if}
-								{#if sub.fraud_reasons?.length}
-									<p>Sent to the fraud check for: {#each sub.fraud_reasons as r, i}{i ? ', ' : ''}<span class="badge warn">{reasonLabel(r)}</span>{/each}</p>
-								{/if}
-								{#if fraudPass}
-									<p>{fraudPass.actor?.name} {fraudPass.seconds < approval?.seconds ? `cut it to ${hours(fraudPass.seconds)}` : 'passed it'} in the fraud check{fraudPass.internal ? `: ${fraudPass.internal}` : ''}</p>
-								{:else if stage === 'hq'}
-									<p class="muted">No fraud check: nothing was flagged.</p>
-								{/if}
-							</div>
-						{/if}
-						<div class="row">
-							<label class="check"><input type="radio" bind:group={action} value="approve" /> {approveWord}</label>
-							<label class="check"><input type="radio" bind:group={action} value="reject" /> Reject</label>
-							{#if stage !== 'review'}<label class="check"><input type="radio" bind:group={action} value="send_back" /> Send back to review</label>{/if}
-						</div>
-						{#if action === 'approve'}
-							<label class="field">
-								<span>Hours</span>
-								<input type="number" min="0" step="0.01" max={overriding ? undefined : maxSeconds / 3600} bind:value={approvedHours} />
-								<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}.` : `Up to ${hours(maxSeconds)}.`} {stage === 'fraud' ? 'Lower it to cut hours. ' : ''}Time you cut is gone for good: it can't be shipped again.</small>
-							</label>
-							{#if canOverride}
-								<label class="check small">
-									<input type="checkbox" bind:checked={overriding} />
-									Approve more than Hackatime tracked ({hours(sub.new_seconds)})
-								</label>
-								{#if overriding}
-									<label class="field">
-										<span>Why more than Hackatime? <em>required to go over</em></span>
-										<textarea bind:value={overrideReason} required={Number(approvedHours) * 3600 > sub.new_seconds} placeholder="For example: 3 hours soldering and testing the board, which Hackatime can't track. The build log has photos."></textarea>
-										<small>HQ sees this before signing off, and it goes to the Unified YSWS DB. The participant doesn't see it.</small>
-									</label>
-								{/if}
-							{/if}
-							{#if stage === 'review'}
-								<label class="check small"><input type="checkbox" bind:checked={sendToFraud} /> Send it to the fraud check anyway</label>
-							{/if}
-							<p class="small muted">{whatNext}</p>
-						{/if}
-						{#if action !== 'send_back'}
-							<label class="field">
-								<span>
-									Feedback for them
-									<em>{action === 'reject' ? 'required' : 'optional'}</em>
-								</span>
-								{#if templates.length}
-									<select onchange={useTemplate} aria-label="Insert a feedback template">
-										<option value="">Insert a template…</option>
-										{#each templates as t}<option value={t.id}>{t.title}</option>{/each}
-									</select>
-								{/if}
-								<textarea bind:value={feedback} required={action === 'reject'}></textarea>
-								<small>They see this on their project page.</small>
-							</label>
-						{/if}
+		<div class="bento">
+			<div class="who">
+				<section class="card">
+					<h2>{d.user.name}</h2>
+					<dl class="facts small">
+						<dt>Email</dt><dd>{d.user.email}</dd>
+						<dt>Slack</dt><dd>{d.user.slack_id ?? 'Not linked'}</dd>
+						<dt>Identity</dt><dd>{d.user.verification_status}{d.user.ysws_eligible ? ', YSWS-eligible' : ', not YSWS-eligible yet'}</dd>
+						<dt>Shipped</dt><dd>{date(sub.submitted_at)}</dd>
+					</dl>
+					{#if stage === 'fraud' && d.telescreen_url}
+						<a class="btn small" href={d.telescreen_url} target="_blank" rel="noreferrer">Telescreen profile</a>
+					{/if}
+					{#if noteDraft === null}
+						{#if d.user.reviewer_note}<p class="pre small note">{d.user.reviewer_note}</p>{/if}
+						<button class="link-btn small" onclick={() => (noteDraft = d.user.reviewer_note ?? '')}>{d.user.reviewer_note ? 'Edit reviewer note' : 'Add a reviewer note'}</button>
+					{:else}
 						<label class="field">
-							<span>
-								{action === 'send_back' ? 'Why, for the reviewer who picks it up' : stage === 'review' ? 'Justification' : 'Notes'}
-								<em>{action === 'send_back' ? 'required' : 'reviewers only'}</em>
-							</span>
-							<textarea bind:value={notes} required={action === 'send_back'}></textarea>
-							{#if stage === 'review' && action === 'approve'}<small>Why these hours: what you checked. This goes into the Unified YSWS justification.</small>{/if}
+							<span>Reviewer note</span>
+							<textarea bind:value={noteDraft} style="min-height: 90px"></textarea>
+							<small>Reviewers only. Shown on all of this person's ships.</small>
 						</label>
-						{#if formError}<p class="callout warn small">{formError}</p>{/if}
 						<div class="row">
-							<button class="btn primary" disabled={busy}>
-								{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Reject' : 'Send back'}
-							</button>
+							<button class="btn small primary" onclick={saveNote}>Save</button>
+							<button class="btn small ghost" onclick={() => (noteDraft = null)}>Cancel</button>
 						</div>
-					</form>
-				{:else if stage}
-					<p class="callout info small">{d.cant_decide_reason}</p>
-				{/if}
+						{#if noteError}<p class="callout warn small">{noteError}</p>{/if}
+					{/if}
+				</section>
 
 				<section class="card">
-					<h2>Project</h2>
-					<p style="white-space: pre-wrap">{p.description}</p>
-					<div class="row small">
-						{#if p.demo_url}<a class="chip" href={p.demo_url} target="_blank" rel="noreferrer">▶ Demo</a>{/if}
-						{#if p.repo_url}<a class="chip" href={p.repo_url} target="_blank" rel="noreferrer">Repo</a>{/if}
-						{#if p.screenshot_url}<a class="chip" href={p.screenshot_url} target="_blank" rel="noreferrer">Screenshot</a>{/if}
+					<h2>Hours</h2>
+					<dl class="numbers">
+						<dt>Claimed by this ship</dt><dd>{hours(sub.new_seconds)}</dd>
+						{#if sub.approved_seconds != null}<dt>Approved so far</dt><dd>{hours(sub.approved_seconds)}</dd>{/if}
+						<dt>Hackatime when shipped</dt><dd>{hours(sub.hackatime_seconds)}</dd>
+						{#if d.hackatime}<dt>Hackatime now</dt><dd>{hours(d.hackatime.seconds)}</dd>{/if}
+						<dt>Approved on earlier ships</dt><dd>{hours(p.approved_seconds)}</dd>
+					</dl>
+					{#if d.hackatime?.projects.length}
+						<p class="small muted">{d.hackatime.projects.map((h) => `${h.name} ${hours(h.seconds)}`).join(' · ')}</p>
+					{/if}
+				</section>
+
+			</div>
+
+			<div class="checks-col">
+				<section class="card">
+					<div class="row between">
+						<h2>Checks</h2>
+						<span class="small" class:ok={failing.length === 0}>{failing.length === 0 ? `All ${passing.length} passed` : `${failing.length} to look at`}</span>
 					</div>
-					{#if p.screenshot_url}<img src={p.screenshot_url} alt="Screenshot" style="max-height: 280px; object-fit: contain; align-self: flex-start" />{/if}
+					<ul class="checks">
+						{#each failing as c (c.id)}
+							{@const state = c.status === 'inconclusive' ? 'unknown' : c.severity === 'info' || c.severity === 'warn' ? 'warn' : 'fail'}
+							<li class={state}>
+								{@render icon(state)}
+								<div>
+									<strong>{c.status === 'inconclusive' ? "Couldn't check: " : ''}{c.name}</strong>
+									{#if c.fraud}<span class="tag">fraud signal</span>{/if}
+									{#if c.summary}<p>{c.summary}</p>{/if}
+								</div>
+							</li>
+						{/each}
+					</ul>
+					{#if passing.length}
+						<details open={failing.length === 0}>
+							<summary class="small">{failing.length ? `${passing.length} passed` : 'Show them'}</summary>
+							<ul class="checks">
+								{#each passing as c (c.id)}
+									<li class="pass">{@render icon('pass')}<div><span>{c.name}</span>{#if c.summary && c.id === 'repo_works'}<p>{c.summary}</p>{/if}</div></li>
+								{/each}
+							</ul>
+						</details>
+					{/if}
+					<p class="small muted">Run just now. "Fraud signal" checks send an approval to the fraud check.</p>
+				</section>
+			</div>
+
+			<div class="main-col">
+				<section class="card project">
+					{#if p.screenshot_url}
+						<a class="shot" href={p.screenshot_url} target="_blank" rel="noreferrer"><img src={p.screenshot_url} alt="Screenshot of {p.name}" /></a>
+					{/if}
+					<div class="stack-sm about">
+						<h2>Project</h2>
+						<p class="pre">{p.description}</p>
+						<div class="row links">
+							{#if p.demo_url}<a class="btn small primary" href={p.demo_url} target="_blank" rel="noreferrer">Try the demo</a>{/if}
+							{#if p.repo_url}<a class="btn small ghost" href={p.repo_url} target="_blank" rel="noreferrer">Repo</a>{/if}
+						</div>
+						{#if p.submissions.length > 1}
+							<ul class="ships small">
+								{#each p.submissions as s (s.id)}
+									<li>
+										{#if s.id === sub.id}<strong>This ship</strong>{:else}<a href="/review/{s.id}">#{s.id}</a>{/if}
+										<span class="badge tiny {statusTone(s.status)}">{STATUS_LABELS[s.status] ?? s.status}</span>
+										<span class="muted">{hours(s.new_seconds)} claimed{s.approved_seconds != null ? `, ${hours(s.approved_seconds)} approved` : ''} · {date(s.submitted_at)}</span>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
 				</section>
 
 				<CodeActivity github={d.github} githubError={d.github_error} days={d.days} windowStart={d.window_start} repoUrl={p.repo_url}
@@ -391,13 +383,13 @@
 								{#if ev.internal}<p class="pre"><span class="badge tiny">Reviewers only</span> {ev.internal}</p>{/if}
 							</li>
 						{:else}
-							<li class="muted">Nothing yet.</li>
+							<li class="muted small">Nothing yet.</li>
 						{/each}
 					</ol>
-					<form class="stack" onsubmit={postComment}>
+					<form class="stack-sm" onsubmit={postComment}>
 						<label class="field">
 							<span>Comment</span>
-							<textarea bind:value={comment.message} style="min-height: 80px" placeholder={comment.internal ? 'A note for other reviewers' : 'A message for them, shown on their project page'}></textarea>
+							<textarea bind:value={comment.message} style="min-height: 64px" placeholder={comment.internal ? 'A note for other reviewers' : 'A message for them, shown on their project page'}></textarea>
 						</label>
 						<div class="row between">
 							<label class="check small"><input type="checkbox" bind:checked={comment.internal} /> Only reviewers can see this</label>
@@ -406,97 +398,214 @@
 						{#if commentError}<p class="callout warn small">{commentError}</p>{/if}
 					</form>
 				</section>
-
-				<section class="card">
-					<h2>All ships</h2>
-					<ul class="list small">
-						{#each p.submissions as s}
-							<li class="stack-sm">
-								<strong>
-									{#if s.id === sub.id}This ship{:else}<a href="/review/{s.id}">#{s.id}</a>{/if}
-									· {STATUS_LABELS[s.status] ?? s.status} · {date(s.submitted_at)}
-								</strong>
-								<span class="muted">Claimed {hours(s.new_seconds)}{s.approved_seconds != null ? ` · approved ${hours(s.approved_seconds)}` : ''}</span>
-								{#if s.feedback}<span>Feedback: {s.feedback}</span>{/if}
-								{#if s.internal_notes}<span class="muted">Notes: {s.internal_notes}</span>{/if}
-							</li>
-						{/each}
-					</ul>
-				</section>
 			</div>
 
-			<aside class="stack">
-				<section class="card">
-					<h2>Hours</h2>
-					<p><strong>{hours(sub.new_seconds)}</strong> claimed by this ship</p>
-					{#if sub.approved_seconds != null}<p><strong>{hours(sub.approved_seconds)}</strong> approved so far</p>{/if}
-					<p class="small muted">Project's Hackatime total when shipped: {hours(sub.hackatime_seconds)} · approved on earlier ships: {hours(p.approved_seconds)}</p>
-					{#if d.hackatime}
-						<hr />
-						<span class="small muted">Hackatime now</span>
-						<ul class="list small">
-							{#each d.hackatime.projects as h}<li><span style="flex: 1">{h.name}</span>{hours(h.seconds)}</li>{/each}
-						</ul>
+			<div class="decide-col">
+				<div class="decide">
+					{#if result}
+						<section class="callout good stack-sm" role="status">
+							<strong>Saved. It's now: {STATUS_LABELS[d.submission.status] ?? d.submission.status}.</strong>
+							{#if result.stamps_paid || result.boxes_granted.length}
+								<span>Paid {result.stamps_paid} stamps{result.boxes_granted.length ? ` and gave ${result.boxes_granted.length} box(es)` : ''}.</span>
+							{/if}
+							{#if result.stage && canDecideStage(session.me, result.stage)}
+								<div class="row"><button class="btn small primary" onclick={() => next(result.stage)}>Next in {STAGES[result.stage].label.toLowerCase()}</button></div>
+							{/if}
+						</section>
 					{/if}
-				</section>
-
-				<section class="card">
-					<h2>Checks</h2>
-					{#each failing as c}
-						<div class="check-row {c.severity === 'info' ? 'info' : 'bad'}">
-							<strong>{c.status === 'inconclusive' ? "Couldn't check: " : ''}{c.name}</strong>
-							{#if c.summary}<span class="small">{c.summary}</span>{/if}
-							{#if c.fraud}<span class="small muted">Sends an approval to the fraud check.</span>{/if}
-						</div>
-					{/each}
-					{#if passing.length}
-						<details>
-							<summary class="small" class:ok={failing.length === 0}>{failing.length === 0 ? `All ${passing.length} passed` : `${passing.length} passed`}</summary>
-							<ul class="small">{#each passing as c}<li>{c.name}</li>{/each}</ul>
-						</details>
+					{#if stage && d.can_decide}
+						<form class="card" onsubmit={decide}>
+							<h2>{STAGES[stage].label}</h2>
+							{#if stage !== 'review'}
+								<div class="chain small">
+									{#if approval}<p>{approval.actor?.name ?? 'A reviewer'} approved <strong>{hours(approval.seconds)}</strong> of {hours(sub.new_seconds)} · {date(approval.created_at)}</p>{/if}
+									{#if approval?.internal}<p class="muted pre">Their notes: {approval.internal}</p>{/if}
+									{#if sub.override_reason}
+										<p class="override">Approved for <strong>more than Hackatime tracked</strong> ({hours(sub.approved_seconds)} of {hours(sub.new_seconds)}): {sub.override_reason}</p>
+									{/if}
+									{#if sub.fraud_reasons?.length}
+										<p>Sent to the fraud check for: {#each sub.fraud_reasons as r, i}{i ? ', ' : ''}<span class="badge warn">{reasonLabel(r)}</span>{/each}</p>
+									{/if}
+									{#if fraudPass}
+										<p>{fraudPass.actor?.name} {fraudPass.seconds < approval?.seconds ? `cut it to ${hours(fraudPass.seconds)}` : 'passed it'} in the fraud check{fraudPass.internal ? `: ${fraudPass.internal}` : ''}</p>
+									{:else if stage === 'hq'}
+										<p class="muted">No fraud check: nothing was flagged.</p>
+									{/if}
+								</div>
+							{/if}
+							<div class="row actions">
+								<label class="check"><input type="radio" bind:group={action} value="approve" /> {approveWord}</label>
+								<label class="check"><input type="radio" bind:group={action} value="reject" /> Reject</label>
+								{#if stage !== 'review'}<label class="check"><input type="radio" bind:group={action} value="send_back" /> Send back</label>{/if}
+							</div>
+							{#if action === 'approve'}
+								<label class="field">
+									<span>Hours</span>
+									<input type="number" min="0" step="0.01" max={overriding ? undefined : maxSeconds / 3600} bind:value={approvedHours} />
+									<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}.` : `Up to ${hours(maxSeconds)}.`} {stage === 'fraud' ? 'Lower it to cut hours. ' : ''}Time you cut is gone for good: it can't be shipped again.</small>
+								</label>
+								{#if canOverride}
+									<label class="check small">
+										<input type="checkbox" bind:checked={overriding} />
+										Approve more than Hackatime tracked ({hours(sub.new_seconds)})
+									</label>
+									{#if overriding}
+										<label class="field">
+											<span>Why more than Hackatime?</span>
+											<textarea bind:value={overrideReason} required={Number(approvedHours) * 3600 > sub.new_seconds} placeholder="For example: 3 hours soldering and testing the board, which Hackatime can't track. The build log has photos."></textarea>
+											<small>Required to go over. HQ sees this before signing off, and it goes to the Unified YSWS DB. The participant doesn't see it.</small>
+										</label>
+									{/if}
+								{/if}
+								{#if stage === 'review'}
+									<label class="check small"><input type="checkbox" bind:checked={sendToFraud} /> Send it to the fraud check anyway</label>
+								{/if}
+								<p class="small muted">{whatNext}</p>
+							{/if}
+							{#if action !== 'send_back'}
+								<label class="field">
+									<span>Feedback for them</span>
+									{#if templates.length}
+										<select onchange={useTemplate} aria-label="Insert a feedback template">
+											<option value="">Insert a template…</option>
+											{#each templates as t}<option value={t.id}>{t.title}</option>{/each}
+										</select>
+									{/if}
+									<textarea bind:value={feedback} required={action === 'reject'}></textarea>
+									<small>{action === 'reject' ? 'Required. ' : 'Optional. '}They see this on their project page.</small>
+								</label>
+							{/if}
+							<label class="field">
+								<span>{action === 'send_back' ? 'Why, for the reviewer who picks it up' : stage === 'review' ? 'Justification' : 'Notes'}</span>
+								<textarea bind:value={notes} required={action === 'send_back'}></textarea>
+								<small>
+									{action === 'send_back' ? 'Required. ' : 'Reviewers only. '}{stage === 'review' && action === 'approve' ? 'Why these hours: what you checked. This goes into the Unified YSWS justification.' : ''}
+								</small>
+							</label>
+							{#if formError}<p class="callout warn small">{formError}</p>{/if}
+							<button class="btn primary submit" disabled={busy}>
+								{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Reject' : 'Send back'}
+							</button>
+						</form>
+					{:else if stage}
+						<p class="callout info small">{d.cant_decide_reason}</p>
+					{:else if !result}
+						<p class="callout info small">This ship has been decided: {STATUS_LABELS[sub.status] ?? sub.status}{sub.approved_seconds != null ? `, ${hours(sub.approved_seconds)}` : ''}.</p>
 					{/if}
-					<p class="small muted">Run just now. The fraud check also gets every ship when an admin turns that on.</p>
-				</section>
-
-				<section class="card">
-					<h2>About them</h2>
-					<p class="small">Identity: {d.user.verification_status}{d.user.ysws_eligible ? ', YSWS-eligible' : ', not YSWS-eligible yet'}</p>
-					{#if stage === 'fraud' && d.telescreen_url}
-						<div class="row"><a class="btn small" href={d.telescreen_url} target="_blank" rel="noreferrer">Telescreen profile ↗</a></div>
-					{/if}
-					{#if noteDraft === null}
-						{#if d.user.reviewer_note}<p class="pre small">{d.user.reviewer_note}</p>{:else}<p class="small muted">No reviewer note on this person.</p>{/if}
-						<div class="row"><button class="link-btn small" onclick={() => (noteDraft = d.user.reviewer_note ?? '')}>{d.user.reviewer_note ? 'Edit note' : 'Add a note'}</button></div>
-					{:else}
-						<label class="field">
-							<span>Reviewer note <em>reviewers only</em></span>
-							<textarea bind:value={noteDraft} style="min-height: 100px"></textarea>
-							<small>Shown on all of this person's ships.</small>
-						</label>
-						<div class="row">
-							<button class="btn small primary" onclick={saveNote}>Save</button>
-							<button class="btn small ghost" onclick={() => (noteDraft = null)}>Cancel</button>
-						</div>
-						{#if noteError}<p class="callout warn small">{noteError}</p>{/if}
-					{/if}
-				</section>
-			</aside>
+				</div>
+			</div>
 		</div>
 	</div>
 {:else}
-	<p class="muted">Loading… (this asks Hackatime, so it can take a moment)</p>
+	<p class="muted">Loading… (this asks Hackatime and GitHub, so it can take a moment)</p>
 {/if}
 
 <style>
-	.claim-bar { padding-block: 12px; }
-	.chain { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; border-radius: 10px; background: rgb(0 0 0 / 0.3); }
-	.timeline { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-	.timeline li { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-radius: 10px; background: rgb(0 0 0 / 0.25); }
+	/* The review page leaves the site's reading column for most of the screen,
+	   in Sidekick's arrangement: who and what's flagged on the left, the
+	   project and its evidence in the middle, the decision on the right, where
+	   it stays while you scroll. Narrower screens fold to two columns, then one. */
+	.review-page {
+		--rv-width: min(1880px, calc(100vw - 64px));
+		width: var(--rv-width);
+		margin-left: calc((100% - var(--rv-width)) / 2);
+		font-size: 19px;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+	.review-page :global(.small) { font-size: 17px; }
+	.review-page :global(.card) { padding: 16px 20px; gap: 10px; border-radius: 18px; }
+	.review-page :global(.card h2) { font-size: 28px; }
+	.review-page :global(.btn.small) { font-size: 18px; padding: 2px 12px; }
+	.review-page :global(.field > span) { font-size: 19px; padding: 4px 14px; }
+	.review-page :global(.field input), .review-page :global(.field textarea), .review-page :global(.field select) { font-size: 19px; padding: 8px 14px; }
+	.review-page :global(.field small) { font-size: 16px; }
+	.review-page :global(.field textarea) { min-height: 72px; }
+	.review-page :global(.callout) { margin: 0; }
+
+	.head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; }
+	.title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
+	.title h1 { font-size: 40px; line-height: 1.1; overflow-wrap: anywhere; }
+	.title .badge { align-self: center; }
+	.back { display: inline-flex; align-items: center; gap: 2px; align-self: center; padding: 2px 12px 2px 6px; border-radius: 999px; background: rgb(0 0 0 / 0.35); box-shadow: inset 0 0 0 1px var(--head); color: var(--text); text-decoration: none; font-size: 17px; }
+	.back:hover { background: var(--deep); }
+	.back svg, .state { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+	.claim { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+
+	.bento {
+		display: grid;
+		gap: 12px;
+		align-items: start;
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas: 'checks' 'decide' 'who' 'main';
+	}
+	.who { grid-area: who; }
+	.checks-col { grid-area: checks; }
+	.main-col { grid-area: main; }
+	.decide-col { grid-area: decide; align-self: stretch; }
+	.who, .checks-col, .main-col, .decide { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+	/* Two columns: the evidence on the left; what's flagged, the decision and
+	   the person on the right, in the order a reviewer needs them. */
+	@media (min-width: 1000px) {
+		.bento {
+			grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+			grid-template-rows: auto auto 1fr;
+			grid-template-areas: 'main checks' 'main decide' 'main who';
+		}
+	}
+	@media (min-width: 1500px) {
+		.bento {
+			grid-template-columns: minmax(0, 360px) minmax(0, 1fr) minmax(0, 440px);
+			grid-template-rows: auto 1fr;
+			grid-template-areas: 'who main decide' 'checks main decide';
+		}
+		.decide { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; scrollbar-width: thin; }
+	}
+
+	.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 12px; margin: 0; }
+	.facts dt { color: var(--muted); }
+	.facts dd { margin: 0; overflow-wrap: anywhere; }
+	.note { padding: 8px 12px; border-radius: 10px; background: rgb(0 0 0 / 0.3); margin: 0; }
+	.numbers { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; margin: 0; }
+	.numbers dt { color: var(--muted); }
+	.numbers dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+	.numbers dt:first-child, .numbers dt:first-child + dd { color: var(--text); font-size: 24px; }
+
+	.checks { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+	.checks li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 10px; border-radius: 10px; font-size: 17px; line-height: 1.35; }
+	.checks li .state { margin-top: 2px; }
+	.checks li p { margin: 2px 0 0; color: var(--muted); }
+	.checks li.fail { background: var(--warn-bg); box-shadow: inset 0 0 0 1px var(--danger); }
+	.checks li.fail .state { color: var(--danger); }
+	.checks li.warn { background: var(--warn-bg); }
+	.checks li.warn .state { color: var(--warn); }
+	.checks li.unknown { background: rgb(0 0 0 / 0.3); box-shadow: inset 0 0 0 1px var(--head); }
+	.checks li.pass { padding-block: 2px; }
+	.checks li.pass .state { color: var(--good); }
+	.tag { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; font-size: 14px; background: var(--danger); color: var(--ink); vertical-align: 2px; }
+	details summary { cursor: pointer; color: var(--muted); }
+
+	.project { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+	@media (min-width: 700px) { .project:has(.shot) { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); align-items: start; } }
+	.shot { display: block; border-radius: 12px; overflow: hidden; background: var(--deepest); }
+	.shot img { display: block; width: 100%; max-height: 280px; object-fit: contain; }
+	.about p { margin: 0; }
+	.links { margin-top: 6px; }
+	.ships { list-style: none; padding: 8px 0 0; margin: 4px 0 0; border-top: 1px solid var(--deep); display: flex; flex-direction: column; gap: 4px; }
+
+	.decide form { gap: 12px; }
+	.actions { gap: 4px 16px; }
+	.submit { align-self: stretch; }
+	.chain { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 10px; background: rgb(0 0 0 / 0.3); }
+	.chain p { margin: 0; }
+	.override { padding: 6px 10px; border: 1px solid var(--warn); background: var(--warn-bg); border-radius: 6px; }
+
+	.timeline { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+	.timeline li { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-radius: 10px; background: rgb(0 0 0 / 0.25); }
+	.timeline li p { margin: 0; }
 	.timeline li.internal { background: transparent; border: 2px dashed var(--deep); }
 	.timeline li.other { opacity: 0.7; }
 	.pre { white-space: pre-wrap; }
-	.override { padding: 8px 12px; border: 1px solid var(--warn); background: var(--warn-bg); border-radius: 6px; }
-	.tiny { font-size: 17px; padding: 0 8px; }
-	.check-row { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border: 1px solid var(--warn); background: var(--warn-bg); border-radius: 6px; }
-	.check-row.info { border-color: var(--info); background: var(--info-bg); }
+	.tiny { font-size: 14px; padding: 0 8px; }
 </style>
