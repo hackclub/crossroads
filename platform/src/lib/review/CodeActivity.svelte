@@ -164,13 +164,13 @@
 	.strip { display: flex; align-items: flex-end; gap: 2px; height: 70px; padding-bottom: 1px; border-bottom: 1px solid var(--deep); }
 	.strip.short { height: 40px; }
 	.col { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 3px; }
-	.col:hover { background: rgb(255 255 255 / 0.06); }
+	.col:hover { background: var(--rv-sunk, rgb(255 255 255 / 0.06)); }
 	.bar { width: 100%; min-height: 0; background: var(--info); border-radius: 4px 4px 0 0; }
 	.axis { display: flex; justify-content: space-between; }
 	table { width: 100%; border-collapse: collapse; margin-top: 6px; }
 	th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--deep); }
 	.commits { list-style: none; padding: 0 4px 0 0; margin: 0; display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; scrollbar-width: thin; }
-	.commits li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 4px 10px; border-radius: 8px; background: rgb(0 0 0 / 0.25); }
+	.commits li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 4px 10px; border-radius: 8px; background: var(--rv-sunk, rgb(0 0 0 / 0.25)); }
 	.sha { font-family: ui-monospace, monospace; }
 	.message { flex: 1 1 200px; overflow-wrap: anywhere; }
 	.add { color: var(--good); }

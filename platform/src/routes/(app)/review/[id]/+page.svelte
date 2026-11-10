@@ -112,15 +112,43 @@
 	}
 
 	let nextMsg = $state('');
-	async function next(s) {
-		nextMsg = '';
+	let moving = $state(false);
+	// The queue this page belongs to: the ship's stage, or the stage it was
+	// just decided at.
+	const queueStage = $derived(stage ?? result?.stage ?? 'review');
+	// Next review: skip this ship if it's still waiting for you (so the queue
+	// doesn't hand it straight back), then claim the next one.
+	async function nextReview() {
+		moving = true;
+		nextMsg = claimError = '';
+		const s = queueStage;
 		try {
+			if (stage && d.can_decide && !result) await api('POST', `/review/submissions/${id}/skip`);
 			const res = await api('POST', '/review/next', { stage: s });
 			if (res) goto(`/review/${res.submission_id}`);
-			else nextMsg = 'Nothing left in this queue for you.';
+			else nextMsg = `Nothing left in the ${STAGES[s].label.toLowerCase()} queue for you.`;
 		} catch (e) {
 			nextMsg = e.message;
+		} finally {
+			moving = false;
 		}
+	}
+
+	// Three looks for this page: the site's own, and calmer dark and light
+	// ones. Remembered in this browser only.
+	const THEMES = [['crossroads', 'Crossroads'], ['dark', 'Dark'], ['light', 'Light']];
+	let theme = $state('crossroads');
+	onMount(() => {
+		try {
+			const saved = localStorage.getItem('crossroads.reviewTheme');
+			if (THEMES.some(([key]) => key === saved)) theme = saved;
+		} catch {}
+	});
+	function setTheme(key) {
+		theme = key;
+		try {
+			localStorage.setItem('crossroads.reviewTheme', key);
+		} catch {}
 	}
 
 	function useTemplate(e) {
@@ -219,55 +247,83 @@
 {/snippet}
 
 {#if error}
-	<div class="crumbs"><a href="/review?stage=review">Review</a> / Ship #{id}</div>
-	<p class="callout warn">{error}</p>
+	<div class="review-page" data-theme={theme}>
+		<header class="rv-bar"><a class="back" href="/review">Queue</a></header>
+		<p class="callout warn" style="margin: 16px">{error}</p>
+	</div>
 {:else if d}
 	{@const p = d.project}
 	{@const reship = p.submissions.some((s) => s.id < sub.id && s.status === 'approved')}
-	<div class="review-page">
-		<!-- One bar for getting around and holding the ship, as in Ari. -->
-		<header class="topbar">
-			<a class="back" href="/review?stage={stage ?? 'review'}">
+	<div class="review-page" data-theme={theme}>
+		<!-- The site's nav steps aside on this page: one slim bar to get back to
+		     the queue or on to the next ship. -->
+		<header class="rv-bar">
+			<a class="back" href="/review?stage={queueStage}">
 				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5" /></svg>
-				{stage ? STAGES[stage].label : 'Review'} queue
+				{STAGES[queueStage].label} queue
 			</a>
-			<span class="muted">Ship #{id}</span>
-			<div class="claim">
-				{#if stage}
-					{#if mine}
-						<span>Yours until {time(d.claim.expires_at)}</span>
-						<button class="btn small ghost" onclick={claim}>Keep it longer</button>
-						<button class="btn small ghost" onclick={release}>Let go</button>
-						<button class="btn small ghost" onclick={skip}>Skip</button>
-					{:else if d.claim}
-						<span>{d.claim.name} is reviewing this until {time(d.claim.expires_at)}</span>
-					{:else}
-						<span class="muted">Nobody is reviewing this</span>
-						{#if d.can_decide}
-							<button class="btn small primary" onclick={claim}>Claim it</button>
-							<button class="btn small ghost" onclick={skip}>Skip</button>
-						{/if}
-					{/if}
+			<span class="where muted">Ship #{id}</span>
+			<span class="claim">
+				{#if stage && mine}
+					Yours until {time(d.claim.expires_at)}
+					<button class="link-btn" onclick={claim}>Renew</button>
+				{:else if stage && d.claim}
+					{d.claim.name} has it until {time(d.claim.expires_at)}
+				{:else if stage && d.can_decide}
+					<button class="btn small ghost" onclick={claim}>Claim</button>
 				{/if}
-				<a class="btn small jump" href="#decide">Decide</a>
+			</span>
+			<div class="themes" role="group" aria-label="Theme">
+				{#each THEMES as [key, label] (key)}
+					<button aria-pressed={theme === key} onclick={() => setTheme(key)}>{label}</button>
+				{/each}
 			</div>
+			<button class="btn small primary" onclick={nextReview} disabled={moving} title={stage && d.can_decide && !result ? 'Skips this ship for 3 hours and opens the next one' : ''}>
+				{moving ? 'Finding one…' : 'Next review'}
+				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>
+			</button>
 		</header>
-		{#if claimError}<p class="callout warn small">{claimError}</p>{/if}
-		{#if nextMsg}<p class="callout info small" role="status">{nextMsg}</p>{/if}
+		{#if claimError || nextMsg}
+			<p class="notice small" role="status">{claimError || nextMsg}</p>
+		{/if}
 
-		<div class="frame">
-			<main class="pane">
-				<!-- What the automatic checks flagged comes first (Ari's "automated flags"). -->
-				<section class="part flags" aria-label="Checks">
+		<div class="body">
+			<!-- What a reviewer needs for every ship, always in view. -->
+			<section class="base" aria-label="The project">
+				{#if p.screenshot_url}
+					<a class="shot" href={p.screenshot_url} target="_blank" rel="noreferrer"><img src={p.screenshot_url} alt="Screenshot of {p.name}" /></a>
+				{/if}
+				<div class="summary">
+					<div class="title-row">
+						<h1>{p.name}</h1>
+						<span class="badge {statusTone(sub.status)}">{STATUS_LABELS[sub.status] ?? sub.status}</span>
+						{#if reship}<span class="badge">Update</span>{/if}
+					</div>
+					<p class="description" title={p.description}>{p.description}</p>
+					<div class="links">
+						{#if p.demo_url}<a class="btn small primary" href={p.demo_url} target="_blank" rel="noreferrer">Try the demo</a>{/if}
+						{#if p.repo_url}<a class="btn small ghost" href={p.repo_url} target="_blank" rel="noreferrer">Repo</a>{/if}
+						<span class="muted small">shipped {date(sub.submitted_at)}</span>
+					</div>
+					<div class="maker small">
+						<strong>{d.user.name}</strong>
+						<span class="muted">{d.user.slack_id ?? 'no Slack'} · {d.user.verification_status}{d.user.ysws_eligible ? ', YSWS-eligible' : ', not YSWS-eligible'}</span>
+						{#if stage === 'fraud' && d.telescreen_url}
+							<a href={d.telescreen_url} target="_blank" rel="noreferrer">Telescreen</a>
+						{/if}
+					</div>
+					{#if d.user.reviewer_note}<p class="note small" title={d.user.reviewer_note}>{d.user.reviewer_note}</p>{/if}
+				</div>
+				<div class="flags">
+					<div class="flags-head">
+						<h2>Checks</h2>
+						<span class="small" class:ok={failing.length === 0}>{failing.length ? `${failing.length} to look at · ${passing.length} passed` : `All ${passing.length} passed`}</span>
+					</div>
 					{#if failing.length}
-						<div class="part-head">
-							<h2>{failing.length} {failing.length === 1 ? 'thing' : 'things'} to look at</h2>
-							<span class="muted small">Checks run just now</span>
-						</div>
 						<ul class="checks">
 							{#each failing as c (c.id)}
 								{@const state = c.status === 'inconclusive' ? 'unknown' : c.severity === 'info' || c.severity === 'warn' ? 'warn' : 'fail'}
-								<li class={state}>
+								<li class={state} title={c.summary}>
 									{@render icon(state)}
 									<div>
 										<strong>{c.status === 'inconclusive' ? "Couldn't check: " : ''}{c.name}</strong>
@@ -277,71 +333,20 @@
 								</li>
 							{/each}
 						</ul>
+					{:else}
+						<p class="small muted">Nothing flagged. The full list is below.</p>
 					{/if}
-					{#if passing.length}
-						<details class="passed">
-							<summary>
-								{@render icon('pass')}
-								<span class:ok={failing.length === 0}>{failing.length === 0 ? `All ${passing.length} checks passed` : `${passing.length} more passed`}</span>
-							</summary>
-							<ul class="checks">
-								{#each passing as c (c.id)}
-									<li class="pass">{@render icon('pass')}<div><span>{c.name}</span>{#if c.summary && (c.id === 'repo_works' || c.id === 'new_commits')}<p>{c.summary}</p>{/if}</div></li>
-								{/each}
-							</ul>
-						</details>
-					{/if}
-				</section>
-
-				<!-- The project and who made it, as one header (Ari's project header,
-				     Sidekick's person and project cards side by side). -->
-				<section class="part project" class:has-shot={p.screenshot_url}>
-					{#if p.screenshot_url}
-						<a class="shot" href={p.screenshot_url} target="_blank" rel="noreferrer"><img src={p.screenshot_url} alt="Screenshot of {p.name}" /></a>
-					{/if}
-					<div class="summary">
-						<h1>{p.name}</h1>
-						<div class="tags">
-							<span class="badge {statusTone(sub.status)}">{STATUS_LABELS[sub.status] ?? sub.status}</span>
-							{#if reship}<span class="badge">Update</span>{/if}
-							<span class="muted small">shipped {date(sub.submitted_at)}</span>
-						</div>
-						<p class="pre description">{p.description}</p>
-						<div class="links">
-							{#if p.demo_url}<a class="btn small primary" href={p.demo_url} target="_blank" rel="noreferrer">Try the demo</a>{/if}
-							{#if p.repo_url}<a class="btn small ghost" href={p.repo_url} target="_blank" rel="noreferrer">Repo</a>{/if}
-						</div>
-						<div class="maker">
-							<strong>{d.user.name}</strong>
-							<span class="muted small">{d.user.email} · {d.user.slack_id ?? 'no Slack'} · {d.user.verification_status}{d.user.ysws_eligible ? ', YSWS-eligible' : ', not YSWS-eligible yet'}</span>
-							{#if stage === 'fraud' && d.telescreen_url}
-								<a class="btn small" href={d.telescreen_url} target="_blank" rel="noreferrer">Telescreen profile</a>
-							{/if}
-						</div>
-						{#if noteDraft === null}
-							{#if d.user.reviewer_note}<p class="pre small note">{d.user.reviewer_note}</p>{/if}
-							<button class="link-btn small" onclick={() => (noteDraft = d.user.reviewer_note ?? '')}>{d.user.reviewer_note ? 'Edit the note on them' : 'Add a note on them'}</button>
-						{:else}
-							<label class="field">
-								<span>Note on {d.user.name}</span>
-								<textarea bind:value={noteDraft} style="min-height: 80px"></textarea>
-								<small>Reviewers only. Shown on all their ships.</small>
-							</label>
-							<div class="row">
-								<button class="btn small primary" onclick={saveNote}>Save</button>
-								<button class="btn small ghost" onclick={() => (noteDraft = null)}>Cancel</button>
-							</div>
-							{#if noteError}<p class="callout warn small">{noteError}</p>{/if}
-						{/if}
-					</div>
-				</section>
-
-				<div class="part">
-					<CodeActivity github={d.github} githubError={d.github_error} days={d.days} windowStart={d.window_start} repoUrl={p.repo_url} {reship} />
 				</div>
+			</section>
+
+			<!-- The details, for when the summary isn't enough. Only this part scrolls. -->
+			<div class="evidence">
+				<section class="part">
+					<CodeActivity github={d.github} githubError={d.github_error} days={d.days} windowStart={d.window_start} repoUrl={p.repo_url} {reship} />
+				</section>
 
 				<section class="part">
-					<div class="part-head"><h2>Timeline</h2></div>
+					<h2>Timeline</h2>
 					<ol class="timeline">
 						{#each d.events as ev (ev.id)}
 							{@const hidden = ev.kind === 'internal_comment' || ev.kind === 'flagged' || (!ev.message && ev.internal)}
@@ -373,243 +378,327 @@
 						{#if commentError}<p class="callout warn small">{commentError}</p>{/if}
 					</form>
 				</section>
-			</main>
 
-			<!-- The rail: the hours, then the decision. It stays in view while the
-			     evidence scrolls past (Ari's review rail). -->
-			<aside class="rail" id="decide" aria-label="Decision">
-				<div class="rail-inner">
-				<section class="part">
-					<div class="part-head"><h2>Hours</h2></div>
-					<dl class="numbers">
-						<dt>Claimed by this ship</dt><dd>{hours(sub.new_seconds)}</dd>
-						{#if sub.approved_seconds != null}<dt>Approved so far</dt><dd>{hours(sub.approved_seconds)}</dd>{/if}
-						<dt>Hackatime when shipped</dt><dd>{hours(sub.hackatime_seconds)}</dd>
-						{#if d.hackatime}<dt>Hackatime now</dt><dd>{hours(d.hackatime.seconds)}</dd>{/if}
-						<dt>Approved on earlier ships</dt><dd>{hours(p.approved_seconds)}</dd>
-					</dl>
-					{#if d.hackatime?.projects.length > 1}
-						<p class="small muted">{d.hackatime.projects.map((h) => `${h.name} ${hours(h.seconds)}`).join(' · ')}</p>
-					{/if}
-					{#if p.submissions.length > 1}
-						<ul class="ships small">
-							{#each p.submissions as s (s.id)}
-								<li>
-									{#if s.id === sub.id}<strong>This ship</strong>{:else}<a href="/review/{s.id}">#{s.id}</a>{/if}
-									<span class="muted">{STATUS_LABELS[s.status] ?? s.status} · {hours(s.approved_seconds ?? s.new_seconds)}</span>
-								</li>
+				<section class="part two">
+					<div class="stack-sm">
+						<h2>Every check</h2>
+						<ul class="checks">
+							{#each d.checks as c (c.id)}
+								{@const state = c.status === 'pass' ? 'pass' : c.status === 'inconclusive' ? 'unknown' : c.severity === 'info' || c.severity === 'warn' ? 'warn' : 'fail'}
+								<li class="{state} flat">{@render icon(state)}<div><span>{c.name}</span>{#if c.summary}<p>{c.summary}</p>{/if}</div></li>
 							{/each}
 						</ul>
-					{/if}
-				</section>
-
-				<section class="part decide">
-					{#if result}
-						<div class="callout good stack-sm" role="status">
-							<strong>Saved. It's now: {STATUS_LABELS[d.submission.status] ?? d.submission.status}.</strong>
-							{#if result.stamps_paid || result.boxes_granted.length}
-								<span>Paid {result.stamps_paid} stamps{result.boxes_granted.length ? ` and gave ${result.boxes_granted.length} box(es)` : ''}.</span>
-							{/if}
-							{#if result.stage && canDecideStage(session.me, result.stage)}
-								<div class="row"><button class="btn small primary" onclick={() => next(result.stage)}>Next in {STAGES[result.stage].label.toLowerCase()}</button></div>
-							{/if}
-						</div>
-					{/if}
-					{#if stage && d.can_decide}
-						<form class="decision" onsubmit={decide}>
-							<h2>{STAGES[stage].label}</h2>
-							<div class="form-cols">
-								<div class="form-a">
-							{#if stage !== 'review'}
-								<div class="chain small">
-									{#if approval}<p>{approval.actor?.name ?? 'A reviewer'} approved <strong>{hours(approval.seconds)}</strong> of {hours(sub.new_seconds)} · {date(approval.created_at)}</p>{/if}
-									{#if approval?.internal}<p class="muted pre">Their notes: {approval.internal}</p>{/if}
-									{#if sub.override_reason}
-										<p class="override">Approved for <strong>more than Hackatime tracked</strong> ({hours(sub.approved_seconds)} of {hours(sub.new_seconds)}): {sub.override_reason}</p>
-									{/if}
-									{#if sub.fraud_reasons?.length}
-										<p>Sent to the fraud check for: {#each sub.fraud_reasons as r, i}{i ? ', ' : ''}<span class="badge warn">{reasonLabel(r)}</span>{/each}</p>
-									{/if}
-									{#if fraudPass}
-										<p>{fraudPass.actor?.name} {fraudPass.seconds < approval?.seconds ? `cut it to ${hours(fraudPass.seconds)}` : 'passed it'} in the fraud check{fraudPass.internal ? `: ${fraudPass.internal}` : ''}</p>
-									{:else if stage === 'hq'}
-										<p class="muted">No fraud check: nothing was flagged.</p>
-									{/if}
-								</div>
-							{/if}
-							<div class="row actions">
-								<label class="check"><input type="radio" bind:group={action} value="approve" /> {approveWord}</label>
-								<label class="check"><input type="radio" bind:group={action} value="reject" /> Reject</label>
-								{#if stage !== 'review'}<label class="check"><input type="radio" bind:group={action} value="send_back" /> Send back</label>{/if}
-							</div>
-							{#if action === 'approve'}
-								<label class="field">
-									<span>Hours</span>
-									<input type="number" min="0" step="0.01" max={overriding ? undefined : maxSeconds / 3600} bind:value={approvedHours} />
-									<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}.` : `Up to ${hours(maxSeconds)}.`} {stage === 'fraud' ? 'Lower it to cut hours. ' : ''}Time you cut is gone for good: it can't be shipped again.</small>
-								</label>
-								{#if canOverride}
-									<label class="check small">
-										<input type="checkbox" bind:checked={overriding} />
-										Approve more than Hackatime tracked ({hours(sub.new_seconds)})
-									</label>
-									{#if overriding}
-										<label class="field">
-											<span>Why more than Hackatime?</span>
-											<textarea bind:value={overrideReason} required={Number(approvedHours) * 3600 > sub.new_seconds} placeholder="For example: 3 hours soldering and testing the board, which Hackatime can't track. The build log has photos."></textarea>
-											<small>Required to go over. HQ sees this before signing off, and it goes to the Unified YSWS DB. The participant doesn't see it.</small>
-										</label>
-									{/if}
-								{/if}
-								{#if stage === 'review'}
-									<label class="check small"><input type="checkbox" bind:checked={sendToFraud} /> Send it to the fraud check anyway</label>
-								{/if}
-								<p class="small muted">{whatNext}</p>
-							{/if}
-								</div>
-								<div class="form-b">
-							{#if action !== 'send_back'}
-								<label class="field">
-									<span>Feedback for them</span>
-									{#if templates.length}
-										<select onchange={useTemplate} aria-label="Insert a feedback template">
-											<option value="">Insert a template…</option>
-											{#each templates as t}<option value={t.id}>{t.title}</option>{/each}
-										</select>
-									{/if}
-									<textarea bind:value={feedback} required={action === 'reject'}></textarea>
-									<small>{action === 'reject' ? 'Required. ' : 'Optional. '}They see this on their project page.</small>
-								</label>
-							{/if}
+					</div>
+					<div class="stack-sm">
+						<h2>{d.user.name}</h2>
+						<p class="small muted">{d.user.email}</p>
+						{#if noteDraft === null}
+							{#if d.user.reviewer_note}<p class="pre small note full">{d.user.reviewer_note}</p>{/if}
+							<button class="link-btn small" onclick={() => (noteDraft = d.user.reviewer_note ?? '')}>{d.user.reviewer_note ? 'Edit the note on them' : 'Add a note on them'}</button>
+						{:else}
 							<label class="field">
-								<span>{action === 'send_back' ? 'Why, for the reviewer who picks it up' : stage === 'review' ? 'Justification' : 'Notes'}</span>
-								<textarea bind:value={notes} required={action === 'send_back'}></textarea>
-								<small>
-									{action === 'send_back' ? 'Required. ' : 'Reviewers only. '}{stage === 'review' && action === 'approve' ? 'Why these hours: what you checked. This goes into the Unified YSWS justification.' : ''}
-								</small>
+								<span>Note on {d.user.name}</span>
+								<textarea bind:value={noteDraft} style="min-height: 80px"></textarea>
+								<small>Reviewers only. Shown on all their ships.</small>
 							</label>
-							{#if formError}<p class="callout warn small">{formError}</p>{/if}
-							<button class="btn primary submit" disabled={busy}>
-								{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Reject' : 'Send back'}
-							</button>
-								</div>
+							<div class="row">
+								<button class="btn small primary" onclick={saveNote}>Save</button>
+								<button class="btn small ghost" onclick={() => (noteDraft = null)}>Cancel</button>
 							</div>
-						</form>
-					{:else if stage}
-						<div class="part-head"><h2>{STAGES[stage].label}</h2></div>
-						<p class="callout info small">{d.cant_decide_reason}</p>
-					{:else if !result}
-						<p class="callout info small">This ship has been decided: {STATUS_LABELS[sub.status] ?? sub.status}{sub.approved_seconds != null ? `, ${hours(sub.approved_seconds)}` : ''}.</p>
-					{/if}
+							{#if noteError}<p class="callout warn small">{noteError}</p>{/if}
+						{/if}
+						{#if p.submissions.length > 1}
+							<h2 style="margin-top: 12px">Ships</h2>
+							<ul class="ships small">
+								{#each p.submissions as s (s.id)}
+									<li>
+										{#if s.id === sub.id}<strong>This ship</strong>{:else}<a href="/review/{s.id}">#{s.id}</a>{/if}
+										<span class="muted">{STATUS_LABELS[s.status] ?? s.status} · {hours(s.new_seconds)} claimed{s.approved_seconds != null ? `, ${hours(s.approved_seconds)} approved` : ''} · {date(s.submitted_at)}</span>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
 				</section>
-				</div>
+			</div>
+
+			<!-- The hours and the decision, sized to the window. -->
+			<aside class="rail" id="decide" aria-label="Decision">
+				<dl class="numbers">
+					<div class="lead"><dt>Claimed</dt><dd>{hours(sub.new_seconds)}</dd></div>
+					{#if sub.approved_seconds != null}<div><dt>Approved so far</dt><dd>{hours(sub.approved_seconds)}</dd></div>{/if}
+					<div><dt>Hackatime now</dt><dd>{d.hackatime ? hours(d.hackatime.seconds) : '–'}</dd></div>
+					<div><dt>Earlier ships</dt><dd>{hours(p.approved_seconds)}</dd></div>
+				</dl>
+
+				{#if result}
+					<div class="callout good small" role="status">
+						<strong>Saved. It's now: {STATUS_LABELS[d.submission.status] ?? d.submission.status}.</strong>
+						{#if result.stamps_paid || result.boxes_granted.length}
+							<span>Paid {result.stamps_paid} stamps{result.boxes_granted.length ? ` and gave ${result.boxes_granted.length} box(es)` : ''}.</span>
+						{/if}
+					</div>
+				{/if}
+				{#if stage && d.can_decide}
+					<form class="decision" onsubmit={decide}>
+						<h2>{STAGES[stage].label}</h2>
+						<div class="form-cols">
+							<div class="form-a">
+						{#if stage !== 'review'}
+							<div class="chain small">
+								{#if approval}<p>{approval.actor?.name ?? 'A reviewer'} approved <strong>{hours(approval.seconds)}</strong> of {hours(sub.new_seconds)} · {date(approval.created_at)}</p>{/if}
+								{#if approval?.internal}<p class="muted pre">Their notes: {approval.internal}</p>{/if}
+								{#if sub.override_reason}
+									<p class="override">Approved for <strong>more than Hackatime tracked</strong> ({hours(sub.approved_seconds)} of {hours(sub.new_seconds)}): {sub.override_reason}</p>
+								{/if}
+								{#if sub.fraud_reasons?.length}
+									<p>Sent to the fraud check for: {#each sub.fraud_reasons as r, i}{i ? ', ' : ''}<span class="badge warn">{reasonLabel(r)}</span>{/each}</p>
+								{/if}
+								{#if fraudPass}
+									<p>{fraudPass.actor?.name} {fraudPass.seconds < approval?.seconds ? `cut it to ${hours(fraudPass.seconds)}` : 'passed it'} in the fraud check{fraudPass.internal ? `: ${fraudPass.internal}` : ''}</p>
+								{:else if stage === 'hq'}
+									<p class="muted">No fraud check: nothing was flagged.</p>
+								{/if}
+							</div>
+						{/if}
+						<div class="row actions">
+							<label class="check"><input type="radio" bind:group={action} value="approve" /> {approveWord}</label>
+							<label class="check"><input type="radio" bind:group={action} value="reject" /> Reject</label>
+							{#if stage !== 'review'}<label class="check"><input type="radio" bind:group={action} value="send_back" /> Send back</label>{/if}
+						</div>
+						{#if action === 'approve'}
+							<label class="field">
+								<span>Hours</span>
+								<input type="number" min="0" step="0.01" max={overriding ? undefined : maxSeconds / 3600} bind:value={approvedHours} />
+								<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}.` : `Up to ${hours(maxSeconds)}.`} {stage === 'fraud' ? 'Lower it to cut hours. ' : ''}Time you cut is gone for good: it can't be shipped again.</small>
+							</label>
+							{#if canOverride}
+								<label class="check small">
+									<input type="checkbox" bind:checked={overriding} />
+									Approve more than Hackatime tracked ({hours(sub.new_seconds)})
+								</label>
+								{#if overriding}
+									<label class="field">
+										<span>Why more than Hackatime?</span>
+										<textarea bind:value={overrideReason} required={Number(approvedHours) * 3600 > sub.new_seconds} placeholder="For example: 3 hours soldering and testing the board, which Hackatime can't track. The build log has photos."></textarea>
+										<small>Required to go over. HQ sees this before signing off, and it goes to the Unified YSWS DB. The participant doesn't see it.</small>
+									</label>
+								{/if}
+							{/if}
+							{#if stage === 'review'}
+								<label class="check small"><input type="checkbox" bind:checked={sendToFraud} /> Send it to the fraud check anyway</label>
+							{/if}
+							<p class="small muted">{whatNext}</p>
+						{/if}
+							</div>
+							<div class="form-b">
+						{#if action !== 'send_back'}
+							<label class="field grow">
+								<span>Feedback for them</span>
+								{#if templates.length}
+									<select onchange={useTemplate} aria-label="Insert a feedback template">
+										<option value="">Insert a template…</option>
+										{#each templates as t}<option value={t.id}>{t.title}</option>{/each}
+									</select>
+								{/if}
+								<textarea bind:value={feedback} required={action === 'reject'}></textarea>
+								<small>{action === 'reject' ? 'Required. ' : 'Optional. '}They see this on their project page.</small>
+							</label>
+						{/if}
+						<label class="field grow">
+							<span>{action === 'send_back' ? 'Why, for the reviewer who picks it up' : stage === 'review' ? 'Justification' : 'Notes'}</span>
+							<textarea bind:value={notes} required={action === 'send_back'}></textarea>
+							<small>
+								{action === 'send_back' ? 'Required. ' : 'Reviewers only. '}{stage === 'review' && action === 'approve' ? 'Why these hours: what you checked. This goes into the Unified YSWS justification.' : ''}
+							</small>
+						</label>
+						{#if formError}<p class="callout warn small">{formError}</p>{/if}
+						<button class="btn primary submit" disabled={busy}>
+							{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Reject' : 'Send back'}
+						</button>
+							</div>
+						</div>
+					</form>
+				{:else if stage}
+					<h2>{STAGES[stage].label}</h2>
+					<p class="callout info small">{d.cant_decide_reason}</p>
+				{:else if !result}
+					<p class="callout info small">This ship has been decided: {STATUS_LABELS[sub.status] ?? sub.status}{sub.approved_seconds != null ? `, ${hours(sub.approved_seconds)}` : ''}.</p>
+				{/if}
 			</aside>
 		</div>
 	</div>
 {:else}
-	<p class="muted">Loading… (this asks Hackatime and GitHub, so it can take a moment)</p>
+	<p class="loading muted">Loading… (this asks Hackatime and GitHub, so it can take a moment)</p>
 {/if}
 
 <style>
-	/* After Ari: a slim bar, then one frame with two panes. The evidence on
-	   the left reads top to bottom (flags, the project and its maker, the
-	   code, the timeline); the rail on the right holds the hours and the
-	   decision and stays in view. Sections inside a pane are divided by rules,
-	   not boxed in cards. Under 1000px the rail follows the evidence. */
+	/* The review page fills the window like an app (after Ari): a slim bar,
+	   then the summary across the top, the details under it (the only part
+	   that scrolls), and the decision in a rail sized to the window. On small
+	   or short screens it falls back to one scrolling page. */
 	.review-page {
-		--rv-width: min(1720px, calc(100vw - 64px));
-		width: var(--rv-width);
-		margin-left: calc((100% - var(--rv-width)) / 2);
+		/* Tokens of its own, so the three themes below can swap them. */
+		--rv-page: transparent;
+		--rv-surface: var(--row-bg);
+		--rv-rail: rgb(0 0 0 / 0.3);
+		--rv-line: rgb(255 255 255 / 0.13);
+		--rv-sunk: rgb(0 0 0 / 0.28);
+		--rv-bar: rgb(0 0 0 / 0.55);
+		--rv-on-danger: #000;
+		font-family: 'Crimson Pro', Georgia, serif;
 		font-size: 19px;
+		color: var(--text);
+		background: var(--rv-page);
+		min-height: 100dvh;
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
 	}
+	/* Dark and light are calmer than the photo: a soft slate and a warm paper,
+	   neither pure black nor white. */
+	.review-page[data-theme='dark'] {
+		color-scheme: dark;
+		--bg: #1f2227; --rv-page: #1f2227; --rv-surface: #262a30; --rv-rail: #22262b; --rv-bar: #1b1e22;
+		--rv-line: #363c44; --rv-sunk: #1d2025; --row-bg: #262a30;
+		--text: #e4e2dc; --muted: #a8acb2; --faint: #9095a0; --ink: #16181b;
+		--body: #3a4049; --head: #5d6776; --deep: #353b43; --deepest: #191b1f; --light: #4a515b;
+		--navy: #2f3540; --navy-deep: #1b1e23;
+		--good: #93c77f; --good-bg: #26312a; --warn: #e2a56e; --warn-bg: #3a2f26;
+		--info: #8fb3e3; --info-bg: #243142; --danger: #e8836f; --rv-on-danger: #16181b;
+	}
+	.review-page[data-theme='light'] {
+		color-scheme: light;
+		--bg: #e8e4dc; --rv-page: #e8e4dc; --rv-surface: #f3f0ea; --rv-rail: #ece8e0; --rv-bar: #ddd8ce;
+		--rv-line: #d3cdc2; --rv-sunk: #e6e1d8; --row-bg: #f3f0ea;
+		--text: #2b2c2f; --muted: #5d6067; --faint: #6c6f76; --ink: #2b2c2f;
+		--body: #dbd5ca; --head: #c3baa9; --deep: #ddd7cc; --deepest: #e4dfd6; --light: #cfc8bb;
+		--navy: #e0dad0; --navy-deep: #fbf9f5;
+		--good: #3f7a2c; --good-bg: #e0ead6; --warn: #a3541d; --warn-bg: #f2e3d5;
+		--info: #2f5f9c; --info-bg: #dce5f0; --danger: #b13b27; --rv-on-danger: #fff;
+	}
+	.review-page[data-theme='light'] :global(.callout),
+	.review-page[data-theme='dark'] :global(.callout) { border-color: var(--rv-line); }
+	.review-page[data-theme='light'] :global(.btn.ghost),
+	.review-page[data-theme='dark'] :global(.btn.ghost) { background: transparent; }
 	.review-page :global(.small) { font-size: 17px; }
+	.review-page :global(h2) { font-size: 24px; }
 	.review-page :global(.btn.small) { font-size: 18px; padding: 2px 12px; }
-	.review-page :global(.field > span) { font-size: 19px; padding: 4px 14px; }
-	.review-page :global(.field input), .review-page :global(.field textarea), .review-page :global(.field select) { font-size: 19px; padding: 8px 14px; }
-	.review-page :global(.field small) { font-size: 16px; }
-	.review-page :global(.field textarea) { min-height: 72px; }
-	.review-page :global(.callout) { margin: 0; }
 	.review-page :global(.badge) { font-size: 16px; padding: 1px 10px; }
-	.review-page :global(h2) { font-size: 26px; }
+	.review-page :global(.field > span) { font-size: 18px; padding: 3px 12px; border-radius: 10px 10px 0 0; }
+	.review-page :global(.field input), .review-page :global(.field textarea), .review-page :global(.field select) { font-size: 18px; padding: 6px 12px; border-radius: 0 0 10px 10px; }
+	.review-page :global(.field small) { font-size: 15px; padding-top: 3px; }
+	.review-page :global(.callout) { margin: 0; padding: 10px 14px; }
+	.loading { padding: 24px; }
 
-	.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
-	.back { display: inline-flex; align-items: center; gap: 2px; padding: 2px 12px 2px 6px; border-radius: 999px; background: rgb(0 0 0 / 0.35); box-shadow: inset 0 0 0 1px var(--head); color: var(--text); text-decoration: none; font-size: 17px; }
+	.rv-bar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px 14px;
+		padding: 8px 16px;
+		background: var(--rv-bar);
+		border-bottom: 1px solid var(--rv-line);
+		font-size: 17px;
+	}
+	.back { display: inline-flex; align-items: center; gap: 2px; padding: 2px 12px 2px 6px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--head); color: var(--text); text-decoration: none; }
 	.back:hover { background: var(--deep); }
-	.back svg, .state { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-	.claim { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-left: auto; font-size: 17px; }
+	.back svg, .rv-bar .btn svg, .state { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+	.claim { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+	.themes { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--rv-sunk); }
+	.themes button { padding: 1px 12px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 16px; cursor: pointer; }
+	.themes button[aria-pressed='true'] { background: var(--body); color: var(--text); }
+	.notice { margin: 0; padding: 6px 16px; background: var(--info-bg); border-bottom: 1px solid var(--rv-line); }
 
-	.frame {
+	.body {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		background: var(--row-bg);
-		border-radius: var(--radius);
-		overflow: clip;
+		grid-template-areas: 'base' 'rail' 'evidence';
+		background: var(--rv-surface);
+		flex: 1;
 	}
-	.pane, .rail, .rail-inner { display: flex; flex-direction: column; min-width: 0; }
-	.part { display: flex; flex-direction: column; gap: 12px; padding: 20px 24px; min-width: 0; }
-	.part + .part { border-top: 1px solid rgb(255 255 255 / 0.12); }
-	.part-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-	.rail { border-top: 1px solid rgb(255 255 255 / 0.12); background: rgb(0 0 0 / 0.25); }
-	.jump { display: inline-flex; }
-	@media (min-width: 1000px) {
-		.frame { grid-template-columns: minmax(0, 1fr) minmax(0, 420px); }
-		.rail { border-top: 0; border-left: 1px solid rgb(255 255 255 / 0.12); }
-		.rail-inner { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; scrollbar-width: thin; }
-		.jump { display: none; }
-	}
+	.base { grid-area: base; }
+	.evidence { grid-area: evidence; }
+	.rail { grid-area: rail; }
 
-	.checks { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
-	.checks li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 12px; border-radius: 10px; font-size: 18px; line-height: 1.35; }
-	.checks li .state { margin-top: 3px; }
-	.checks li p { margin: 2px 0 0; color: var(--muted); font-size: 17px; }
+	.base { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px 22px; padding: 16px 20px; border-bottom: 1px solid var(--rv-line); }
+	@media (min-width: 760px) {
+		.base { grid-template-columns: minmax(0, 200px) minmax(0, 1.15fr) minmax(0, 1fr); }
+		.base:not(:has(.shot)) { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+	}
+	.shot { display: block; align-self: start; border-radius: 10px; overflow: hidden; background: var(--deepest); }
+	.shot img { display: block; width: 100%; max-height: 180px; object-fit: contain; }
+	.summary { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+	.title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+	.title-row h1 { font-size: 34px; line-height: 1.05; overflow-wrap: anywhere; }
+	.description { margin: 0; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+	.links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+	.maker { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+	.note { margin: 0; padding: 4px 10px; border-radius: 8px; background: var(--rv-sunk); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+	.note.full { display: block; white-space: pre-wrap; }
+	.flags { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+	.flags-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+
+	.checks { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 5px; }
+	.checks li { display: flex; gap: 8px; align-items: flex-start; padding: 5px 10px; border-radius: 8px; font-size: 17px; line-height: 1.3; }
+	.checks li .state { margin-top: 2px; }
+	.checks li p { margin: 1px 0 0; color: var(--muted); font-size: 16px; }
+	.flags .checks li p { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 	.checks li.fail { background: var(--warn-bg); box-shadow: inset 0 0 0 1px var(--danger); }
 	.checks li.fail .state { color: var(--danger); }
 	.checks li.warn { background: var(--warn-bg); }
 	.checks li.warn .state { color: var(--warn); }
-	.checks li.unknown { background: rgb(0 0 0 / 0.3); box-shadow: inset 0 0 0 1px var(--head); }
-	.checks li.pass { padding-block: 2px; }
+	.checks li.unknown { background: var(--rv-sunk); box-shadow: inset 0 0 0 1px var(--head); }
 	.checks li.pass .state { color: var(--good); }
-	.tag { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; font-size: 14px; background: var(--danger); color: var(--ink); vertical-align: 2px; }
-	.passed summary { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--muted); font-size: 17px; list-style: none; }
-	.passed summary::-webkit-details-marker { display: none; }
-	.passed summary .state { color: var(--good); }
-	.passed[open] summary { margin-bottom: 6px; }
-	.flags:has(.checks li.fail, .checks li.warn, .checks li.unknown) .passed { margin-top: -2px; }
+	.checks li.flat { padding-block: 3px; }
+	.tag { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; font-size: 13px; background: var(--danger); color: var(--rv-on-danger); vertical-align: 2px; }
 
-	.project { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px 24px; }
-	@media (min-width: 760px) { .project.has-shot { grid-template-columns: minmax(0, 320px) minmax(0, 1fr); align-items: start; } }
-	.shot { display: block; border-radius: 12px; overflow: hidden; background: var(--deepest); }
-	.shot img { display: block; width: 100%; max-height: 240px; object-fit: contain; }
-	.summary { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-	.summary h1 { font-size: 44px; line-height: 1.05; overflow-wrap: anywhere; }
-	.tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-	.description { margin: 0; max-width: 70ch; }
-	.links { display: flex; flex-wrap: wrap; gap: 8px; }
-	.maker { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding-top: 10px; border-top: 1px solid rgb(255 255 255 / 0.12); }
-	.note { padding: 8px 12px; border-radius: 10px; background: rgb(0 0 0 / 0.3); margin: 0; }
+	.evidence { display: flex; flex-direction: column; min-width: 0; }
+	.part { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px; min-width: 0; }
+	.part + .part { border-top: 1px solid var(--rv-line); }
+	.two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px 28px; }
+	@media (min-width: 1200px) { .two { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); } }
+	.ships { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
 
-	.numbers { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; margin: 0; }
-	.numbers dt { color: var(--muted); }
-	.numbers dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-	.numbers dt:first-child, .numbers dt:first-child + dd { color: var(--text); font-size: 24px; }
-	.ships { list-style: none; padding: 8px 0 0; margin: 0; border-top: 1px solid rgb(255 255 255 / 0.12); display: flex; flex-direction: column; gap: 2px; }
+	.rail { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px; background: var(--rv-rail); border-bottom: 1px solid var(--rv-line); min-width: 0; }
+	.numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px; margin: 0; }
+	.numbers div { padding: 4px 10px; border-radius: 8px; background: var(--rv-sunk); }
+	.numbers dt { color: var(--muted); font-size: 14px; }
+	.numbers dd { margin: 0; font-size: 20px; font-variant-numeric: tabular-nums; }
+	.numbers .lead dd { font-size: 24px; }
 
-	.decision { display: flex; flex-direction: column; gap: 12px; }
-	.form-cols, .form-a, .form-b { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+	.decision { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+	.form-cols, .form-a, .form-b { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 	.actions { gap: 4px 16px; }
 	.submit { align-self: stretch; }
-	.chain { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 10px; background: rgb(0 0 0 / 0.3); }
+	.chain { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-radius: 10px; background: var(--rv-sunk); max-height: 150px; overflow-y: auto; scrollbar-width: thin; }
 	.chain p { margin: 0; }
-	.override { padding: 6px 10px; border: 1px solid var(--warn); background: var(--warn-bg); border-radius: 6px; }
+	.override { padding: 4px 8px; border: 1px solid var(--warn); background: var(--warn-bg); border-radius: 6px; }
 
 	.timeline { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
-	.timeline li { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-radius: 10px; background: rgb(0 0 0 / 0.25); }
+	.timeline li { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-radius: 10px; background: var(--rv-sunk); }
 	.timeline li p { margin: 0; }
 	.timeline li.internal { background: transparent; border: 2px dashed var(--deep); }
 	.timeline li.other { opacity: 0.7; }
 	.pre { white-space: pre-wrap; }
 	.tiny { font-size: 14px; padding: 0 8px; }
+
+	/* Big enough for the app layout: nothing but the details scrolls, and the
+	   rail's text boxes share whatever height is left. */
+	@media (min-width: 1000px) and (min-height: 620px) {
+		.review-page { height: 100dvh; overflow: hidden; }
+		.body {
+			min-height: 0;
+			grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+			grid-template-rows: auto minmax(0, 1fr);
+			grid-template-areas: 'base rail' 'evidence rail';
+		}
+		.base { max-height: 42dvh; overflow-y: auto; scrollbar-width: thin; }
+		.evidence { overflow-y: auto; min-height: 0; scrollbar-width: thin; }
+		.rail { border-bottom: 0; border-left: 1px solid var(--rv-line); min-height: 0; overflow-y: auto; scrollbar-width: none; }
+		.decision .form-b { flex: 1; min-height: 0; }
+		.decision .form-cols { flex: 1; min-height: 0; }
+		.decision .grow { flex: 1 1 0; min-height: 0; }
+		.decision .grow textarea { flex: 1; min-height: 44px; resize: none; }
+	}
 </style>
+
