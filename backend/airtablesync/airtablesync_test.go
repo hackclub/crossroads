@@ -328,7 +328,7 @@ func TestHQSignedOffShipsGoToUnifiedYSWS(t *testing.T) {
 		"Technical features: Split-screen multiplayer and a track editor.",
 		"Reviewer Rita approved 9.00h. Commits match.",
 		"Deflated from 10.00h to 9.00h by the reviewer: An hour of Hackatime was a tutorial.",
-		"Fraud check by Fern (flagged for: a very long day): passed at 7.00h.",
+		"Sent to a fraud check because: a very long day. Fern passed it at 7.00h.",
 		"Deflated from 9.00h to 7.00h in the fraud check: The IDE was left open overnight on day 3.",
 		"Signed off by Hugo at 7.00h.",
 	} {

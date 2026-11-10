@@ -96,7 +96,7 @@ func Justification(r Review) string {
 		for _, reason := range r.FraudReasons {
 			why = append(why, cmp.Or(reasonLabels[reason], reason))
 		}
-		line := fmt.Sprintf("Fraud check by %s (flagged for: %s): passed", r.FraudReviewer, strings.Join(why, "; "))
+		line := fmt.Sprintf("Sent to a fraud check because: %s. %s passed it", strings.Join(why, "; "), r.FraudReviewer)
 		if r.FraudSeconds != nil {
 			passedAt = *r.FraudSeconds
 			line += " at " + hours(passedAt)

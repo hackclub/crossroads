@@ -83,6 +83,9 @@ func (a *API) unifiedPreview(ctx context.Context, row db.GetSubmissionForReviewR
 		SignedOff:     s.Status == db.SubmissionStatusApproved,
 		Missing:       unified.Missing(user, project),
 	}
+	if p.Missing == nil {
+		p.Missing = []string{}
+	}
 	if !user.YswsEligible {
 		p.Missing = append(p.Missing, "YSWS eligibility (identity verification)")
 	}
