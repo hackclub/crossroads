@@ -57,7 +57,7 @@
 	const latest = $derived(project?.submissions[0]);
 	const isPending = $derived(inReview(latest?.status));
 	const shipLabels = { pending: 'In review', final_check: 'Final check', approved: 'Approved', rejected: 'Not approved' };
-	const messageFrom = { comment: 'Comment', approval: 'Reviewer', final_approval: 'Final check', rejection: 'Reviewer', fraud_pass: 'Final check' };
+	const messageFrom = { comment: 'Comment', approval: 'Reviewer', final_check: 'Final check', rejection: 'Reviewer' };
 	// ---- Stamps on the project ----
 	// Stamps stuck on this project are part of it, so they're drawn for anyone
 	// viewing it. Only the owner can stick new ones on or move them; this page

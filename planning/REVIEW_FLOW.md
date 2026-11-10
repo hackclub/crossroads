@@ -68,7 +68,7 @@ The other checks are for the reviewer to judge and don't send a ship anywhere. M
 | `unified_ready` | Something the Unified YSWS DB needs is missing (below) | D1 |
 | `identity` | They aren't verified and YSWS-eligible | D5 |
 
-A link that answers 401, 403 or 429, or takes too long, is "couldn't check" rather than broken: plenty of sites block scripts. Check those by hand. The `readme` and `new_commits` checks need the repo on GitHub.
+A link that answers 401, 403 or 429, or takes too long, is "couldn't check" rather than broken: plenty of sites block scripts. The checker only ever connects to public addresses: a link at a loopback, private, link-local or cloud-metadata address (or a name or redirect that leads to one) counts as broken and is never fetched, since the links come from participants and the fetch happens from inside the server's network. Check those by hand. The `readme` and `new_commits` checks need the repo on GitHub.
 
 **What the Unified YSWS DB needs** (`unified.Missing`): a real full name, email, birthday, an address with street, city, postal code and country, a description, a screenshot, a repo on GitHub (it asks for a GitHub username) and a demo link, plus YSWS eligibility. A ship missing any of these can still be approved and signed off; the Airtable sync copies its row but **doesn't tick "Automation - Submit to Unified YSWS" until it's complete**, then sends the whole row again with the box ticked.
 

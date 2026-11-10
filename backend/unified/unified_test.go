@@ -71,3 +71,18 @@ func TestNormalize(t *testing.T) {
 		t.Error("racer-2 is the same project as racer")
 	}
 }
+
+func TestFormulaString(t *testing.T) {
+	cases := map[string]string{
+		`github.com/ada/racer`:         `github.com/ada/racer`,
+		`example.com/app\`:             `example.com/app\\`,
+		`example.com/a"b`:              `example.com/a\"b`,
+		"example.com/a\x00b\nc":        `example.com/abc`,
+		`example.com/\"), 1=1, FIND("`: `example.com/\\\"), 1=1, FIND(\"`,
+	}
+	for in, want := range cases {
+		if got := formulaString(in); got != want {
+			t.Errorf("formulaString(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
