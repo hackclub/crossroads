@@ -14,7 +14,7 @@
 
 	onMount(async () => {
 		try {
-			if (await refresh()) return goto(next, { replaceState: true });
+			if (await refresh()) return goto(next, { replace: true });
 		} catch (e) {
 			error = `Couldn't reach the backend: ${e.message} Is it running on :8080?`;
 		}

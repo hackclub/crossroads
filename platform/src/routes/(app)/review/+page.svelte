@@ -59,7 +59,7 @@
 
 <div class="tabs" role="tablist">
 	{#each Object.entries(STAGES) as [key, s]}
-		<button role="tab" aria-selected={stage === key} class:active={stage === key} onclick={() => goto(`?stage=${key}`, { replaceState: true, noScroll: true })}>
+		<button role="tab" aria-selected={stage === key} class:active={stage === key} onclick={() => goto(`?stage=${key}`, { replace: true, reset: false })}>
 			{s.label}{#if data?.counts} ({data.counts[key]}){/if}
 		</button>
 	{/each}

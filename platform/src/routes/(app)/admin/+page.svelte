@@ -33,7 +33,7 @@
 
 <div class="tabs">
 	{#each Object.entries(tabs) as [key, [label]]}
-		<button class:active={tab === key} onclick={() => goto(`?tab=${key}`, { replaceState: true, noScroll: true })}>{label}</button>
+		<button class:active={tab === key} onclick={() => goto(`?tab=${key}`, { replace: true, reset: false })}>{label}</button>
 	{/each}
 </div>
 
