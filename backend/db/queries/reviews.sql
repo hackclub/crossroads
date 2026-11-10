@@ -117,6 +117,8 @@ update submissions set
     hq_reviewer_id = $12,
     hq_reviewed_at = $13,
     override_reason = $14,
+    technical_features = $15,
+    deflation_reason = $16,
     claimed_by = null,
     claim_expires_at = null
 where id = $1
@@ -165,8 +167,8 @@ where project_id = $1 and day >= sqlc.arg(since)::date
 order by day;
 
 -- name: AddShipEvent :one
-insert into ship_events (submission_id, kind, actor_id, stage, seconds, message, internal)
-values ($1, $2, $3, $4, $5, $6, $7)
+insert into ship_events (submission_id, kind, actor_id, stage, seconds, message, internal, deflation_reason)
+values ($1, $2, $3, $4, $5, $6, $7, $8)
 returning *;
 
 -- name: ListProjectShipEvents :many

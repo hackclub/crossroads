@@ -125,6 +125,14 @@ type decision struct {
 	// Required to approve more than that, at the first stage or HQ; the fraud
 	// check can't. An approval over Hackatime always waits for HQ sign-off.
 	OverrideReason string `json:"override_reason"`
+	// First stage: the specific technical features that account for the
+	// hours (required to approve, as on Ari). Reviewers only; it goes into
+	// the Unified YSWS justification.
+	TechnicalFeatures string `json:"technical_features"`
+	// Why this stage approved fewer hours than came in (the ship's claim at
+	// the first stage, the last stage's number after that). Required
+	// whenever a stage cuts.
+	DeflationReason string `json:"deflation_reason"`
 }
 
 type decisionOutcome struct {
@@ -142,6 +150,8 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 	d.Feedback = strings.TrimSpace(d.Feedback)
 	d.InternalNotes = strings.TrimSpace(d.InternalNotes)
 	d.OverrideReason = strings.TrimSpace(d.OverrideReason)
+	d.TechnicalFeatures = strings.TrimSpace(d.TechnicalFeatures)
+	d.DeflationReason = strings.TrimSpace(d.DeflationReason)
 	switch {
 	case d.Action != "approve" && d.Action != "reject" && d.Action != "send_back":
 		return out, problem(http.StatusUnprocessableEntity, `action has to be "approve", "reject" or "send_back".`)
@@ -157,7 +167,10 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		return out, problem(http.StatusUnprocessableEntity, "Only approvals can be sent to the fraud check.")
 	case d.Action != "approve" && d.OverrideReason != "":
 		return out, problem(http.StatusUnprocessableEntity, "Only approvals can go over Hackatime's hours.")
-	case len(d.Feedback) > 5000 || len(d.InternalNotes) > 5000 || len(d.OverrideReason) > 5000:
+	case d.Action != "approve" && (d.TechnicalFeatures != "" || d.DeflationReason != ""):
+		return out, problem(http.StatusUnprocessableEntity, "Only approvals take technical features or a deflation reason.")
+	case len(d.Feedback) > 5000 || len(d.InternalNotes) > 5000 || len(d.OverrideReason) > 5000 ||
+		len(d.TechnicalFeatures) > 5000 || len(d.DeflationReason) > 5000:
 		return out, problem(http.StatusUnprocessableEntity, "Keep feedback and notes under 5,000 characters.")
 	}
 
@@ -218,6 +231,18 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 	now := time.Now()
 	event := db.AddShipEventParams{SubmissionID: s.ID, ActorID: &reviewer.ID, Stage: s.Status,
 		Message: nonEmpty(d.Feedback), Internal: nonEmpty(d.InternalNotes)}
+	// deflate records why this approval is lower than what came in, and
+	// refuses one that doesn't say.
+	deflate := func(from, to int32) error {
+		if to >= from {
+			return nil
+		}
+		if d.DeflationReason == "" {
+			return problem(http.StatusUnprocessableEntity, "Say why you're approving %s instead of %s: it goes to the Unified YSWS DB.", hoursText(int(to)), hoursText(int(from)))
+		}
+		event.DeflationReason, s.DeflationReason = &d.DeflationReason, &d.DeflationReason
+		return nil
+	}
 	var flagged *db.AddShipEventParams
 	finalize := false
 
@@ -250,6 +275,13 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		if err := checkOverride(&s, seconds, d.OverrideReason); err != nil {
 			return out, err
 		}
+		if d.TechnicalFeatures == "" {
+			return out, problem(http.StatusUnprocessableEntity, "Say which technical features account for these hours: it goes to the Unified YSWS DB.")
+		}
+		if err := deflate(s.NewSeconds, seconds); err != nil {
+			return out, err
+		}
+		s.TechnicalFeatures = &d.TechnicalFeatures
 		event.Kind, event.Seconds = db.ShipEventKindApproval, &seconds
 		event.Internal = withOverride(event.Internal, s, seconds)
 		s.ApprovedSeconds, s.Feedback, s.InternalNotes = &seconds, nonEmpty(d.Feedback), nonEmpty(d.InternalNotes)
@@ -289,6 +321,9 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		if seconds < 0 || seconds > *s.ApprovedSeconds {
 			return out, problem(http.StatusUnprocessableEntity, "The fraud check can only cut hours: approve at most the %s the reviewer approved.", hoursText(int(*s.ApprovedSeconds)))
 		}
+		if err := deflate(*s.ApprovedSeconds, seconds); err != nil {
+			return out, err
+		}
 		event.Kind, event.Seconds = db.ShipEventKindFraudPass, &seconds
 		s.ApprovedSeconds = &seconds
 		if seconds <= s.NewSeconds {
@@ -303,6 +338,9 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 			seconds = *d.ApprovedSeconds
 		}
 		if err := checkOverride(&s, seconds, d.OverrideReason); err != nil {
+			return out, err
+		}
+		if err := deflate(*s.ApprovedSeconds, seconds); err != nil {
 			return out, err
 		}
 		event.Kind, event.Seconds = db.ShipEventKindFinalApproval, &seconds
@@ -321,7 +359,7 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		ID: s.ID, Status: s.Status, ApprovedSeconds: s.ApprovedSeconds, Feedback: s.Feedback, InternalNotes: s.InternalNotes,
 		ReviewerID: s.ReviewerID, ReviewedAt: s.ReviewedAt, Checks: s.Checks, FraudReasons: s.FraudReasons,
 		FraudReviewerID: s.FraudReviewerID, FraudReviewedAt: s.FraudReviewedAt, HqReviewerID: s.HqReviewerID, HqReviewedAt: s.HqReviewedAt,
-		OverrideReason: s.OverrideReason,
+		OverrideReason: s.OverrideReason, TechnicalFeatures: s.TechnicalFeatures, DeflationReason: s.DeflationReason,
 	})
 	if err != nil {
 		return out, err
@@ -353,7 +391,7 @@ func sentBack(s db.Submission) db.Submission {
 	s.Checks, s.FraudReasons = nil, []string{}
 	s.FraudReviewerID, s.FraudReviewedAt = nil, nil
 	s.HqReviewerID, s.HqReviewedAt = nil, nil
-	s.OverrideReason = nil
+	s.OverrideReason, s.TechnicalFeatures, s.DeflationReason = nil, nil, nil
 	return s
 }
 

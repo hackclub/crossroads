@@ -14,6 +14,19 @@ const sidekickSecret = "sk_test_secret"
 // sidekick calls POST /api/sidekick as Sidekick would.
 func (e *env) sidekick(t *testing.T, action string, input any, out any) int {
 	t.Helper()
+	if in, ok := input.(map[string]any); ok && in["action"] == "approve" {
+		fields, _ := in["fields"].(map[string]any)
+		if fields == nil {
+			fields = map[string]any{}
+		}
+		if _, ok := fields["technical_features"]; !ok {
+			fields["technical_features"] = "A test feature."
+		}
+		if _, ok := fields["deflation_reason"]; !ok {
+			fields["deflation_reason"] = "A test deflation."
+		}
+		in["fields"] = fields
+	}
 	body, _ := json.Marshal(map[string]any{"action": action, "input": input})
 	req := httptest.NewRequest("POST", "/api/sidekick", bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+sidekickSecret)
@@ -84,7 +97,7 @@ func TestSidekickTwoStageReview(t *testing.T) {
 	}
 	var detail skProjectOut
 	e.sidekick(t, "FETCH_PROJECT_DETAIL", map[string]any{"projectId": list.Projects[0].ID}, &detail)
-	if len(detail.Ships[0].Checks) == 0 || len(detail.Ships[0].ApproveFields) != 2 {
+	if len(detail.Ships[0].Checks) == 0 || len(detail.Ships[0].ApproveFields) != 4 {
 		t.Errorf("the ship in review has no checks or fields: %+v", detail.Ships[0])
 	}
 

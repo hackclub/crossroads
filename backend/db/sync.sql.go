@@ -112,7 +112,7 @@ func (q *Queries) ListOrdersToSync(ctx context.Context) ([]ListOrdersToSyncRow, 
 }
 
 const listSubmissionsToSubmitUnified = `-- name: ListSubmissionsToSubmitUnified :many
-select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note,
+select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note,
     (select count(*) from submissions earlier
         where earlier.project_id = submissions.project_id
             and earlier.status = 'approved'
@@ -120,10 +120,23 @@ select submissions.id, submissions.project_id, submissions.status, submissions.h
     coalesce(reviewer.name, '')::text as reviewer_name,
     coalesce(fraud_reviewer.name, '')::text as fraud_reviewer_name,
     coalesce(hq_reviewer.name, '')::text as hq_reviewer_name,
-    -- What the reviewer approved, before any fraud cut or HQ change.
+    -- What each stage approved and why it cut, from its latest event, for
+    -- the justification (unified.Justification).
     (select ship_events.seconds from ship_events
         where ship_events.submission_id = submissions.id and ship_events.kind = 'approval'
-        order by ship_events.id desc limit 1) as reviewer_seconds
+        order by ship_events.id desc limit 1) as reviewer_seconds,
+    (select ship_events.deflation_reason from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'approval'
+        order by ship_events.id desc limit 1) as reviewer_deflation,
+    (select ship_events.seconds from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
+        order by ship_events.id desc limit 1) as fraud_seconds,
+    (select ship_events.deflation_reason from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
+        order by ship_events.id desc limit 1) as fraud_deflation,
+    (select ship_events.deflation_reason from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'final_approval'
+        order by ship_events.id desc limit 1) as hq_deflation
 from submissions
 join projects on projects.id = submissions.project_id
 join users on users.id = projects.user_id
@@ -147,6 +160,10 @@ type ListSubmissionsToSubmitUnifiedRow struct {
 	FraudReviewerName string
 	HqReviewerName    string
 	ReviewerSeconds   *int32
+	ReviewerDeflation *string
+	FraudSeconds      *int32
+	FraudDeflation    *string
+	HqDeflation       *string
 }
 
 // Rows already in Airtable, signed off by HQ, but not sent to the Unified
@@ -188,6 +205,8 @@ func (q *Queries) ListSubmissionsToSubmitUnified(ctx context.Context) ([]ListSub
 			&i.Submission.ClaimExpiresAt,
 			&i.Submission.UnifiedSubmittedAt,
 			&i.Submission.OverrideReason,
+			&i.Submission.TechnicalFeatures,
+			&i.Submission.DeflationReason,
 			&i.Project.ID,
 			&i.Project.UserID,
 			&i.Project.Name,
@@ -222,6 +241,10 @@ func (q *Queries) ListSubmissionsToSubmitUnified(ctx context.Context) ([]ListSub
 			&i.FraudReviewerName,
 			&i.HqReviewerName,
 			&i.ReviewerSeconds,
+			&i.ReviewerDeflation,
+			&i.FraudSeconds,
+			&i.FraudDeflation,
+			&i.HqDeflation,
 		); err != nil {
 			return nil, err
 		}
@@ -234,7 +257,7 @@ func (q *Queries) ListSubmissionsToSubmitUnified(ctx context.Context) ([]ListSub
 }
 
 const listSubmissionsToSync = `-- name: ListSubmissionsToSync :many
-select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note,
+select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note,
     (select count(*) from submissions earlier
         where earlier.project_id = submissions.project_id
             and earlier.status = 'approved'
@@ -242,10 +265,23 @@ select submissions.id, submissions.project_id, submissions.status, submissions.h
     coalesce(reviewer.name, '')::text as reviewer_name,
     coalesce(fraud_reviewer.name, '')::text as fraud_reviewer_name,
     coalesce(hq_reviewer.name, '')::text as hq_reviewer_name,
-    -- What the reviewer approved, before any fraud cut or HQ change.
+    -- What each stage approved and why it cut, from its latest event, for
+    -- the justification (unified.Justification).
     (select ship_events.seconds from ship_events
         where ship_events.submission_id = submissions.id and ship_events.kind = 'approval'
-        order by ship_events.id desc limit 1) as reviewer_seconds
+        order by ship_events.id desc limit 1) as reviewer_seconds,
+    (select ship_events.deflation_reason from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'approval'
+        order by ship_events.id desc limit 1) as reviewer_deflation,
+    (select ship_events.seconds from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
+        order by ship_events.id desc limit 1) as fraud_seconds,
+    (select ship_events.deflation_reason from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
+        order by ship_events.id desc limit 1) as fraud_deflation,
+    (select ship_events.deflation_reason from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'final_approval'
+        order by ship_events.id desc limit 1) as hq_deflation
 from submissions
 join projects on projects.id = submissions.project_id
 join users on users.id = projects.user_id
@@ -266,6 +302,10 @@ type ListSubmissionsToSyncRow struct {
 	FraudReviewerName string
 	HqReviewerName    string
 	ReviewerSeconds   *int32
+	ReviewerDeflation *string
+	FraudSeconds      *int32
+	FraudDeflation    *string
+	HqDeflation       *string
 }
 
 // Approved submissions not in Airtable yet, with everything their row needs.
@@ -302,6 +342,8 @@ func (q *Queries) ListSubmissionsToSync(ctx context.Context) ([]ListSubmissionsT
 			&i.Submission.ClaimExpiresAt,
 			&i.Submission.UnifiedSubmittedAt,
 			&i.Submission.OverrideReason,
+			&i.Submission.TechnicalFeatures,
+			&i.Submission.DeflationReason,
 			&i.Project.ID,
 			&i.Project.UserID,
 			&i.Project.Name,
@@ -336,6 +378,10 @@ func (q *Queries) ListSubmissionsToSync(ctx context.Context) ([]ListSubmissionsT
 			&i.FraudReviewerName,
 			&i.HqReviewerName,
 			&i.ReviewerSeconds,
+			&i.ReviewerDeflation,
+			&i.FraudSeconds,
+			&i.FraudDeflation,
+			&i.HqDeflation,
 		); err != nil {
 			return nil, err
 		}

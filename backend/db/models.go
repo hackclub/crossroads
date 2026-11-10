@@ -643,16 +643,17 @@ type Session struct {
 }
 
 type ShipEvent struct {
-	ID           int64
-	SubmissionID int64
-	Kind         ShipEventKind
-	ActorID      *int64
-	Stage        SubmissionStatus
-	Seconds      *int32
-	Message      *string
-	Internal     *string
-	CreatedAt    time.Time
-	EditedAt     *time.Time
+	ID              int64
+	SubmissionID    int64
+	Kind            ShipEventKind
+	ActorID         *int64
+	Stage           SubmissionStatus
+	Seconds         *int32
+	Message         *string
+	Internal        *string
+	CreatedAt       time.Time
+	EditedAt        *time.Time
+	DeflationReason *string
 }
 
 type ShopItem struct {
@@ -737,6 +738,8 @@ type Submission struct {
 	ClaimExpiresAt     *time.Time
 	UnifiedSubmittedAt *time.Time
 	OverrideReason     *string
+	TechnicalFeatures  *string
+	DeflationReason    *string
 }
 
 type User struct {

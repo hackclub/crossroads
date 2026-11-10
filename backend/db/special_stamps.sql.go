@@ -389,7 +389,7 @@ func (q *Queries) MoveSpecialStamp(ctx context.Context, arg MoveSpecialStampPara
 }
 
 const pendingSubmissionForProject = `-- name: PendingSubmissionForProject :one
-select id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at, override_reason from submissions where project_id = $1 and status in ('pending', 'fraud_check', 'awaiting_hq')
+select id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at, override_reason, technical_features, deflation_reason from submissions where project_id = $1 and status in ('pending', 'fraud_check', 'awaiting_hq')
 for update
 `
 
@@ -421,6 +421,8 @@ func (q *Queries) PendingSubmissionForProject(ctx context.Context, projectID int
 		&i.ClaimExpiresAt,
 		&i.UnifiedSubmittedAt,
 		&i.OverrideReason,
+		&i.TechnicalFeatures,
+		&i.DeflationReason,
 	)
 	return i, err
 }

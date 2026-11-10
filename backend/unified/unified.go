@@ -96,17 +96,7 @@ func Missing(user db.User, project db.Project) []string {
 	if user.Birthday == nil {
 		missing = append(missing, "a birthday")
 	}
-	var address db.Address
-	_ = json.Unmarshal(user.Address, &address)
-	var parts []string
-	for _, p := range []struct{ label, value string }{
-		{"street", address.Line1}, {"city", address.City}, {"postal code", address.PostalCode}, {"country", address.Country},
-	} {
-		if strings.TrimSpace(p.value) == "" {
-			parts = append(parts, p.label)
-		}
-	}
-	switch {
+	switch parts := AddressGaps(user.Address); {
 	case len(parts) == 4:
 		missing = append(missing, "an address")
 	case len(parts) > 0:
@@ -127,6 +117,22 @@ func Missing(user db.User, project db.Project) []string {
 		missing = append(missing, "a demo link")
 	}
 	return missing
+}
+
+// AddressGaps lists the parts of an address the Unified YSWS DB needs that
+// aren't filled in: street, city, postal code and country.
+func AddressGaps(raw []byte) []string {
+	var address db.Address
+	_ = json.Unmarshal(raw, &address)
+	var gaps []string
+	for _, p := range []struct{ label, value string }{
+		{"street", address.Line1}, {"city", address.City}, {"postal code", address.PostalCode}, {"country", address.Country},
+	} {
+		if strings.TrimSpace(p.value) == "" {
+			gaps = append(gaps, p.label)
+		}
+	}
+	return gaps
 }
 
 // A Record is a project already in the Unified YSWS DB. It holds no personal

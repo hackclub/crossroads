@@ -497,3 +497,62 @@ func TestApprovingMoreThanHackatime(t *testing.T) {
 		t.Errorf("after HQ cut it back: %q, override %q", result.Submission.Status, reason)
 	}
 }
+
+func TestTechnicalFeaturesAndDeflation(t *testing.T) {
+	e := newEnv(t)
+	reviewer := e.newStageReviewer(t, "UREV", true, false, false)
+	fraud := e.newStageReviewer(t, "UFRAUD", false, true, false)
+	hq := e.newStageReviewer(t, "UHQ", false, false, true)
+	_, ship := e.shipFor(t, "UMAKER", 10)
+
+	refused := func(body map[string]any, who *db.User, why string) {
+		t.Helper()
+		if status, result := e.decide(t, who, ship, body); status != http.StatusUnprocessableEntity {
+			t.Errorf("%s: got %d %q, want 422", why, status, result.Error)
+		}
+	}
+	refused(map[string]any{"action": "approve", "technical_features": ""}, reviewer, "approving without technical features")
+	refused(map[string]any{"action": "approve", "approved_seconds": 9 * 3600, "deflation_reason": ""}, reviewer, "cutting without a reason")
+	refused(map[string]any{"action": "reject", "feedback": "no", "technical_features": "x"}, reviewer, "technical features on a rejection")
+
+	if status, result := e.decide(t, reviewer, ship, map[string]any{"action": "approve", "approved_seconds": 9 * 3600, "send_to_fraud": true,
+		"technical_features": "A level editor and online leaderboards", "deflation_reason": "An hour was a tutorial",
+		"internal_notes": "Played three levels; commits match."}); status != http.StatusOK {
+		t.Fatalf("approving: got %d %q", status, result.Error)
+	}
+	refused(map[string]any{"action": "approve", "approved_seconds": 7 * 3600, "deflation_reason": ""}, fraud, "a fraud cut without a reason")
+	if status, result := e.decide(t, fraud, ship, map[string]any{"action": "approve", "approved_seconds": 7 * 3600,
+		"deflation_reason": "Two hours with the IDE left open overnight"}); status != http.StatusOK {
+		t.Fatalf("passing the fraud check: got %d %q", status, result.Error)
+	}
+	// HQ signs off at the same hours: no deflation, so no reason needed.
+	if status, result := e.decide(t, hq, ship, map[string]any{"action": "approve", "deflation_reason": ""}); status != http.StatusOK {
+		t.Fatalf("signing off: got %d %q", status, result.Error)
+	}
+
+	var d struct {
+		UnifiedPreview struct {
+			Hours         float64  `json:"hours"`
+			Justification string   `json:"justification"`
+			SignedOff     bool     `json:"signed_off"`
+			Missing       []string `json:"missing"`
+		} `json:"unified_preview"`
+	}
+	e.mustCall(t, reviewer, http.StatusOK, "GET", "/api/review/submissions/"+itoa(ship), nil, &d)
+	p := d.UnifiedPreview
+	if p.Hours != 7 || !p.SignedOff {
+		t.Errorf("preview: %+v", p)
+	}
+	for _, want := range []string{
+		"Technical features: A level editor and online leaderboards.",
+		"approved 9.00h. Played three levels; commits match.",
+		"Deflated from 10.00h to 9.00h by the reviewer: An hour was a tutorial.",
+		"passed at 7.00h.",
+		"Deflated from 9.00h to 7.00h in the fraud check: Two hours with the IDE left open overnight.",
+		"at 7.00h.",
+	} {
+		if !strings.Contains(p.Justification, want) {
+			t.Errorf("the justification doesn't say %q:\n%s", want, p.Justification)
+		}
+	}
+}

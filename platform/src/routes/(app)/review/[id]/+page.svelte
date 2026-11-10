@@ -25,6 +25,10 @@
 	// Approving more hours than Hackatime tracked, with a reason.
 	let overriding = $state(false);
 	let overrideReason = $state('');
+	// As on Ari: the technical features that account for the hours, and why
+	// a stage approved fewer hours than came in.
+	let technicalFeatures = $state('');
+	let deflationReason = $state('');
 	let busy = $state(false);
 	let formError = $state('');
 	let result = $state(null);
@@ -55,6 +59,12 @@
 	const maxSeconds = $derived(!sub ? 0 : stage === 'fraud' ? sub.approved_seconds : sub.new_seconds);
 	// The fraud check can only cut, so only the first review and HQ can go over.
 	const canOverride = $derived(stage === 'review' || stage === 'hq');
+	// How many hours this approval cuts from what came in.
+	const deflatedBy = $derived.by(() => {
+		if (!sub || action !== 'approve') return 0;
+		const incoming = stage === 'review' ? sub.new_seconds : (sub.approved_seconds ?? sub.new_seconds);
+		return Math.max(0, incoming - Math.round(Number(approvedHours) * 3600));
+	});
 
 	async function load() {
 		error = '';
@@ -76,7 +86,7 @@
 		feedback = notes = '';
 		sendToFraud = false;
 		overriding = false;
-		overrideReason = '';
+		overrideReason = technicalFeatures = deflationReason = '';
 		load();
 	});
 	onMount(() => {
@@ -169,6 +179,14 @@
 					: `The fraud check can only lower the hours: at most ${hours(maxSeconds)}.`;
 				return;
 			}
+			if (stage === 'review' && !technicalFeatures.trim()) {
+				formError = 'Say which technical features account for these hours.';
+				return;
+			}
+			if (deflatedBy > 0 && !deflationReason.trim()) {
+				formError = `Say why you're cutting ${hours(deflatedBy)}.`;
+				return;
+			}
 			if (overriding && asked > sub.new_seconds && !overrideReason.trim()) {
 				formError = 'Say why you\'re approving more than Hackatime tracked.';
 				return;
@@ -180,12 +198,14 @@
 			// Cut time is gone for good, so make sure it's on purpose.
 			if (cut > 0 && !confirm(`You're approving ${hours(body.approved_seconds)} of ${hours(before)}. The ${hours(cut)} you cut can't be shipped again. Go ahead?`)) return;
 			if (stage === 'review' && sendToFraud) body.send_to_fraud = true;
+			if (stage === 'review') body.technical_features = technicalFeatures.trim();
+			if (deflatedBy > 0) body.deflation_reason = deflationReason.trim();
 		}
 		busy = true;
 		try {
 			result = await api('POST', `/review/submissions/${sub.id}`, body);
 			result.stage = stage;
-			feedback = notes = '';
+			feedback = notes = technicalFeatures = deflationReason = '';
 			await load();
 		} catch (err) {
 			formError = err.message;
@@ -360,6 +380,7 @@
 									<span class="muted">{date(ev.created_at)}{ev.edited_at ? ' (edited)' : ''}</span>
 								</div>
 								{#if ev.message}<p><span class="badge info tiny">They see this</span> {ev.message}</p>{/if}
+								{#if ev.deflation_reason}<p class="pre"><span class="badge tiny">Deflated because</span> {ev.deflation_reason}</p>{/if}
 								{#if ev.internal}<p class="pre"><span class="badge tiny">Reviewers only</span> {ev.internal}</p>{/if}
 							</li>
 						{:else}
@@ -377,6 +398,39 @@
 						</div>
 						{#if commentError}<p class="callout warn small">{commentError}</p>{/if}
 					</form>
+				</section>
+
+				<section class="part unified" aria-label="What goes to the Unified YSWS DB">
+					<div class="row between">
+						<h2>What goes to the Unified YSWS DB</h2>
+						{#if d.unified_preview}
+							<span class="small" class:ok={d.unified_preview.signed_off && !d.unified_preview.missing.length}>
+								{!d.unified_preview.signed_off ? 'Sent once HQ signs it off' : d.unified_preview.missing.length ? 'Held back until it’s complete' : 'Sent and submitted'}
+							</span>
+						{/if}
+					</div>
+					{#if d.unified_preview}
+						{@const u = d.unified_preview}
+						{#if u.missing.length}
+							<p class="callout warn small">"Submit to Unified YSWS" waits for: {u.missing.join(', ')}.</p>
+						{/if}
+						<div class="unified-grid">
+							<div class="stack-sm">
+								<span class="small muted">Optional - Override Hours Spent</span>
+								<strong class="hours-sent">{u.hours}h</strong>
+								<span class="small muted">Optional - Override Hours Spent Justification{u.signed_off ? '' : ' (so far; HQ’s sign-off adds a line)'}</span>
+								<pre class="justification">{u.justification}</pre>
+							</div>
+							<dl class="sent-fields small">
+								{#each u.fields as f (f.name)}
+									<dt>{f.name}</dt>
+									<dd class:missing={f.missing}>{f.missing ? 'Missing' : f.value}</dd>
+								{/each}
+							</dl>
+						</div>
+					{:else}
+						<p class="small muted">Nothing yet: the row is written once a reviewer approves the ship. Its justification carries Hackatime's numbers, the technical features, the reviewer's justification, every deflation and why, the fraud check if there was one, and HQ's sign-off.</p>
+					{/if}
 				</section>
 
 				<section class="part two">
@@ -444,78 +498,94 @@
 						<h2>{STAGES[stage].label}</h2>
 						<div class="form-cols">
 							<div class="form-a">
-						{#if stage !== 'review'}
-							<div class="chain small">
-								{#if approval}<p>{approval.actor?.name ?? 'A reviewer'} approved <strong>{hours(approval.seconds)}</strong> of {hours(sub.new_seconds)} · {date(approval.created_at)}</p>{/if}
-								{#if approval?.internal}<p class="muted pre">Their notes: {approval.internal}</p>{/if}
-								{#if sub.override_reason}
-									<p class="override">Approved for <strong>more than Hackatime tracked</strong> ({hours(sub.approved_seconds)} of {hours(sub.new_seconds)}): {sub.override_reason}</p>
+								{#if stage !== 'review'}
+									<div class="chain small">
+										{#if approval}<p>{approval.actor?.name ?? 'A reviewer'} approved <strong>{hours(approval.seconds)}</strong> of {hours(sub.new_seconds)} · {date(approval.created_at)}</p>{/if}
+										{#if sub.technical_features}<p><span class="muted">Technical features:</span> {sub.technical_features}</p>{/if}
+										{#if approval?.internal}<p class="pre"><span class="muted">Justification:</span> {approval.internal}</p>{/if}
+										{#if approval?.deflation_reason}<p><span class="muted">Deflated because:</span> {approval.deflation_reason}</p>{/if}
+										{#if sub.override_reason}
+											<p class="override">Approved for <strong>more than Hackatime tracked</strong> ({hours(sub.approved_seconds)} of {hours(sub.new_seconds)}): {sub.override_reason}</p>
+										{/if}
+										{#if sub.fraud_reasons?.length}
+											<p>Sent to the fraud check for: {#each sub.fraud_reasons as r, i}{i ? ', ' : ''}<span class="badge warn">{reasonLabel(r)}</span>{/each}</p>
+										{/if}
+										{#if fraudPass}
+											<p>{fraudPass.actor?.name} {fraudPass.seconds < approval?.seconds ? `cut it to ${hours(fraudPass.seconds)}` : 'passed it'} in the fraud check{fraudPass.deflation_reason ? `: ${fraudPass.deflation_reason}` : ''}{fraudPass.internal ? ` (${fraudPass.internal})` : ''}</p>
+										{:else if stage === 'hq'}
+											<p class="muted">No fraud check: nothing was flagged.</p>
+										{/if}
+									</div>
 								{/if}
-								{#if sub.fraud_reasons?.length}
-									<p>Sent to the fraud check for: {#each sub.fraud_reasons as r, i}{i ? ', ' : ''}<span class="badge warn">{reasonLabel(r)}</span>{/each}</p>
-								{/if}
-								{#if fraudPass}
-									<p>{fraudPass.actor?.name} {fraudPass.seconds < approval?.seconds ? `cut it to ${hours(fraudPass.seconds)}` : 'passed it'} in the fraud check{fraudPass.internal ? `: ${fraudPass.internal}` : ''}</p>
-								{:else if stage === 'hq'}
-									<p class="muted">No fraud check: nothing was flagged.</p>
-								{/if}
-							</div>
-						{/if}
-						<div class="row actions">
-							<label class="check"><input type="radio" bind:group={action} value="approve" /> {approveWord}</label>
-							<label class="check"><input type="radio" bind:group={action} value="reject" /> Reject</label>
-							{#if stage !== 'review'}<label class="check"><input type="radio" bind:group={action} value="send_back" /> Send back</label>{/if}
-						</div>
-						{#if action === 'approve'}
-							<label class="field">
-								<span>Hours</span>
-								<input type="number" min="0" step="0.01" max={overriding ? undefined : maxSeconds / 3600} bind:value={approvedHours} />
-								<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}.` : `Up to ${hours(maxSeconds)}.`} {stage === 'fraud' ? 'Lower it to cut hours. ' : ''}Time you cut is gone for good: it can't be shipped again.</small>
-							</label>
-							{#if canOverride}
-								<label class="check small">
-									<input type="checkbox" bind:checked={overriding} />
-									Approve more than Hackatime tracked ({hours(sub.new_seconds)})
-								</label>
-								{#if overriding}
+								<div class="row actions">
+									<label class="check"><input type="radio" bind:group={action} value="approve" /> {approveWord}</label>
+									<label class="check"><input type="radio" bind:group={action} value="reject" /> Reject</label>
+									{#if stage !== 'review'}<label class="check"><input type="radio" bind:group={action} value="send_back" /> Send back</label>{/if}
+								</div>
+								{#if action === 'approve'}
 									<label class="field">
-										<span>Why more than Hackatime?</span>
-										<textarea bind:value={overrideReason} required={Number(approvedHours) * 3600 > sub.new_seconds} placeholder="For example: 3 hours soldering and testing the board, which Hackatime can't track. The build log has photos."></textarea>
-										<small>Required to go over. HQ sees this before signing off, and it goes to the Unified YSWS DB. The participant doesn't see it.</small>
+										<span>Hours</span>
+										<input type="number" min="0" step="0.01" max={overriding ? undefined : maxSeconds / 3600} bind:value={approvedHours} />
+										<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}.` : `Up to ${hours(maxSeconds)}.`} {deflatedBy > 0 ? `Deflated by ${hours(deflatedBy)}: cut time can't be shipped again.` : "Cut time can't be shipped again."}</small>
 									</label>
+									{#if deflatedBy > 0}
+										<label class="field grow">
+											<span>Why deflated?</span>
+											<textarea bind:value={deflationReason} required placeholder="For example: about 2 hours were a tutorial followed line by line."></textarea>
+											<small>Required. Reviewers only; it goes to the Unified YSWS DB.</small>
+										</label>
+									{/if}
+									{#if canOverride}
+										<label class="check small">
+											<input type="checkbox" bind:checked={overriding} />
+											Approve more than Hackatime tracked ({hours(sub.new_seconds)})
+										</label>
+										{#if overriding}
+											<label class="field grow">
+												<span>Why more than Hackatime?</span>
+												<textarea bind:value={overrideReason} required={Number(approvedHours) * 3600 > sub.new_seconds} placeholder="For example: 3 hours soldering and testing the board, which Hackatime can't track."></textarea>
+												<small>Required to go over. HQ sees it, and it goes to the Unified YSWS DB.</small>
+											</label>
+										{/if}
+									{/if}
+									{#if stage === 'review'}
+										<label class="check small"><input type="checkbox" bind:checked={sendToFraud} /> Send it to the fraud check anyway</label>
+									{/if}
+									<p class="small muted">{whatNext}</p>
 								{/if}
-							{/if}
-							{#if stage === 'review'}
-								<label class="check small"><input type="checkbox" bind:checked={sendToFraud} /> Send it to the fraud check anyway</label>
-							{/if}
-							<p class="small muted">{whatNext}</p>
-						{/if}
 							</div>
 							<div class="form-b">
-						{#if action !== 'send_back'}
-							<label class="field grow">
-								<span>Feedback for them</span>
-								{#if templates.length}
-									<select onchange={useTemplate} aria-label="Insert a feedback template">
-										<option value="">Insert a template…</option>
-										{#each templates as t}<option value={t.id}>{t.title}</option>{/each}
-									</select>
+								{#if action === 'approve' && stage === 'review'}
+									<label class="field grow">
+										<span>Technical features</span>
+										<textarea bind:value={technicalFeatures} required placeholder="For example: a level editor, online leaderboards, and its own physics engine."></textarea>
+										<small>Required. The specific features that account for these hours. Reviewers only; it goes to the Unified YSWS DB.</small>
+									</label>
 								{/if}
-								<textarea bind:value={feedback} required={action === 'reject'}></textarea>
-								<small>{action === 'reject' ? 'Required. ' : 'Optional. '}They see this on their project page.</small>
-							</label>
-						{/if}
-						<label class="field grow">
-							<span>{action === 'send_back' ? 'Why, for the reviewer who picks it up' : stage === 'review' ? 'Justification' : 'Notes'}</span>
-							<textarea bind:value={notes} required={action === 'send_back'}></textarea>
-							<small>
-								{action === 'send_back' ? 'Required. ' : 'Reviewers only. '}{stage === 'review' && action === 'approve' ? 'Why these hours: what you checked. This goes into the Unified YSWS justification.' : ''}
-							</small>
-						</label>
-						{#if formError}<p class="callout warn small">{formError}</p>{/if}
-						<button class="btn primary submit" disabled={busy}>
-							{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Reject' : 'Send back'}
-						</button>
+								<label class="field grow">
+									<span>{action === 'send_back' ? 'Why, for the reviewer who picks it up' : stage === 'review' ? 'Justification' : 'Notes'}</span>
+									<textarea bind:value={notes} required={action === 'send_back'} placeholder={stage === 'review' && action === 'approve' ? 'What you checked: you ran it, the commits match the time, the demo works.' : ''}></textarea>
+									<small>
+										{action === 'send_back' ? 'Required. ' : 'Reviewers only. '}{stage === 'review' && action === 'approve' ? 'Why these hours. It goes to the Unified YSWS DB.' : ''}
+									</small>
+								</label>
+								{#if action !== 'send_back'}
+									<label class="field grow">
+										<span>Feedback for them</span>
+										{#if templates.length}
+											<select onchange={useTemplate} aria-label="Insert a feedback template">
+												<option value="">Insert a template…</option>
+												{#each templates as t}<option value={t.id}>{t.title}</option>{/each}
+											</select>
+										{/if}
+										<textarea bind:value={feedback} required={action === 'reject'}></textarea>
+										<small>{action === 'reject' ? 'Required. ' : 'Optional. '}They see this on their project page.</small>
+									</label>
+								{/if}
+								{#if formError}<p class="callout warn small">{formError}</p>{/if}
+								<button class="btn primary submit" disabled={busy}>
+									{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Reject' : 'Send back'}
+								</button>
 							</div>
 						</div>
 					</form>
@@ -657,6 +727,14 @@
 	.part + .part { border-top: 1px solid var(--rv-line); }
 	.two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px 28px; }
 	@media (min-width: 1200px) { .two { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); } }
+	.unified-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px 28px; }
+	@media (min-width: 1200px) { .unified-grid { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); } }
+	.hours-sent { font-size: 26px; font-weight: 400; font-variant-numeric: tabular-nums; }
+	.justification { margin: 0; padding: 10px 14px; border-radius: 10px; background: var(--rv-sunk); font: inherit; font-size: 17px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+	.sent-fields { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; margin: 0; align-content: start; }
+	.sent-fields dt { color: var(--muted); }
+	.sent-fields dd { margin: 0; overflow-wrap: anywhere; }
+	.sent-fields dd.missing { color: var(--warn); }
 	.ships { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
 
 	.rail { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px; background: var(--rv-rail); border-bottom: 1px solid var(--rv-line); min-width: 0; }

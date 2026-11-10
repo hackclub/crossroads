@@ -8,10 +8,23 @@ select sqlc.embed(submissions), sqlc.embed(projects), sqlc.embed(users),
     coalesce(reviewer.name, '')::text as reviewer_name,
     coalesce(fraud_reviewer.name, '')::text as fraud_reviewer_name,
     coalesce(hq_reviewer.name, '')::text as hq_reviewer_name,
-    -- What the reviewer approved, before any fraud cut or HQ change.
+    -- What each stage approved and why it cut, from its latest event, for
+    -- the justification (unified.Justification).
     (select ship_events.seconds from ship_events
         where ship_events.submission_id = submissions.id and ship_events.kind = 'approval'
-        order by ship_events.id desc limit 1) as reviewer_seconds
+        order by ship_events.id desc limit 1) as reviewer_seconds,
+    (select ship_events.deflation_reason from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'approval'
+        order by ship_events.id desc limit 1) as reviewer_deflation,
+    (select ship_events.seconds from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
+        order by ship_events.id desc limit 1) as fraud_seconds,
+    (select ship_events.deflation_reason from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
+        order by ship_events.id desc limit 1) as fraud_deflation,
+    (select ship_events.deflation_reason from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'final_approval'
+        order by ship_events.id desc limit 1) as hq_deflation
 from submissions
 join projects on projects.id = submissions.project_id
 join users on users.id = projects.user_id
@@ -37,10 +50,23 @@ select sqlc.embed(submissions), sqlc.embed(projects), sqlc.embed(users),
     coalesce(reviewer.name, '')::text as reviewer_name,
     coalesce(fraud_reviewer.name, '')::text as fraud_reviewer_name,
     coalesce(hq_reviewer.name, '')::text as hq_reviewer_name,
-    -- What the reviewer approved, before any fraud cut or HQ change.
+    -- What each stage approved and why it cut, from its latest event, for
+    -- the justification (unified.Justification).
     (select ship_events.seconds from ship_events
         where ship_events.submission_id = submissions.id and ship_events.kind = 'approval'
-        order by ship_events.id desc limit 1) as reviewer_seconds
+        order by ship_events.id desc limit 1) as reviewer_seconds,
+    (select ship_events.deflation_reason from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'approval'
+        order by ship_events.id desc limit 1) as reviewer_deflation,
+    (select ship_events.seconds from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
+        order by ship_events.id desc limit 1) as fraud_seconds,
+    (select ship_events.deflation_reason from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
+        order by ship_events.id desc limit 1) as fraud_deflation,
+    (select ship_events.deflation_reason from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'final_approval'
+        order by ship_events.id desc limit 1) as hq_deflation
 from submissions
 join projects on projects.id = submissions.project_id
 join users on users.id = projects.user_id

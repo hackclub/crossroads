@@ -303,10 +303,15 @@ func TestHQSignedOffShipsGoToUnifiedYSWS(t *testing.T) {
 	fraud := e.exec(t, "insert into users (hca_id, email, name, role) values ('ident!fraud', 'f@example.com', 'Fern', 'reviewer')")
 	hq := e.exec(t, "insert into users (hca_id, email, name, role) values ('ident!hq', 'h@example.com', 'Hugo', 'reviewer')")
 	ship := e.exec(t, `insert into submissions (project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds,
-		reviewer_id, reviewed_at, internal_notes, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at)
-		values ($1, 'approved', '{racer}', 36000, 36000, 25200, $2, now(), 'Commits match.', '{long_day}', $3, now(), $4, now())`,
+		reviewer_id, reviewed_at, internal_notes, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at,
+		technical_features, deflation_reason)
+		values ($1, 'approved', '{racer}', 36000, 36000, 25200, $2, now(), 'Commits match.', '{long_day}', $3, now(), $4, now(),
+		'Split-screen multiplayer and a track editor', 'An hour of Hackatime was a tutorial.')`,
 		project, reviewer, fraud, hq)
-	e.exec(t, `insert into ship_events (submission_id, kind, actor_id, stage, seconds) values ($1, 'approval', $2, 'pending', 32400)`, ship, reviewer)
+	e.exec(t, `insert into ship_events (submission_id, kind, actor_id, stage, seconds, deflation_reason)
+		values ($1, 'approval', $2, 'pending', 32400, 'An hour of Hackatime was a tutorial')`, ship, reviewer)
+	e.exec(t, `insert into ship_events (submission_id, kind, actor_id, stage, seconds, deflation_reason)
+		values ($1, 'fraud_pass', $2, 'fraud_check', 25200, 'The IDE was left open overnight on day 3')`, ship, fraud)
 
 	e.sync(t)
 	records := e.airtable.records(submissionsTable)
@@ -318,7 +323,15 @@ func TestHQSignedOffShipsGoToUnifiedYSWS(t *testing.T) {
 		t.Error("ticked for Unified YSWS before they're YSWS-eligible")
 	}
 	justification, _ := fields["Optional - Override Hours Spent Justification"].(string)
-	for _, want := range []string{"10.00h of new time", "Reviewer Rita approved 9.00h", "Commits match.", "fraud check (long_day), which Fern passed", "Signed off by Hugo at 7.00h"} {
+	for _, want := range []string{
+		"Hackatime: 10.00h of new time on racer",
+		"Technical features: Split-screen multiplayer and a track editor.",
+		"Reviewer Rita approved 9.00h. Commits match.",
+		"Deflated from 10.00h to 9.00h by the reviewer: An hour of Hackatime was a tutorial.",
+		"Fraud check by Fern (flagged for: a very long day): passed at 7.00h.",
+		"Deflated from 9.00h to 7.00h in the fraud check: The IDE was left open overnight on day 3.",
+		"Signed off by Hugo at 7.00h.",
+	} {
 		if !strings.Contains(justification, want) {
 			t.Errorf("justification %q doesn't say %q", justification, want)
 		}

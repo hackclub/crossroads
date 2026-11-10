@@ -440,6 +440,12 @@ func (a *API) skFetchProjectDetail(w http.ResponseWriter, r *http.Request, input
 		}
 		if review.Submission.Status == db.SubmissionStatusPending {
 			ship.ApproveFields = []skField{{
+				Name: "technical_features", Label: "Technical features", Type: "markdown",
+				Placeholder: "Required. The specific features that account for these hours. Goes to the Unified YSWS DB.",
+			}, {
+				Name: "deflation_reason", Label: "Why deflated?", Type: "markdown",
+				Placeholder: "Required if you approve fewer hours than the ship claimed. Goes to the Unified YSWS DB.",
+			}, {
 				Name: "send_to_fraud", Label: "Send to Crossroads' fraud check", Type: "boolean",
 				Placeholder: "Even if no automatic check flags it.",
 			}, {
@@ -770,8 +776,11 @@ func (a *API) skSubmitReviewAction(w http.ResponseWriter, r *http.Request, input
 		}
 		sendToFraud, _ := in.Fields["send_to_fraud"].(bool)
 		overrideReason, _ := in.Fields["hours_override_reason"].(string)
+		features, _ := in.Fields["technical_features"].(string)
+		deflation, _ := in.Fields["deflation_reason"].(string)
 		d = decision{Action: "approve", Stage: status, ApprovedSeconds: seconds, Feedback: in.FeedbackMessage,
-			InternalNotes: in.Justification, SendToFraud: sendToFraud, OverrideReason: overrideReason}
+			InternalNotes: in.Justification, SendToFraud: sendToFraud, OverrideReason: overrideReason,
+			TechnicalFeatures: features, DeflationReason: deflation}
 		perms = permissions{Review: true, HQReview: in.IsHq}
 	case "reject":
 		d = decision{Action: "reject", Stage: status, Feedback: in.FeedbackMessage, InternalNotes: in.InternalMessage}
@@ -785,7 +794,12 @@ func (a *API) skSubmitReviewAction(w http.ResponseWriter, r *http.Request, input
 					strings.TrimSuffix(a.PublicURL, "/")+"/review/"+in.ShipID)
 			return
 		}
+		// Authorizing has no fields of its own: if HQ cuts the hours, the
+		// justification says why.
 		d = decision{Action: "approve", Stage: db.SubmissionStatusAwaitingHq, ApprovedSeconds: seconds, InternalNotes: in.Justification}
+		if seconds != nil && ship.Submission.ApprovedSeconds != nil && *seconds < *ship.Submission.ApprovedSeconds {
+			d.DeflationReason = in.Justification
+		}
 		perms = permissions{HQReview: true}
 	case "deauthorize":
 		if status != db.SubmissionStatusFraudCheck && status != db.SubmissionStatusAwaitingHq {

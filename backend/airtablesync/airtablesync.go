@@ -183,45 +183,33 @@ func (s *Syncer) submissionFields(row db.ListSubmissionsToSyncRow) airtable.Fiel
 // justification explains the hours to whoever audits the Unified YSWS DB:
 // where the time came from, and who checked it at each stage.
 func (s *Syncer) justification(row db.ListSubmissionsToSyncRow) string {
+	return unified.Justification(ReviewOf(row, s.HoursStart))
+}
+
+// ReviewOf is what a synced row's justification is written from.
+func ReviewOf(row db.ListSubmissionsToSyncRow, hoursStart time.Time) unified.Review {
 	sub := row.Submission
-	h := func(seconds int32) string { return fmt.Sprintf("%.2fh", float64(seconds)/3600) }
-	var b strings.Builder
-	fmt.Fprintf(&b, "Reviewed on Crossroads. Hackatime counted %s of new time on this ship (Hackatime projects: %s; %s on them from %s to %s, minus time already paid for).",
-		h(sub.NewSeconds), strings.Join(sub.HackatimeProjects, ", "), h(sub.HackatimeSeconds),
-		s.HoursStart.Format(time.DateOnly), sub.SubmittedAt.UTC().Format(time.DateOnly))
-	reviewerSeconds := *sub.ApprovedSeconds
+	r := unified.Review{
+		HackatimeProjects: sub.HackatimeProjects, HackatimeSeconds: sub.HackatimeSeconds, NewSeconds: sub.NewSeconds,
+		ApprovedSeconds: *sub.ApprovedSeconds, HoursStart: hoursStart, SubmittedAt: sub.SubmittedAt,
+		ReviewerName: row.ReviewerName, ReviewerSeconds: *sub.ApprovedSeconds,
+		ReviewerDeflation: deref(row.ReviewerDeflation), TechnicalFeatures: deref(sub.TechnicalFeatures),
+		Notes: deref(sub.InternalNotes), OverrideReason: deref(sub.OverrideReason),
+		FraudReasons: sub.FraudReasons, FraudReviewer: row.FraudReviewerName, FraudSeconds: row.FraudSeconds,
+		FraudDeflation: deref(row.FraudDeflation), HQName: row.HqReviewerName, HQDeflation: deref(row.HqDeflation),
+		EarlierApproval: row.EarlierApprovals > 0,
+	}
 	if row.ReviewerSeconds != nil {
-		reviewerSeconds = *row.ReviewerSeconds
+		r.ReviewerSeconds = *row.ReviewerSeconds
 	}
-	if row.ReviewerName != "" {
-		fmt.Fprintf(&b, " Reviewer %s approved %s.", row.ReviewerName, h(reviewerSeconds))
+	return r
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
 	}
-	if sub.OverrideReason != nil && *sub.ApprovedSeconds > sub.NewSeconds {
-		fmt.Fprintf(&b, " Approved for more than Hackatime tracked (%s of %s), because: %s",
-			h(*sub.ApprovedSeconds), h(sub.NewSeconds), strings.TrimSpace(*sub.OverrideReason))
-		if !strings.HasSuffix(*sub.OverrideReason, ".") {
-			b.WriteString(".")
-		}
-	}
-	if sub.InternalNotes != nil {
-		fmt.Fprintf(&b, " Reviewer's notes: %s", strings.TrimSpace(*sub.InternalNotes))
-		if !strings.HasSuffix(*sub.InternalNotes, ".") {
-			b.WriteString(".")
-		}
-	}
-	switch {
-	case row.FraudReviewerName != "":
-		fmt.Fprintf(&b, " Flagged for a fraud check (%s), which %s passed.", strings.Join(sub.FraudReasons, ", "), row.FraudReviewerName)
-	case sub.HqReviewerID != nil:
-		b.WriteString(" No automatic check flagged it for a fraud check (Hackatime trust level, shared links, ship size, longest day, Hackatime time going down).")
-	}
-	if row.HqReviewerName != "" {
-		fmt.Fprintf(&b, " Signed off by %s at %s.", row.HqReviewerName, h(*sub.ApprovedSeconds))
-	}
-	if row.EarlierApprovals > 0 {
-		b.WriteString(" This is an update to a project already approved on Crossroads: only time added since then is counted.")
-	}
-	return b.String()
+	return *s
 }
 
 // pullFulfilled marks orders fulfilled when someone ticks Fulfilled on them in

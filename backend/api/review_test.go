@@ -63,6 +63,7 @@ type decisionResult struct {
 
 func (e *env) decide(t *testing.T, reviewer *db.User, submissionID int64, body map[string]any) (int, decisionResult) {
 	t.Helper()
+	withReviewText(body)
 	var result decisionResult
 	status := e.call(t, reviewer, "POST", "/api/review/submissions/"+itoa(submissionID), body, &result)
 	return status, result
@@ -331,5 +332,19 @@ func TestReviewDetail(t *testing.T) {
 	}
 	if detail.Hackatime == nil || detail.Hackatime.Seconds != 2*3600 || len(detail.Hackatime.Projects) != 1 {
 		t.Errorf("hackatime is %+v", detail.Hackatime)
+	}
+}
+
+// withReviewText gives an approval the technical features and deflation
+// reason it needs, unless the test sets them itself.
+func withReviewText(body map[string]any) {
+	if body["action"] != "approve" {
+		return
+	}
+	if _, ok := body["technical_features"]; !ok {
+		body["technical_features"] = "A test feature."
+	}
+	if _, ok := body["deflation_reason"]; !ok {
+		body["deflation_reason"] = "A test deflation."
 	}
 }

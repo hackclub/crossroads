@@ -339,15 +339,18 @@ type shipEventJSON struct {
 	Seconds      *int32      `json:"seconds"`
 	Message      *string     `json:"message"`  // what the participant sees
 	Internal     *string     `json:"internal"` // reviewers only
-	CreatedAt    time.Time   `json:"created_at"`
-	EditedAt     *time.Time  `json:"edited_at"`
+	// Why this approval was lower than what came in, if it was.
+	DeflationReason *string    `json:"deflation_reason"`
+	CreatedAt       time.Time  `json:"created_at"`
+	EditedAt        *time.Time `json:"edited_at"`
 }
 
 func toShipEventJSON(row db.ListProjectShipEventsRow) shipEventJSON {
 	e := row.ShipEvent
 	out := shipEventJSON{
 		ID: e.ID, SubmissionID: e.SubmissionID, Kind: string(e.Kind), Stage: string(e.Stage),
-		Seconds: e.Seconds, Message: e.Message, Internal: e.Internal, CreatedAt: e.CreatedAt, EditedAt: e.EditedAt,
+		Seconds: e.Seconds, Message: e.Message, Internal: e.Internal, DeflationReason: e.DeflationReason,
+		CreatedAt: e.CreatedAt, EditedAt: e.EditedAt,
 	}
 	if e.ActorID != nil {
 		out.Actor = &personJSON{ID: *e.ActorID, Name: *row.ActorName}
@@ -406,6 +409,11 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 	for _, e := range eventRows {
 		events = append(events, toShipEventJSON(e))
 	}
+	preview, err := a.unifiedPreview(r.Context(), row, eventRows, submissions)
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
 	s := row.Submission
 	var claim *claimJSON
 	if s.ClaimedBy != nil {
@@ -451,12 +459,15 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		UnifiedRecords []unified.Record `json:"unified_records"`
 		// Hackatime time and commits per day since WindowStart: the last
 		// approved ship, or the event's start. Daily totals, never heartbeats.
-		Days             []dayJSON  `json:"days"`
-		WindowStart      time.Time  `json:"window_start"`
-		TelescreenURL    string     `json:"telescreen_url,omitempty"`
-		Claim            *claimJSON `json:"claim"`
-		CanDecide        bool       `json:"can_decide"`
-		CantDecideReason string     `json:"cant_decide_reason,omitempty"`
+		Days          []dayJSON `json:"days"`
+		WindowStart   time.Time `json:"window_start"`
+		TelescreenURL string    `json:"telescreen_url,omitempty"`
+		// What the Airtable sync will send to the Unified YSWS DB; null until
+		// a reviewer approves it.
+		UnifiedPreview   *unifiedPreviewJSON `json:"unified_preview"`
+		Claim            *claimJSON          `json:"claim"`
+		CanDecide        bool                `json:"can_decide"`
+		CantDecideReason string              `json:"cant_decide_reason,omitempty"`
 	}{
 		Submission: toReviewerSubmissionJSON(s),
 		Stage:      stageName(s.Status),
@@ -476,6 +487,7 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		Days:                 report.Days,
 		WindowStart:          report.WindowStart,
 		TelescreenURL:        a.telescreenURL(row.User.SlackID),
+		UnifiedPreview:       preview,
 		Claim:                claim,
 		CanDecide:            cantDecide == "",
 		CantDecideReason:     cantDecide,
