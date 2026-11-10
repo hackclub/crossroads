@@ -547,7 +547,7 @@ func TestTechnicalFeaturesAndDeflation(t *testing.T) {
 		"Technical features: A level editor and online leaderboards.",
 		"approved 9.00h. Played three levels; commits match.",
 		"Deflated from 10.00h to 9.00h by the reviewer: An hour was a tutorial.",
-		"passed at 7.00h.",
+		"passed it at 7.00h.",
 		"Deflated from 9.00h to 7.00h in the fraud check: Two hours with the IDE left open overnight.",
 		"at 7.00h.",
 	} {
