@@ -24,7 +24,6 @@
 	let notes = $state('');
 	let sendToFraud = $state(false);
 	// Approving more hours than Hackatime tracked, with a reason.
-	let overriding = $state(false);
 	let overrideReason = $state('');
 	// As on Ari: the technical features that account for the hours, and why
 	// a stage approved fewer hours than came in.
@@ -60,6 +59,10 @@
 	const maxSeconds = $derived(!sub ? 0 : stage === 'fraud' ? sub.approved_seconds : sub.new_seconds);
 	// The fraud check can only cut, so only the first review and HQ can go over.
 	const canOverride = $derived(stage === 'review' || stage === 'hq');
+	// Going over Hackatime is always allowed where it can be; the reason box
+	// appears once the hours go over.
+	const overriding = $derived(canOverride);
+	const goingOver = $derived(canOverride && !!sub && Math.round(Number(approvedHours) * 3600) > sub.new_seconds);
 	// How many hours this approval cuts from what came in.
 	const deflatedBy = $derived.by(() => {
 		if (!sub || action !== 'approve') return 0;
@@ -74,8 +77,7 @@
 			const start = d.stage === 'review' ? d.submission.new_seconds : (d.submission.approved_seconds ?? d.submission.new_seconds);
 			approvedHours = toHours(start);
 			// At HQ, a reviewer's override carries over until HQ changes it.
-			overriding = d.stage === 'hq' && !!d.submission.override_reason;
-			overrideReason = overriding ? d.submission.override_reason : '';
+			overrideReason = d.stage === 'hq' && d.submission.override_reason ? d.submission.override_reason : '';
 		} catch (e) {
 			error = e.message;
 		}
@@ -86,7 +88,6 @@
 		action = 'approve';
 		feedback = notes = '';
 		sendToFraud = false;
-		overriding = false;
 		overrideReason = technicalFeatures = deflationReason = '';
 		tab = 'checks';
 		load();
@@ -563,7 +564,7 @@
 									<label class="field">
 										<span>Hours</span>
 										<input type="number" min="0" step="0.01" max={overriding ? undefined : maxSeconds / 3600} bind:value={approvedHours} />
-										<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}.` : `Up to ${hours(maxSeconds)}.`} {deflatedBy > 0 ? `Deflated by ${hours(deflatedBy)}: cut time can't be shipped again.` : "Cut time can't be shipped again."}</small>
+										<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}; more needs a reason.` : `Up to ${hours(maxSeconds)}.`} {deflatedBy > 0 ? `Deflated by ${hours(deflatedBy)}: cut time can't be shipped again.` : "Cut time can't be shipped again."}</small>
 									</label>
 									{#if deflatedBy > 0}
 										<label class="field grow">
@@ -573,20 +574,16 @@
 										</label>
 									{/if}
 									{#if canOverride}
-										<label class="check small">
-											<input type="checkbox" bind:checked={overriding} />
-											Approve more than Hackatime tracked ({hours(sub.new_seconds)})
-										</label>
-										{#if overriding}
+										{#if goingOver}
 											<label class="field grow">
 												<span>Why more than Hackatime?</span>
-												<textarea bind:value={overrideReason} required={Number(approvedHours) * 3600 > sub.new_seconds} placeholder="For example: 3 hours soldering and testing the board, which Hackatime can't track."></textarea>
+												<textarea bind:value={overrideReason} required placeholder="For example: 3 hours soldering and testing the board, which Hackatime can't track."></textarea>
 												<small>Required to go over. Goes to HQ and the Unified YSWS DB.</small>
 											</label>
 										{/if}
 									{/if}
 									{#if stage === 'review'}
-										<label class="check small"><input type="checkbox" bind:checked={sendToFraud} /> Send it to the fraud check anyway</label>
+										<label class="check small"><input type="checkbox" bind:checked={sendToFraud} /> Send it to the fraud check</label>
 									{/if}
 									<p class="small muted">{whatNext}</p>
 								{/if}
@@ -600,7 +597,7 @@
 									</label>
 								{/if}
 								<label class="field grow">
-									<span>{action === 'send_back' ? 'Why, for the reviewer who picks it up' : stage === 'review' ? 'Justification' : 'Notes'}</span>
+									<span>{action === 'send_back' ? 'Why, for the reviewer who picks it up' : stage === 'review' ? 'Additional justification' : 'Notes'}</span>
 									<textarea bind:value={notes} required={action === 'send_back'} placeholder={stage === 'review' && action === 'approve' ? 'What you checked: you ran it, the commits match the time, the demo works.' : ''}></textarea>
 									<small>
 										{action === 'send_back' ? 'Required. ' : 'Reviewers only. '}{stage === 'review' && action === 'approve' ? 'Goes to the Unified YSWS DB.' : ''}
@@ -694,6 +691,9 @@
 	.review-page :global(.badge) { font-size: 16px; padding: 1px 10px; }
 	.review-page :global(.field > span) { font-size: 18px; padding: 3px 12px; border-radius: 10px 10px 0 0; }
 	.review-page :global(.field input), .review-page :global(.field textarea), .review-page :global(.field select) { font-size: 18px; padding: 6px 12px; border-radius: 0 0 10px 10px; }
+	/* The template picker sits flush on the text box under it. */
+	.review-page :global(.field span + select) { border-radius: 0; margin: 0; box-shadow: inset 0 -1px 0 var(--rv-line); }
+	.review-page :global(.field select + textarea) { border-radius: 0 0 10px 10px; margin-top: 0; }
 	.review-page :global(.field small) { font-size: 15px; padding-top: 3px; }
 	.review-page :global(.callout) { margin: 0; padding: 10px 14px; }
 	.loading { padding: 24px; }
