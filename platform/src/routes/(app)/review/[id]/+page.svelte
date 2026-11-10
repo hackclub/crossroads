@@ -10,7 +10,8 @@
 	import { session } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
 	import { STAGES, canDecideStage, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, time, toSeconds, toHours } from '#lib/review.js';
-	import CodeActivity from '#lib/review/CodeActivity.svelte';
+	import GitHubPanel from '#lib/review/GitHubPanel.svelte';
+	import HackatimePanel from '#lib/review/HackatimePanel.svelte';
 
 	let d = $state(null);
 	let error = $state('');
@@ -87,6 +88,7 @@
 		sendToFraud = false;
 		overriding = false;
 		overrideReason = technicalFeatures = deflationReason = '';
+		tab = 'checks';
 		load();
 	});
 	onMount(() => {
@@ -142,6 +144,20 @@
 		} finally {
 			moving = false;
 		}
+	}
+
+	// The details under the summary, in tabs: the checks and notes first,
+	// then GitHub, then Hackatime. Each ship opens on the first.
+	const TABS = [['checks', 'Checks & notes'], ['github', 'GitHub'], ['hackatime', 'Hackatime']];
+	let tab = $state('checks');
+	// Arrow keys move between tabs, as tablists do.
+	function tabKeys(e) {
+		const keys = TABS.map(([key]) => key);
+		const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+		if (!step) return;
+		e.preventDefault();
+		tab = keys[(keys.indexOf(tab) + step + keys.length) % keys.length];
+		document.getElementById(`tab-${tab}`)?.focus();
 	}
 
 	// Three looks for this page: the site's own, and calmer dark and light
@@ -359,121 +375,142 @@
 				</div>
 			</section>
 
-			<!-- The details, for when the summary isn't enough. Only this part scrolls. -->
+			<!-- The details, in tabs. Only this part scrolls. -->
 			<div class="evidence">
-				<section class="part">
-					<CodeActivity github={d.github} githubError={d.github_error} days={d.days} windowStart={d.window_start} repoUrl={p.repo_url} {reship} />
-				</section>
+				<div class="tab-bar" role="tablist" aria-label="Details">
+					{#each TABS as [key, label] (key)}
+						<button role="tab" id="tab-{key}" aria-selected={tab === key} aria-controls="panel-{key}" tabindex={tab === key ? 0 : -1}
+							onclick={() => (tab = key)} onkeydown={tabKeys}>
+							{label}
+							{#if key === 'checks'}<span class="count" class:bad={failing.length}>{failing.length ? `${failing.length} to look at` : 'all passed'}</span>
+							{:else if key === 'github'}<span class="count">{d.github ? `${d.github.commits.length}${d.github.truncated ? '+' : ''} commits` : 'no data'}</span>
+							{:else}<span class="count">{d.hackatime ? hours(d.hackatime.seconds) : 'no data'}</span>{/if}
+						</button>
+					{/each}
+				</div>
 
-				<section class="part">
-					<h2>Timeline</h2>
-					<ol class="timeline">
-						{#each d.events as ev (ev.id)}
-							{@const hidden = ev.kind === 'internal_comment' || ev.kind === 'flagged' || (!ev.message && ev.internal)}
-							<li class:internal={hidden} class:other={ev.submission_id !== sub.id}>
-								<div class="row between small">
-									<span>
-										{#if ev.kind === 'flagged'}<strong>{EVENT_LABELS.flagged}</strong>{:else}<strong>{ev.actor?.name ?? 'Someone'}</strong> {EVENT_LABELS[ev.kind] ?? ev.kind}{/if}
-										{#if ev.seconds != null} · {hours(ev.seconds)}{/if}
-										<span class="muted"> · ship #{ev.submission_id}</span>
-									</span>
-									<span class="muted">{date(ev.created_at)}{ev.edited_at ? ' (edited)' : ''}</span>
+				{#if tab === 'checks'}
+					<div class="tab-panel" role="tabpanel" id="panel-checks" aria-labelledby="tab-checks">
+						<section class="part two">
+							<div class="stack">
+								<div class="stack-sm">
+									<h2>Every check</h2>
+									<ul class="checks">
+										{#each d.checks as c (c.id)}
+											{@const state = c.status === 'pass' ? 'pass' : c.status === 'inconclusive' ? 'unknown' : c.severity === 'info' || c.severity === 'warn' ? 'warn' : 'fail'}
+											<li class="{state} flat">{@render icon(state)}<div><span>{c.name}</span>{#if c.summary}<p>{c.summary}</p>{/if}</div></li>
+										{/each}
+									</ul>
 								</div>
-								{#if ev.message}<p><span class="badge info tiny">They see this</span> {ev.message}</p>{/if}
-								{#if ev.deflation_reason}<p class="pre"><span class="badge tiny">Deflated because</span> {ev.deflation_reason}</p>{/if}
-								{#if ev.internal}<p class="pre"><span class="badge tiny">Reviewers only</span> {ev.internal}</p>{/if}
-							</li>
-						{:else}
-							<li class="muted small">Nothing yet.</li>
-						{/each}
-					</ol>
-					<form class="stack-sm" onsubmit={postComment}>
-						<label class="field">
-							<span>Comment</span>
-							<textarea bind:value={comment.message} style="min-height: 64px" placeholder={comment.internal ? 'A note for other reviewers' : 'A message for them, shown on their project page'}></textarea>
-						</label>
-						<div class="row between">
-							<label class="check small"><input type="checkbox" bind:checked={comment.internal} /> Only reviewers can see this</label>
-							<button class="btn small" disabled={!comment.message.trim()}>{comment.internal ? 'Add note' : 'Send to them'}</button>
-						</div>
-						{#if commentError}<p class="callout warn small">{commentError}</p>{/if}
-					</form>
-				</section>
-
-				<section class="part unified" aria-label="What goes to the Unified YSWS DB">
-					<div class="row between">
-						<h2>What goes to the Unified YSWS DB</h2>
-						{#if d.unified_preview}
-							<span class="small" class:ok={d.unified_preview.signed_off && !d.unified_preview.missing.length}>
-								{!d.unified_preview.signed_off ? 'Sent once HQ signs it off' : d.unified_preview.missing.length ? 'Held back until it’s complete' : 'Ready: the sync sends it with Submit to Unified YSWS ticked'}
-							</span>
-						{/if}
-					</div>
-					{#if d.unified_preview}
-						{@const u = d.unified_preview}
-						{#if u.missing.length}
-							<p class="callout warn small">"Submit to Unified YSWS" waits for: {u.missing.join(', ')}.</p>
-						{/if}
-						<div class="unified-grid">
+								<div class="stack-sm">
+									<h2>{d.user.name}</h2>
+									<p class="small muted">{d.user.email}</p>
+									{#if noteDraft === null}
+										{#if d.user.reviewer_note}<p class="pre small note full">{d.user.reviewer_note}</p>{/if}
+										<button class="link-btn small" onclick={() => (noteDraft = d.user.reviewer_note ?? '')}>{d.user.reviewer_note ? 'Edit the note on them' : 'Add a note on them'}</button>
+									{:else}
+										<label class="field">
+											<span>Note on {d.user.name}</span>
+											<textarea bind:value={noteDraft} style="min-height: 80px"></textarea>
+											<small>Reviewers only. Shown on all their ships.</small>
+										</label>
+										<div class="row">
+											<button class="btn small primary" onclick={saveNote}>Save</button>
+											<button class="btn small ghost" onclick={() => (noteDraft = null)}>Cancel</button>
+										</div>
+										{#if noteError}<p class="callout warn small">{noteError}</p>{/if}
+									{/if}
+									{#if p.submissions.length > 1}
+										<h2 style="margin-top: 12px">Ships</h2>
+										<ul class="ships small">
+											{#each p.submissions as s (s.id)}
+												<li>
+													{#if s.id === sub.id}<strong>This ship</strong>{:else}<a href="/review/{s.id}">#{s.id}</a>{/if}
+													<span class="muted">{STATUS_LABELS[s.status] ?? s.status} · {hours(s.new_seconds)} claimed{s.approved_seconds != null ? `, ${hours(s.approved_seconds)} approved` : ''} · {date(s.submitted_at)}</span>
+												</li>
+											{/each}
+										</ul>
+									{/if}
+								</div>
+							</div>
 							<div class="stack-sm">
-								<span class="small muted">Optional - Override Hours Spent</span>
-								<strong class="hours-sent">{u.hours}h</strong>
-								<span class="small muted">Optional - Override Hours Spent Justification{u.signed_off ? '' : ' (so far; HQ’s sign-off adds a line)'}</span>
-								<pre class="justification">{u.justification}</pre>
+								<h2>Timeline</h2>
+								<ol class="timeline">
+									{#each d.events as ev (ev.id)}
+										{@const hidden = ev.kind === 'internal_comment' || ev.kind === 'flagged' || (!ev.message && ev.internal)}
+										<li class:internal={hidden} class:other={ev.submission_id !== sub.id}>
+											<div class="row between small">
+												<span>
+													{#if ev.kind === 'flagged'}<strong>{EVENT_LABELS.flagged}</strong>{:else}<strong>{ev.actor?.name ?? 'Someone'}</strong> {EVENT_LABELS[ev.kind] ?? ev.kind}{/if}
+													{#if ev.seconds != null} · {hours(ev.seconds)}{/if}
+													<span class="muted"> · ship #{ev.submission_id}</span>
+												</span>
+												<span class="muted">{date(ev.created_at)}{ev.edited_at ? ' (edited)' : ''}</span>
+											</div>
+											{#if ev.message}<p><span class="badge info tiny">They see this</span> {ev.message}</p>{/if}
+											{#if ev.deflation_reason}<p class="pre"><span class="badge tiny">Deflated because</span> {ev.deflation_reason}</p>{/if}
+											{#if ev.internal}<p class="pre"><span class="badge tiny">Reviewers only</span> {ev.internal}</p>{/if}
+										</li>
+									{:else}
+										<li class="muted small">Nothing yet.</li>
+									{/each}
+								</ol>
+								<form class="stack-sm" onsubmit={postComment}>
+									<label class="field">
+										<span>Comment</span>
+										<textarea bind:value={comment.message} style="min-height: 64px" placeholder={comment.internal ? 'A note for other reviewers' : 'A message for them, shown on their project page'}></textarea>
+									</label>
+									<div class="row between">
+										<label class="check small"><input type="checkbox" bind:checked={comment.internal} /> Only reviewers can see this</label>
+										<button class="btn small" disabled={!comment.message.trim()}>{comment.internal ? 'Add note' : 'Send to them'}</button>
+									</div>
+									{#if commentError}<p class="callout warn small">{commentError}</p>{/if}
+								</form>
 							</div>
-							<dl class="sent-fields small">
-								{#each u.fields as f (f.name)}
-									<dt>{f.name}</dt>
-									<dd class:missing={f.missing}>{f.missing ? 'Missing' : f.value}</dd>
-								{/each}
-							</dl>
-						</div>
-					{:else}
-						<p class="small muted">Nothing yet: the row is written once a reviewer approves the ship. Its justification carries Hackatime's numbers, the technical features, the reviewer's justification, every deflation and why, the fraud check if there was one, and HQ's sign-off.</p>
-					{/if}
-				</section>
-
-				<section class="part two">
-					<div class="stack-sm">
-						<h2>Every check</h2>
-						<ul class="checks">
-							{#each d.checks as c (c.id)}
-								{@const state = c.status === 'pass' ? 'pass' : c.status === 'inconclusive' ? 'unknown' : c.severity === 'info' || c.severity === 'warn' ? 'warn' : 'fail'}
-								<li class="{state} flat">{@render icon(state)}<div><span>{c.name}</span>{#if c.summary}<p>{c.summary}</p>{/if}</div></li>
-							{/each}
-						</ul>
-					</div>
-					<div class="stack-sm">
-						<h2>{d.user.name}</h2>
-						<p class="small muted">{d.user.email}</p>
-						{#if noteDraft === null}
-							{#if d.user.reviewer_note}<p class="pre small note full">{d.user.reviewer_note}</p>{/if}
-							<button class="link-btn small" onclick={() => (noteDraft = d.user.reviewer_note ?? '')}>{d.user.reviewer_note ? 'Edit the note on them' : 'Add a note on them'}</button>
-						{:else}
-							<label class="field">
-								<span>Note on {d.user.name}</span>
-								<textarea bind:value={noteDraft} style="min-height: 80px"></textarea>
-								<small>Reviewers only. Shown on all their ships.</small>
-							</label>
-							<div class="row">
-								<button class="btn small primary" onclick={saveNote}>Save</button>
-								<button class="btn small ghost" onclick={() => (noteDraft = null)}>Cancel</button>
+						</section>
+						<section class="part unified" aria-label="What goes to the Unified YSWS DB">
+							<div class="row between">
+								<h2>What goes to the Unified YSWS DB</h2>
+								{#if d.unified_preview}
+									<span class="small" class:ok={d.unified_preview.signed_off && !d.unified_preview.missing.length}>
+										{!d.unified_preview.signed_off ? 'Sent once HQ signs it off' : d.unified_preview.missing.length ? 'Held back until it’s complete' : 'Ready: the sync sends it with Submit to Unified YSWS ticked'}
+									</span>
+								{/if}
 							</div>
-							{#if noteError}<p class="callout warn small">{noteError}</p>{/if}
-						{/if}
-						{#if p.submissions.length > 1}
-							<h2 style="margin-top: 12px">Ships</h2>
-							<ul class="ships small">
-								{#each p.submissions as s (s.id)}
-									<li>
-										{#if s.id === sub.id}<strong>This ship</strong>{:else}<a href="/review/{s.id}">#{s.id}</a>{/if}
-										<span class="muted">{STATUS_LABELS[s.status] ?? s.status} · {hours(s.new_seconds)} claimed{s.approved_seconds != null ? `, ${hours(s.approved_seconds)} approved` : ''} · {date(s.submitted_at)}</span>
-									</li>
-								{/each}
-							</ul>
-						{/if}
+							{#if d.unified_preview}
+								{@const u = d.unified_preview}
+								{#if u.missing.length}
+									<p class="callout warn small">"Submit to Unified YSWS" waits for: {u.missing.join(', ')}.</p>
+								{/if}
+								<div class="unified-grid">
+									<div class="stack-sm">
+										<span class="small muted">Optional - Override Hours Spent</span>
+										<strong class="hours-sent">{u.hours}h</strong>
+										<span class="small muted">Optional - Override Hours Spent Justification{u.signed_off ? '' : ' (so far; HQ’s sign-off adds a line)'}</span>
+										<pre class="justification">{u.justification}</pre>
+									</div>
+									<dl class="sent-fields small">
+										{#each u.fields as f (f.name)}
+											<dt>{f.name}</dt>
+											<dd class:missing={f.missing}>{f.missing ? 'Missing' : f.value}</dd>
+										{/each}
+									</dl>
+								</div>
+							{:else}
+								<p class="small muted">Nothing yet: the row is written once a reviewer approves the ship. Its justification carries Hackatime's numbers, the technical features, the reviewer's justification, every deflation and why, the fraud check if there was one, and HQ's sign-off.</p>
+							{/if}
+						</section>
 					</div>
-				</section>
+				{:else if tab === 'github'}
+					<div class="tab-panel part" role="tabpanel" id="panel-github" aria-labelledby="tab-github">
+						<GitHubPanel github={d.github} githubError={d.github_error} repoUrl={p.repo_url} days={d.days} windowStart={d.window_start} {reship} />
+					</div>
+				{:else}
+					<div class="tab-panel part" role="tabpanel" id="panel-hackatime" aria-labelledby="tab-hackatime">
+						<HackatimePanel hackatime={d.hackatime} hackatimeError={d.hackatime_error} submission={sub} earlierSeconds={p.approved_seconds}
+							days={d.days} windowStart={d.window_start} {reship} checks={d.checks} />
+					</div>
+				{/if}
 			</div>
 
 			<!-- The hours and the decision, sized to the window. -->
@@ -615,6 +652,7 @@
 		--rv-line: rgb(255 255 255 / 0.13);
 		--rv-sunk: rgb(0 0 0 / 0.28);
 		--rv-bar: rgb(0 0 0 / 0.55);
+		--rv-tabs: rgb(30 28 28 / 0.92);
 		--rv-on-danger: #000;
 		font-family: 'Crimson Pro', Georgia, serif;
 		font-size: 19px;
@@ -628,7 +666,7 @@
 	   neither pure black nor white. */
 	.review-page[data-theme='dark'] {
 		color-scheme: dark;
-		--bg: #1f2227; --rv-page: #1f2227; --rv-surface: #262a30; --rv-rail: #22262b; --rv-bar: #1b1e22;
+		--bg: #1f2227; --rv-page: #1f2227; --rv-surface: #262a30; --rv-rail: #22262b; --rv-bar: #1b1e22; --rv-tabs: #262a30;
 		--rv-line: #363c44; --rv-sunk: #1d2025; --row-bg: #262a30;
 		--text: #e4e2dc; --muted: #a8acb2; --faint: #9095a0; --ink: #16181b;
 		--body: #3a4049; --head: #5d6776; --deep: #353b43; --deepest: #191b1f; --light: #4a515b;
@@ -638,7 +676,7 @@
 	}
 	.review-page[data-theme='light'] {
 		color-scheme: light;
-		--bg: #e8e4dc; --rv-page: #e8e4dc; --rv-surface: #f3f0ea; --rv-rail: #ece8e0; --rv-bar: #ddd8ce;
+		--bg: #e8e4dc; --rv-page: #e8e4dc; --rv-surface: #f3f0ea; --rv-rail: #ece8e0; --rv-bar: #ddd8ce; --rv-tabs: #f3f0ea;
 		--rv-line: #d3cdc2; --rv-sunk: #e6e1d8; --row-bg: #f3f0ea;
 		--text: #2b2c2f; --muted: #5d6067; --faint: #6c6f76; --ink: #2b2c2f;
 		--body: #dbd5ca; --head: #c3baa9; --deep: #ddd7cc; --deepest: #e4dfd6; --light: #cfc8bb;
@@ -723,6 +761,13 @@
 	.tag { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; font-size: 13px; background: var(--danger); color: var(--rv-on-danger); vertical-align: 2px; }
 
 	.evidence { display: flex; flex-direction: column; min-width: 0; }
+	.tab-bar { display: flex; gap: 4px; padding: 8px 20px 0; border-bottom: 1px solid var(--rv-line); position: sticky; top: 0; z-index: 1; background: var(--rv-tabs); }
+	.tab-bar button { display: inline-flex; align-items: baseline; gap: 8px; padding: 6px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 18px; cursor: pointer; }
+	.tab-bar button:hover { color: var(--text); }
+	.tab-bar button[aria-selected='true'] { color: var(--text); border-bottom-color: var(--text); }
+	.count { font-size: 14px; padding: 0 8px; border-radius: 999px; background: var(--rv-sunk); color: var(--muted); }
+	.count.bad { background: var(--warn-bg); color: var(--warn); }
+	.tab-panel { display: flex; flex-direction: column; }
 	.part { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px; min-width: 0; }
 	.part + .part { border-top: 1px solid var(--rv-line); }
 	.two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px 28px; }
