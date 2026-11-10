@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -77,13 +78,13 @@ func main() {
 
 	// DEV_MODE=1 adds a sign-in that skips Hack Club Auth and a fake Hackatime,
 	// for trying the whole flow locally. Anyone could sign in as anyone, so it
-	// refuses to run anywhere that looks deployed.
+	// refuses to run anywhere but a developer's machine.
 	addr := ":" + cmp.Or(os.Getenv("PORT"), "8080")
 	devMode := os.Getenv("DEV_MODE") == "1"
 	hackatimeConfig := hackatime.Config{Start: hoursStart}
 	if devMode {
-		if strings.HasPrefix(redirectURL, "https://") {
-			log.Fatal("DEV_MODE can't be on with an https:// HCA_REDIRECT_URL; it lets anyone sign in as anyone")
+		if !runsLocally(redirectURL) {
+			log.Fatal("DEV_MODE only runs locally, outside Kubernetes and with an http://localhost HCA_REDIRECT_URL; it lets anyone sign in as anyone")
 		}
 		hackatimeConfig.BaseURL = "http://localhost" + addr + "/dev/hackatime"
 		log.Print("DEV_MODE is on: /dev/login signs in without Hack Club Auth, and Hackatime is faked")
@@ -203,4 +204,19 @@ func main() {
 
 	log.Printf("listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
+}
+
+// runsLocally reports whether this looks like a developer's machine: sign-in
+// redirects to plain http on a loopback address, and it isn't in a Kubernetes
+// pod (Orchard runs everything in one).
+func runsLocally(redirectURL string) bool {
+	u, err := url.Parse(redirectURL)
+	if err != nil || u.Scheme != "http" || os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+		return false
+	}
+	if strings.EqualFold(u.Hostname(), "localhost") {
+		return true
+	}
+	ip := net.ParseIP(u.Hostname())
+	return ip != nil && ip.IsLoopback()
 }

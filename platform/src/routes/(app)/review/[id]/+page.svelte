@@ -9,7 +9,7 @@
 	import { api, get } from '#lib/api.js';
 	import { session } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
-	import { STAGES, canDecideStage, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, time, toSeconds, toHours } from '#lib/review.js';
+	import { STAGES, canDecideStage, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, time, toSeconds, toHours, fromHours } from '#lib/review.js';
 	import GitHubPanel from '#lib/review/GitHubPanel.svelte';
 	import HackatimePanel from '#lib/review/HackatimePanel.svelte';
 
@@ -62,12 +62,14 @@
 	// Going over Hackatime is always allowed where it can be; the reason box
 	// appears once the hours go over.
 	const overriding = $derived(canOverride);
-	const goingOver = $derived(canOverride && !!sub && Math.round(Number(approvedHours) * 3600) > sub.new_seconds);
+	// What came in to this stage, and the hours typed, in seconds.
+	const incoming = $derived(!sub ? 0 : stage === 'review' ? sub.new_seconds : (sub.approved_seconds ?? sub.new_seconds));
+	const askedSeconds = $derived(!sub ? 0 : fromHours(approvedHours, incoming, sub.new_seconds));
+	const goingOver = $derived(canOverride && !!sub && askedSeconds > sub.new_seconds);
 	// How many hours this approval cuts from what came in.
 	const deflatedBy = $derived.by(() => {
 		if (!sub || action !== 'approve') return 0;
-		const incoming = stage === 'review' ? sub.new_seconds : (sub.approved_seconds ?? sub.new_seconds);
-		return Math.max(0, incoming - Math.round(Number(approvedHours) * 3600));
+		return Math.max(0, incoming - askedSeconds);
 	});
 
 	async function load() {
@@ -189,7 +191,7 @@
 		formError = '';
 		const body = { action, stage: sub.status, feedback: feedback || undefined, internal_notes: notes || undefined };
 		if (action === 'approve') {
-			const asked = Math.round(Number(approvedHours) * 3600);
+			const asked = askedSeconds;
 			if (!overriding && asked > maxSeconds) {
 				formError = canOverride
 					? `That's more than the ${hours(maxSeconds)} Hackatime tracked. Tick "Approve more than Hackatime tracked" and say why.`
@@ -563,7 +565,7 @@
 								{#if action === 'approve'}
 									<label class="field">
 										<span>Hours</span>
-										<input type="number" min="0" step="0.01" max={overriding ? undefined : maxSeconds / 3600} bind:value={approvedHours} />
+										<input type="number" min="0" step="0.01" max={overriding ? undefined : toHours(maxSeconds)} bind:value={approvedHours} />
 										<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}; more needs a reason.` : `Up to ${hours(maxSeconds)}.`} {deflatedBy > 0 ? `Deflated by ${hours(deflatedBy)}: cut time can't be shipped again.` : "Cut time can't be shipped again."}</small>
 									</label>
 									{#if deflatedBy > 0}

@@ -65,5 +65,12 @@ export const EVENT_LABELS = {
 export const time = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
 // Hours typed by a reviewer → whole seconds, capped at max.
-export const toSeconds = (h, max) => Math.max(0, Math.min(Math.round(Number(h) * 3600), max));
-export const toHours = (s) => +(s / 3600).toFixed(2);
+// The hours field works in hundredths of an hour, so a number that rounds to
+// one of the exact amounts given (the claim, or what the last stage approved)
+// means all of it, not a few seconds more or less.
+export const fromHours = (h, ...exact) => {
+	const hundredths = Math.round(Number(h) * 100);
+	return exact.find((s) => s != null && Math.round(s / 36) === hundredths) ?? Math.round(Number(h) * 3600);
+};
+export const toSeconds = (h, max) => Math.max(0, Math.min(fromHours(h, max), max));
+export const toHours = (s) => Math.round(s / 36) / 100;

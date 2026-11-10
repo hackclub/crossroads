@@ -69,7 +69,7 @@ Removing dev mode means deleting or reverting each of these. The ✂ items exist
 - ✂ `backend/auth/dev.go`: `DevLogin`, the `/dev/login` handler.
 - ✂ `backend/devhackatime/`: the fake Hackatime server, mounted at `/dev/hackatime`.
 - ✂ `backend/api/dev.go`: `POST /dev/box`, which gives the signed-in person a box (the dev panel's "Add a box" button, via `devGiveBox` in `platform/src/lib/api.js`).
-- `backend/main.go`: the `DEV_MODE` block, which points the Hackatime client at the fake and mounts both `/dev` routes. It refuses to start if `HCA_REDIRECT_URL` is `https://`.
+- `backend/main.go`: the `DEV_MODE` block, which points the Hackatime client at the fake and mounts both `/dev` routes. It refuses to start unless `HCA_REDIRECT_URL` is plain `http://` on localhost or a loopback IP, and it refuses inside Kubernetes (any pod has `KUBERNETES_SERVICE_HOST` set).
 - `backend/.env.example`: the `DEV_MODE` entry.
 
 **Frontend** (`platform/`)
