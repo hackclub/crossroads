@@ -78,9 +78,20 @@ type submissionJSON struct {
 
 // messageJSON is something a reviewer said to the participant.
 type messageJSON struct {
-	Kind      string    `json:"kind"` // comment, approval, final_approval, rejection, …
+	Kind      string    `json:"kind"` // comment, approval, final_check, rejection
 	Message   string    `json:"message"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// participantKind is what a participant is told about where a message came
+// from. The fraud check and HQ sign-off are both "the final check" to them,
+// like participantStatus below: the event kind alone must not say which.
+func participantKind(kind db.ShipEventKind) string {
+	switch kind {
+	case db.ShipEventKindFraudPass, db.ShipEventKindFinalApproval:
+		return "final_check"
+	}
+	return string(kind)
 }
 
 // participantStatus is how a participant sees a ship's stage. They aren't
@@ -368,7 +379,7 @@ func (a *API) getProject(w http.ResponseWriter, r *http.Request) {
 		for _, e := range events {
 			if e.ShipEvent.SubmissionID == sub.ID && e.ShipEvent.Message != nil {
 				out.Submissions[i].Messages = append(out.Submissions[i].Messages, messageJSON{
-					Kind: string(e.ShipEvent.Kind), Message: *e.ShipEvent.Message, CreatedAt: e.ShipEvent.CreatedAt,
+					Kind: participantKind(e.ShipEvent.Kind), Message: *e.ShipEvent.Message, CreatedAt: e.ShipEvent.CreatedAt,
 				})
 			}
 		}
