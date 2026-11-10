@@ -48,6 +48,16 @@
 		if (!confirm(`Change ${u.name} from ${u.role} to ${role}?${warning}`)) return;
 		run(() => api('PATCH', `/admin/users/${u.id}`, { role }), (r) => `${r.name} is now ${r.role}.`).then(() => delete roleDraft[u.id]);
 	}
+	// Which review stages a reviewer can decide. Admins can decide all of them.
+	const PERMS = [
+		['can_review', 'Review'],
+		['can_fraud_review', 'Fraud check'],
+		['can_hq_review', 'HQ sign-off']
+	];
+	function setPerm(u, key, value) {
+		const label = PERMS.find(([k]) => k === key)[1];
+		run(() => api('PATCH', `/admin/users/${u.id}`, { [key]: value }), (r) => `${r.name} ${value ? 'can now do' : 'can no longer do'} ${label.toLowerCase()}.`);
+	}
 	const doAdjust = (e) => {
 		e.preventDefault();
 		run(() => api('POST', `/admin/users/${selected.id}/stamp-adjustments`, { amount: Number(adjust.amount), note: adjust.note }), (r) => `${r.name} now has ${r.stamps} stamps.`).then(() => (adjust = { amount: 0, note: '' }));
@@ -66,7 +76,7 @@
 
 	<div class="card table-wrap">
 		<table>
-			<thead><tr><th>Name</th><th>Email</th><th>Slack</th><th>Stamps</th><th>Verified</th><th>Role</th><th></th></tr></thead>
+			<thead><tr><th>Name</th><th>Email</th><th>Slack</th><th>Stamps</th><th>Verified</th><th>Role</th><th>Review stages</th><th></th></tr></thead>
 			<tbody>
 				{#each users as u}
 					<tr class:you={selected?.id === u.id}>
@@ -85,6 +95,19 @@
 									<button class="btn small ghost" onclick={() => delete roleDraft[u.id]}>Undo</button>
 								{/if}
 							</div>
+						</td>
+						<td class="small">
+							{#if u.role === 'admin'}
+								<span class="muted">All (admin)</span>
+							{:else if u.role === 'reviewer'}
+								<div class="stack-sm">
+									{#each PERMS as [key, label]}
+										<label class="check"><input type="checkbox" checked={u[key]} onchange={(e) => setPerm(u, key, e.currentTarget.checked)} /> {label}</label>
+									{/each}
+								</div>
+							{:else}
+								<span class="muted">–</span>
+							{/if}
 						</td>
 						<td><button class="btn small ghost" onclick={() => (selected = u)}>Manage</button></td>
 					</tr>

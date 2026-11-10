@@ -9,7 +9,7 @@ web
 ## Users
 
 - **Participants:** teenagers aged 13–18, anywhere in the world. They build technical projects (apps, games, tools, hardware), track their time with Hackatime, and ship projects for review to earn a place on the Crossroads trip. They usually open the platform while they're coding, on a laptop.
-- **Reviewers:** Hack Club people who work through the review queue, try each project, and approve or reject its hours. Same site, extra pages.
+- **Reviewers:** Hack Club people who work through the review queues, try each project, and approve or reject its hours. A ship goes through review, a fraud check when something flags it, and HQ sign-off before anything is paid (see `planning/REVIEW_FLOW.md`). Same site, extra pages, or Sidekick, Hack Club's review platform.
 - **Admins:** run the program: people and roles, stamp adjustments, special stamp types, boxes, milestones, shop items and orders.
 
 ## Product Purpose
@@ -24,7 +24,7 @@ The reward is a train journey across Europe with other teen builders, not a priz
 
 - Sign-in is Hack Club Auth only; it also supplies name, Slack ID, birthday, address and identity verification, so the platform never asks for them.
 - Time comes from Hackatime, counted from midnight UTC Nov 3, 2026. Only approved hours count, totaled across all projects.
-- Reviewers can approve fewer hours than tracked; rejected time can be shipped again, cut time can't.
+- Reviewers can approve fewer hours than tracked; rejected time can be shipped again, cut time can't. Stamps are paid only once HQ signs a ship off.
 - Help happens on Slack in #crossroads-help.
 - Backend: Go API in `backend/` (routes in `planning/ROUTES.md`). Postgres is the source of truth; approved projects and orders are copied to Airtable.
 

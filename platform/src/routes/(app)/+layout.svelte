@@ -14,10 +14,13 @@
 	let error = $state('');
 	// Home, Shop and Boxes share one long train (see RailTrain.svelte).
 	const station = $derived(STATIONS.includes(page.url.pathname) ? page.url.pathname : null);
+	// Reviewing a ship takes the whole window: the page has its own slim bar
+	// instead of the site's.
+	const reviewing = $derived(page.route.id === '/(app)/review/[id]');
 
 	onMount(async () => {
 		try {
-			if (!(await refresh())) goto('/signin?next=' + encodeURIComponent(page.url.pathname), { replaceState: true });
+			if (!(await refresh())) goto('/signin?next=' + encodeURIComponent(page.url.pathname), { replace: true });
 		} catch (e) {
 			error = e.message;
 		}
@@ -27,6 +30,9 @@
 <div class="app-shell">
 	{#if error}
 		<main class="main"><p class="callout warn">Couldn't reach the backend: {error} Is it running on :8080?</p></main>
+	{:else if session.me && reviewing}
+		{@render children()}
+		<DevPanel onchange={refresh} />
 	{:else if session.me}
 		<TopBar />
 		<!-- Home opens with the community goal ("Repair Bridge"), above the train. -->

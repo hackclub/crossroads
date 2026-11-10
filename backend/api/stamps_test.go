@@ -107,11 +107,9 @@ func TestExpressGivesPriority(t *testing.T) {
 	}
 	second := e.submitHours(t, user, "U1", later, "kart", 3600)
 
-	var queue []struct {
-		ID       int64 `json:"id"`
-		Priority bool  `json:"priority"`
-	}
-	e.call(t, reviewer, "GET", "/api/review/queue", nil, &queue)
+	var resp queueResponse
+	e.call(t, reviewer, "GET", "/api/review/queue", nil, &resp)
+	queue := resp.Items
 	if len(queue) != 2 || !queue[0].Priority || !queue[1].Priority {
 		t.Errorf("queue is %+v, want both ships with priority", queue)
 	}
@@ -129,7 +127,7 @@ func TestGoldenSpikeBonus(t *testing.T) {
 	}
 	id := e.submitHours(t, user, "U1", p, "racer", 3*3600)
 
-	status, result := e.decide(t, reviewer, id, map[string]any{"status": "approved"})
+	status, result := e.decide(t, reviewer, id, map[string]any{"action": "approve"})
 	if status != http.StatusOK {
 		t.Fatalf("approving: got %d %q", status, result.Error)
 	}

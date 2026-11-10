@@ -8,9 +8,11 @@
 	import BoxTypes from '#lib/admin/BoxTypes.svelte';
 	import Milestones from '#lib/admin/Milestones.svelte';
 	import Stats from '#lib/admin/Stats.svelte';
+	import ReviewSettings from '#lib/admin/ReviewSettings.svelte';
 
 	const tabs = {
 		people: ['People', People],
+		review: ['Review', ReviewSettings],
 		stats: ['Stats', Stats],
 		orders: ['Orders', Orders],
 		shop: ['Shop items', ShopItems],
@@ -31,7 +33,7 @@
 
 <div class="tabs">
 	{#each Object.entries(tabs) as [key, [label]]}
-		<button class:active={tab === key} onclick={() => goto(`?tab=${key}`, { replaceState: true, noScroll: true })}>{label}</button>
+		<button class:active={tab === key} onclick={() => goto(`?tab=${key}`, { replace: true, reset: false })}>{label}</button>
 	{/each}
 </div>
 

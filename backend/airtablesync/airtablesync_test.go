@@ -16,6 +16,7 @@ import (
 	"github.com/scherepi/crossroads-backend/airtable"
 	"github.com/scherepi/crossroads-backend/db"
 	"github.com/scherepi/crossroads-backend/db/dbtest"
+	"github.com/scherepi/crossroads-backend/unified"
 )
 
 // fakeAirtable keeps records in memory. Its only formula is the one
@@ -287,9 +288,87 @@ func TestGithubUsername(t *testing.T) {
 		"https://github.com/":                 "",
 		"https://heidi.github.io/racer":       "",
 	} {
-		got := githubUsername(&in)
+		got := unified.GitHubUsername(&in)
 		if (got == nil && want != "") || (got != nil && *got != want) {
-			t.Errorf("githubUsername(%q) = %v, want %q", in, got, want)
+			t.Errorf("GitHubUsername(%q) = %v, want %q", in, got, want)
 		}
+	}
+}
+
+func TestHQSignedOffShipsGoToUnifiedYSWS(t *testing.T) {
+	e := newEnv(t)
+	e.exec(t, "update users set ysws_eligible = false where id = $1", e.user.ID)
+	project := e.exec(t, `insert into projects (user_id, name, description, repo_url) values ($1, 'Racer', 'A racing game', 'https://github.com/heidi/racer')`, e.user.ID)
+	reviewer := e.exec(t, "insert into users (hca_id, email, name, role) values ('ident!rev', 'r@example.com', 'Rita', 'reviewer')")
+	fraud := e.exec(t, "insert into users (hca_id, email, name, role) values ('ident!fraud', 'f@example.com', 'Fern', 'reviewer')")
+	hq := e.exec(t, "insert into users (hca_id, email, name, role) values ('ident!hq', 'h@example.com', 'Hugo', 'reviewer')")
+	ship := e.exec(t, `insert into submissions (project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds,
+		reviewer_id, reviewed_at, internal_notes, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at,
+		technical_features, deflation_reason)
+		values ($1, 'approved', '{racer}', 36000, 36000, 25200, $2, now(), 'Commits match.', '{long_day}', $3, now(), $4, now(),
+		'Split-screen multiplayer and a track editor', 'An hour of Hackatime was a tutorial.')`,
+		project, reviewer, fraud, hq)
+	e.exec(t, `insert into ship_events (submission_id, kind, actor_id, stage, seconds, deflation_reason)
+		values ($1, 'approval', $2, 'pending', 32400, 'An hour of Hackatime was a tutorial')`, ship, reviewer)
+	e.exec(t, `insert into ship_events (submission_id, kind, actor_id, stage, seconds, deflation_reason)
+		values ($1, 'fraud_pass', $2, 'fraud_check', 25200, 'The IDE was left open overnight on day 3')`, ship, fraud)
+
+	e.sync(t)
+	records := e.airtable.records(submissionsTable)
+	if len(records) != 1 {
+		t.Fatalf("%d rows, want 1", len(records))
+	}
+	fields := records[0].Fields
+	if _, ok := fields[submitUnifiedField]; ok {
+		t.Error("ticked for Unified YSWS before they're YSWS-eligible")
+	}
+	justification, _ := fields["Optional - Override Hours Spent Justification"].(string)
+	for _, want := range []string{
+		"Hackatime: 10.00h of new time on racer",
+		"Technical features: Split-screen multiplayer and a track editor.",
+		"Reviewer Rita approved 9.00h. Commits match.",
+		"Deflated from 10.00h to 9.00h by the reviewer: An hour of Hackatime was a tutorial.",
+		"Sent to a fraud check because: a very long day. Fern passed it at 7.00h.",
+		"Deflated from 9.00h to 7.00h in the fraud check: The IDE was left open overnight on day 3.",
+		"Signed off by Hugo at 7.00h.",
+	} {
+		if !strings.Contains(justification, want) {
+			t.Errorf("justification %q doesn't say %q", justification, want)
+		}
+	}
+
+	// Verified, but the project has no screenshot or demo link, which the
+	// Unified YSWS DB needs: still not ticked.
+	e.exec(t, "update users set ysws_eligible = true where id = $1", e.user.ID)
+	e.sync(t)
+	if _, ok := e.airtable.records(submissionsTable)[0].Fields[submitUnifiedField]; ok {
+		t.Error("ticked for Unified YSWS without a screenshot or demo link")
+	}
+
+	// Once they're added, the next pass sends the whole row again, ticked,
+	// and only once.
+	e.exec(t, `update projects set demo_url = 'https://heidi.example.com/racer', screenshot_url = 'https://heidi.example.com/racer.png' where id = $1`, project)
+	e.sync(t)
+	writes := e.airtable.writes()
+	e.sync(t)
+	fields = e.airtable.records(submissionsTable)[0].Fields
+	if fields[submitUnifiedField] != true {
+		t.Error("not ticked once it was complete")
+	}
+	if fields["Playable URL"] == nil || fields["Screenshot"] == nil {
+		t.Errorf("the demo link and screenshot weren't sent with the tick: %v, %v", fields["Playable URL"], fields["Screenshot"])
+	}
+	if e.airtable.writes() != writes {
+		t.Error("ticked again on the next pass")
+	}
+
+	// A new signed-off ship from someone eligible is ticked straight away.
+	e.exec(t, `insert into submissions (project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds,
+		reviewer_id, reviewed_at, hq_reviewer_id, hq_reviewed_at) values ($1, 'approved', '{racer}', 39600, 3600, 3600, $2, now(), $2, now())`,
+		project, hq)
+	e.sync(t)
+	records = e.airtable.records(submissionsTable)
+	if len(records) != 2 || records[1].Fields[submitUnifiedField] != true {
+		t.Errorf("the second ship's Unified box is %v", records[len(records)-1].Fields[submitUnifiedField])
 	}
 }

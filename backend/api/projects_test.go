@@ -153,11 +153,13 @@ func newEnv(t *testing.T) *env {
 	t.Cleanup(hcaServer.Close)
 
 	a := &api.API{
-		Pool:          pool,
-		Queries:       db.New(pool),
-		Hackatime:     hackatime.New(hackatime.Config{BaseURL: server.URL, Start: hoursStart}),
-		HCA:           hca.New(hca.Config{BaseURL: hcaServer.URL}),
-		StampsPerHour: 10,
+		Pool:           pool,
+		Queries:        db.New(pool),
+		Hackatime:      hackatime.New(hackatime.Config{BaseURL: server.URL, Start: hoursStart}),
+		HCA:            hca.New(hca.Config{BaseURL: hcaServer.URL}),
+		StampsPerHour:  10,
+		SidekickSecret: sidekickSecret,
+		PublicURL:      "https://crossroads.test",
 	}
 	r := chi.NewRouter()
 	r.Mount("/api", a.Routes())

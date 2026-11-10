@@ -1,158 +1,838 @@
 <script>
+	// One ship, at whatever stage it's at: claim it, read the evidence and the
+	// timeline, and decide. Every decision sends the stage this page loaded,
+	// so a ship that moved on in the meantime is refused instead of decided
+	// at the wrong stage.
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { api, get } from '#lib/api.js';
+	import { session } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
+	import { STAGES, canDecideStage, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, time, toSeconds, toHours, fromHours } from '#lib/review.js';
+	import GitHubPanel from '#lib/review/GitHubPanel.svelte';
+	import HackatimePanel from '#lib/review/HackatimePanel.svelte';
 
 	let d = $state(null);
 	let error = $state('');
-	let result = $state(null);
-	let decision = $state('approved');
+	let templates = $state([]);
+
+	// The decision form.
+	let action = $state('approve');
 	let approvedHours = $state(0);
 	let feedback = $state('');
 	let notes = $state('');
+	let sendToFraud = $state(false);
+	// Approving more hours than Hackatime tracked, with a reason.
+	let overrideReason = $state('');
+	// As on Ari: the technical features that account for the hours, and why
+	// a stage approved fewer hours than came in.
+	let technicalFeatures = $state('');
+	let deflationReason = $state('');
 	let busy = $state(false);
 	let formError = $state('');
+	let result = $state(null);
+
+	let claimError = $state('');
+	let comment = $state({ message: '', internal: true });
+	let commentError = $state('');
+	let noteDraft = $state(null); // null when not editing the reviewer note
+	let noteError = $state('');
+
+	const id = $derived(page.params.id);
+	const sub = $derived(d?.submission);
+	const stage = $derived(d?.stage || null); // review, fraud, hq; null once decided
+	const mine = $derived(d?.claim && d.claim.user_id === session.me.id);
+	// This ship's own events since it was last sent back: what the current
+	// approval chain is made of.
+	const shipEvents = $derived.by(() => {
+		if (!d) return [];
+		const evs = d.events.filter((e) => e.submission_id === sub.id);
+		const lastBack = evs.findLastIndex((e) => e.kind === 'sent_back');
+		return evs.slice(lastBack + 1);
+	});
+	const approval = $derived(shipEvents.findLast((e) => e.kind === 'approval'));
+	const fraudPass = $derived(shipEvents.findLast((e) => e.kind === 'fraud_pass'));
+	const failing = $derived(d?.checks.filter((c) => c.status !== 'pass') ?? []);
+	const passing = $derived(d?.checks.filter((c) => c.status === 'pass') ?? []);
+	// The most hours this stage can approve.
+	const maxSeconds = $derived(!sub ? 0 : stage === 'fraud' ? sub.approved_seconds : sub.new_seconds);
+	// The fraud check can only cut, so only the first review and HQ can go over.
+	const canOverride = $derived(stage === 'review' || stage === 'hq');
+	// Going over Hackatime is always allowed where it can be; the reason box
+	// appears once the hours go over.
+	const overriding = $derived(canOverride);
+	// What came in to this stage, and the hours typed, in seconds.
+	const incoming = $derived(!sub ? 0 : stage === 'review' ? sub.new_seconds : (sub.approved_seconds ?? sub.new_seconds));
+	const askedSeconds = $derived(!sub ? 0 : fromHours(approvedHours, incoming, sub.new_seconds));
+	const goingOver = $derived(canOverride && !!sub && askedSeconds > sub.new_seconds);
+	// How many hours this approval cuts from what came in.
+	const deflatedBy = $derived.by(() => {
+		if (!sub || action !== 'approve') return 0;
+		return Math.max(0, incoming - askedSeconds);
+	});
 
 	async function load() {
+		error = '';
 		try {
-			d = await get(`/review/submissions/${page.params.id}`);
-			approvedHours = Math.round(d.submission.new_seconds / 36) / 100;
+			d = await get(`/review/submissions/${id}`);
+			const start = d.stage === 'review' ? d.submission.new_seconds : (d.submission.approved_seconds ?? d.submission.new_seconds);
+			approvedHours = toHours(start);
+			// At HQ, a reviewer's override carries over until HQ changes it.
+			overrideReason = d.stage === 'hq' && d.submission.override_reason ? d.submission.override_reason : '';
 		} catch (e) {
 			error = e.message;
 		}
 	}
-	onMount(load);
+	$effect(() => {
+		id;
+		result = null;
+		action = 'approve';
+		feedback = notes = '';
+		sendToFraud = false;
+		overrideReason = technicalFeatures = deflationReason = '';
+		tab = 'checks';
+		load();
+	});
+	onMount(() => {
+		get('/review/templates').then((t) => (templates = t)).catch(() => {});
+	});
+
+	async function claim() {
+		claimError = '';
+		try {
+			await api('POST', `/review/submissions/${id}/claim`);
+			await load();
+		} catch (e) {
+			claimError = e.message;
+		}
+	}
+	async function release() {
+		claimError = '';
+		try {
+			await api('DELETE', `/review/submissions/${id}/claim`);
+			await load();
+		} catch (e) {
+			claimError = e.message;
+		}
+	}
+	async function skip() {
+		claimError = '';
+		try {
+			await api('POST', `/review/submissions/${id}/skip`);
+			goto(`/review?stage=${stage ?? 'review'}`);
+		} catch (e) {
+			claimError = e.message;
+		}
+	}
+
+	let nextMsg = $state('');
+	let moving = $state(false);
+	// The queue this page belongs to: the ship's stage, or the stage it was
+	// just decided at.
+	const queueStage = $derived(stage ?? result?.stage ?? 'review');
+	// Next review: skip this ship if it's still waiting for you (so the queue
+	// doesn't hand it straight back), then claim the next one.
+	async function nextReview() {
+		moving = true;
+		nextMsg = claimError = '';
+		const s = queueStage;
+		try {
+			if (stage && d.can_decide && !result) await api('POST', `/review/submissions/${id}/skip`);
+			const res = await api('POST', '/review/next', { stage: s });
+			if (res) goto(`/review/${res.submission_id}`);
+			else nextMsg = `Nothing left in the ${STAGES[s].label.toLowerCase()} queue for you.`;
+		} catch (e) {
+			nextMsg = e.message;
+		} finally {
+			moving = false;
+		}
+	}
+
+	// The details under the summary, in tabs: the checks and notes first,
+	// then GitHub, then Hackatime. Each ship opens on the first.
+	const TABS = [['checks', 'Checks & notes'], ['github', 'GitHub'], ['hackatime', 'Hackatime']];
+	let tab = $state('checks');
+	// Arrow keys move between tabs, as tablists do.
+	function tabKeys(e) {
+		const keys = TABS.map(([key]) => key);
+		const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+		if (!step) return;
+		e.preventDefault();
+		tab = keys[(keys.indexOf(tab) + step + keys.length) % keys.length];
+		document.getElementById(`tab-${tab}`)?.focus();
+	}
+
+	// Three looks for this page: the site's own, and calmer dark and light
+	// ones. Remembered in this browser only.
+	const THEMES = [['crossroads', 'Crossroads'], ['dark', 'Dark'], ['light', 'Light']];
+	let theme = $state('crossroads');
+	onMount(() => {
+		try {
+			const saved = localStorage.getItem('crossroads.reviewTheme');
+			if (THEMES.some(([key]) => key === saved)) theme = saved;
+		} catch {}
+	});
+	function setTheme(key) {
+		theme = key;
+		try {
+			localStorage.setItem('crossroads.reviewTheme', key);
+		} catch {}
+	}
+
+	function useTemplate(e) {
+		const t = templates.find((t) => t.id === +e.currentTarget.value);
+		if (t) feedback = feedback ? feedback.trimEnd() + '\n\n' + t.body : t.body;
+		e.currentTarget.value = '';
+	}
 
 	async function decide(e) {
 		e.preventDefault();
 		formError = '';
-		busy = true;
-		const body = { status: decision, feedback: feedback || undefined, internal_notes: notes || undefined };
-		if (decision === 'approved') {
-			// The field works in hundredths of an hour, so a value that rounds to the claim approves all of it.
-			const full = d.submission.new_seconds;
-			body.approved_seconds = Math.round(approvedHours * 100) >= Math.round(full / 36) ? full : Math.round(approvedHours * 3600);
-			// Cut time is gone for good, so make sure it's on purpose.
-			const cut = d.submission.new_seconds - body.approved_seconds;
-			if (cut > 0 && !confirm(`You're approving ${hours(body.approved_seconds)} of the ${hours(d.submission.new_seconds)} claimed. The ${hours(cut)} you cut can't be shipped again. Approve?`)) {
-				busy = false;
+		const body = { action, stage: sub.status, feedback: feedback || undefined, internal_notes: notes || undefined };
+		if (action === 'approve') {
+			const asked = askedSeconds;
+			if (!overriding && asked > maxSeconds) {
+				formError = canOverride
+					? `That's more than the ${hours(maxSeconds)} Hackatime tracked. Tick "Approve more than Hackatime tracked" and say why.`
+					: `The fraud check can only lower the hours: at most ${hours(maxSeconds)}.`;
 				return;
 			}
+			if (stage === 'review' && !technicalFeatures.trim()) {
+				formError = 'Say which technical features account for these hours.';
+				return;
+			}
+			if (deflatedBy > 0 && !deflationReason.trim()) {
+				formError = `Say why you're cutting ${hours(deflatedBy)}.`;
+				return;
+			}
+			if (overriding && asked > sub.new_seconds && !overrideReason.trim()) {
+				formError = 'Say why you\'re approving more than Hackatime tracked.';
+				return;
+			}
+			body.approved_seconds = overriding ? Math.max(0, asked) : toSeconds(approvedHours, maxSeconds);
+			if (overriding && body.approved_seconds > sub.new_seconds) body.override_reason = overrideReason.trim();
+			const before = stage === 'review' ? sub.new_seconds : sub.approved_seconds;
+			const cut = before - body.approved_seconds;
+			// Cut time is gone for good, so make sure it's on purpose.
+			if (cut > 0 && !confirm(`You're approving ${hours(body.approved_seconds)} of ${hours(before)}. The ${hours(cut)} you cut can't be shipped again. Go ahead?`)) return;
+			if (stage === 'review' && sendToFraud) body.send_to_fraud = true;
+			if (stage === 'review') body.technical_features = technicalFeatures.trim();
+			if (deflatedBy > 0) body.deflation_reason = deflationReason.trim();
 		}
+		busy = true;
 		try {
-			result = await api('POST', `/review/submissions/${d.submission.id}`, body);
+			result = await api('POST', `/review/submissions/${sub.id}`, body);
+			result.stage = stage;
+			feedback = notes = technicalFeatures = deflationReason = '';
 			await load();
 		} catch (err) {
 			formError = err.message;
+			if (err.status === 409) await load();
 		} finally {
 			busy = false;
 		}
 	}
+
+	async function postComment(e) {
+		e.preventDefault();
+		commentError = '';
+		try {
+			await api('POST', `/review/submissions/${id}/comments`, comment);
+			comment = { message: '', internal: comment.internal };
+			await load();
+		} catch (err) {
+			commentError = err.message;
+		}
+	}
+
+	async function saveNote() {
+		noteError = '';
+		try {
+			const res = await api('PUT', `/review/users/${d.user.id}/note`, { note: noteDraft });
+			d.user.reviewer_note = res.note;
+			noteDraft = null;
+		} catch (err) {
+			noteError = err.message;
+		}
+	}
+
+	// What approving does at each stage, in words.
+	const approveWord = $derived(stage === 'fraud' ? 'Pass' : stage === 'hq' ? 'Sign off' : 'Approve');
+	const whatNext = $derived.by(() => {
+		if (stage === 'review') {
+			const over = overriding && Number(approvedHours) * 3600 > sub.new_seconds;
+			if (sendToFraud) return 'It goes to the fraud check, then HQ.';
+			if (over && !failing.some((c) => c.fraud)) return 'Approving more than Hackatime tracked always waits for HQ sign-off, even if you have it yourself. Stamps are paid then.';
+			return failing.some((c) => c.fraud)
+				? 'The automatic checks flagged it, so it goes to the fraud check, then HQ.'
+				: session.me.can_hq_review
+					? "Unless the fraud check is on for every ship, you have HQ sign-off, so this approval is final: stamps are paid right away."
+					: 'Unless the fraud check is on for every ship, it goes to HQ for sign-off. Stamps are paid then.';
+		}
+		if (stage === 'fraud') return 'Passing sends it to HQ for sign-off. You can only lower the hours.';
+		return 'Signing off pays the stamps and boxes, and sends the ship to the Unified YSWS DB.';
+	});
 </script>
 
-<div class="crumbs"><a href="/review">Review queue</a> / Submission #{page.params.id}</div>
+{#snippet icon(state)}
+	<!-- A check's state as a shape as well as a color: tick, cross, bang, question. -->
+	<svg class="state {state}" viewBox="0 0 16 16" aria-hidden="true">
+		{#if state === 'pass'}<path d="M3.5 8.5l3 3 6-7" />
+		{:else if state === 'fail'}<path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+		{:else if state === 'warn'}<path d="M8 3.5v6M8 12.2v.3" />
+		{:else}<path d="M5.8 5.8a2.3 2.3 0 1 1 3 2.2c-.6.2-.8.6-.8 1.2v.6M8 12.2v.3" />{/if}
+	</svg>
+{/snippet}
 
 {#if error}
-	<p class="callout warn">{error}</p>
+	<div class="review-page" data-theme={theme}>
+		<header class="rv-bar"><a class="back" href="/review">Queue</a></header>
+		<p class="callout warn" style="margin: 16px">{error}</p>
+	</div>
 {:else if d}
 	{@const p = d.project}
-	<div class="stack-lg">
-		<div class="page-head" style="margin: 0">
-			<div class="stack-sm">
-				<h1>{p.name}</h1>
-				<span class="muted">by {d.user.name} ({d.user.email}{d.user.slack_id ? `, Slack ${d.user.slack_id}` : ''}) · submitted {date(d.submission.submitted_at)}</span>
-			</div>
-			<span class="badge {d.submission.status === 'pending' ? 'info' : d.submission.status === 'approved' ? 'good' : 'warn'}">{d.submission.status}</span>
-		</div>
-
-		{#if d.projects_sharing_links.length}
-			<section class="callout warn">
-				<strong>Other projects use the same repo or demo link</strong>
-				<ul class="small">
-					{#each d.projects_sharing_links as o}<li>{o.name} by {o.user_name} · {o.repo_url ?? ''} {o.demo_url ?? ''}</li>{/each}
-				</ul>
-			</section>
-		{/if}
-		{#if d.hackatime?.convicted}<p class="callout warn"><strong>Hackatime has flagged this person as cheating.</strong></p>{/if}
-		{#if d.hackatime_error}<p class="callout warn">Hackatime: {d.hackatime_error}</p>{/if}
-		{#if !d.user.ysws_eligible}<p class="callout info small">Identity: {d.user.verification_status}, not YSWS-eligible yet. They can still ship, but can't buy until verified.</p>{/if}
-
-		{#if result}
-			<p class="callout good" role="status">Saved. Paid {result.stamps_paid} stamps{result.boxes_granted.length ? ` and granted ${result.boxes_granted.length} box(es)` : ''}.</p>
-		{/if}
-
-		<div class="grid-2">
-			<div class="stack">
-				<section class="card">
-					<h2>Project</h2>
-					<p style="white-space: pre-wrap">{p.description}</p>
-					<div class="row small">
-						{#if p.demo_url}<a class="chip" href={p.demo_url} target="_blank" rel="noreferrer">▶ Demo</a>{/if}
-						{#if p.repo_url}<a class="chip" href={p.repo_url} target="_blank" rel="noreferrer">Repo</a>{/if}
-						{#if p.screenshot_url}<a class="chip" href={p.screenshot_url} target="_blank" rel="noreferrer">Screenshot</a>{/if}
-					</div>
-					{#if p.screenshot_url}<img src={p.screenshot_url} alt="Screenshot" style="max-height: 280px; object-fit: contain; align-self: flex-start" />{/if}
-				</section>
-
-				{#if d.submission.status === 'pending'}
-					<form class="card" onsubmit={decide}>
-						<h2>Decision</h2>
-						<div class="row">
-							<label class="check"><input type="radio" bind:group={decision} value="approved" /> Approve</label>
-							<label class="check"><input type="radio" bind:group={decision} value="rejected" /> Reject</label>
-						</div>
-						{#if decision === 'approved'}
-							<label class="field">
-								<span>Hours to approve <em>up to {hours(d.submission.new_seconds)}</em></span>
-								<input type="number" min="0" step="0.01" max={Math.round(d.submission.new_seconds / 36) / 100} bind:value={approvedHours} style="max-width: 160px" />
-								<small>Time you cut is gone for good: it can't be shipped again.</small>
-							</label>
-						{/if}
-						<label class="field">
-							<span>Feedback for them <em>{decision === 'rejected' ? 'required' : 'optional'}</em></span>
-							<textarea bind:value={feedback} required={decision === 'rejected'}></textarea>
-						</label>
-						<label class="field">
-							<span>Internal notes <em>reviewers only</em></span>
-							<textarea bind:value={notes}></textarea>
-						</label>
-						{#if formError}<p class="callout warn small">{formError}</p>{/if}
-						<div class="row"><button class="btn primary" disabled={busy}>{busy ? 'Saving…' : decision === 'approved' ? 'Approve' : 'Reject'}</button></div>
-					</form>
+	{@const reship = p.submissions.some((s) => s.id < sub.id && s.status === 'approved')}
+	<div class="review-page" data-theme={theme}>
+		<!-- The site's nav steps aside on this page: one slim bar to get back to
+		     the queue or on to the next ship. -->
+		<header class="rv-bar">
+			<a class="back" href="/review?stage={queueStage}">
+				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5" /></svg>
+				{STAGES[queueStage].label} queue
+			</a>
+			<span class="where muted">Ship #{id}</span>
+			<span class="claim">
+				{#if stage && mine}
+					Yours until {time(d.claim.expires_at)}
+					<button class="link-btn" onclick={claim}>Renew</button>
+				{:else if stage && d.claim}
+					{d.claim.name} has it until {time(d.claim.expires_at)}
+				{:else if stage && d.can_decide}
+					<button class="btn small ghost" onclick={claim}>Claim</button>
 				{/if}
+			</span>
+			<div class="themes" role="group" aria-label="Theme">
+				{#each THEMES as [key, label] (key)}
+					<button aria-pressed={theme === key} onclick={() => setTheme(key)}>{label}</button>
+				{/each}
+			</div>
+			<button class="btn small primary" onclick={nextReview} disabled={moving} title={stage && d.can_decide && !result ? 'Skips this ship for 3 hours and opens the next one' : ''}>
+				{moving ? 'Finding one…' : 'Next review'}
+				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>
+			</button>
+		</header>
+		{#if claimError || nextMsg}
+			<p class="notice small" role="status">{claimError || nextMsg}</p>
+		{/if}
 
-				<section class="card">
-					<h2>Earlier ships</h2>
-					<ul class="list small">
-						{#each p.submissions as s}
-							<li class="stack-sm">
-								<strong>#{s.id} · {s.status} · {date(s.submitted_at)}</strong>
-								<span class="muted">Claimed {hours(s.new_seconds)}{s.approved_seconds != null ? ` · approved ${hours(s.approved_seconds)}` : ''}</span>
-								{#if s.feedback}<span>Feedback: {s.feedback}</span>{/if}
-								{#if s.internal_notes}<span class="muted">Notes: {s.internal_notes}</span>{/if}
-							</li>
-						{/each}
-					</ul>
-				</section>
+		<div class="body">
+			<!-- What a reviewer needs for every ship, always in view. -->
+			<section class="base" aria-label="The project">
+				{#if p.screenshot_url}
+					<a class="shot" href={p.screenshot_url} target="_blank" rel="noreferrer"><img src={p.screenshot_url} alt="Screenshot of {p.name}" /></a>
+				{/if}
+				<div class="summary">
+					<div class="title-row">
+						<h1>{p.name}</h1>
+						<span class="badge {statusTone(sub.status)}">{STATUS_LABELS[sub.status] ?? sub.status}</span>
+						{#if reship}<span class="badge">Update</span>{/if}
+					</div>
+					<p class="description" title={p.description}>{p.description}</p>
+					<div class="links">
+						{#if p.demo_url}<a class="btn small primary" href={p.demo_url} target="_blank" rel="noreferrer">Try the demo</a>{/if}
+						{#if p.repo_url}<a class="btn small ghost" href={p.repo_url} target="_blank" rel="noreferrer">Repo</a>{/if}
+						<span class="muted small">shipped {date(sub.submitted_at)}</span>
+					</div>
+					<div class="maker small">
+						<strong>{d.user.name}</strong>
+						<span class="muted">{d.user.slack_id ?? 'no Slack'} · {d.user.verification_status}{d.user.ysws_eligible ? ', YSWS-eligible' : ', not YSWS-eligible'}</span>
+						{#if stage === 'fraud' && d.telescreen_url}
+							<a href={d.telescreen_url} target="_blank" rel="noreferrer">Telescreen</a>
+						{/if}
+					</div>
+					{#if d.user.reviewer_note}<p class="note small" title={d.user.reviewer_note}>{d.user.reviewer_note}</p>{/if}
+				</div>
+				<div class="flags">
+					<div class="flags-head">
+						<h2>Checks</h2>
+						<span class="small" class:ok={failing.length === 0}>{failing.length ? `${failing.length} to look at · ${passing.length} passed` : `All ${passing.length} passed`}</span>
+					</div>
+					{#if failing.length}
+						<ul class="checks">
+							{#each failing as c (c.id)}
+								{@const state = c.status === 'inconclusive' ? 'unknown' : c.severity === 'info' || c.severity === 'warn' ? 'warn' : 'fail'}
+								<li class={state} title={c.summary}>
+									{@render icon(state)}
+									<div>
+										<strong>{c.status === 'inconclusive' ? "Couldn't check: " : ''}{c.name}</strong>
+										{#if c.fraud}<span class="tag">fraud signal</span>{/if}
+										{#if c.summary}<p>{c.summary}</p>{/if}
+									</div>
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<p class="small muted">Nothing flagged. The full list is below.</p>
+					{/if}
+				</div>
+			</section>
+
+			<!-- The details, in tabs. Only this part scrolls. -->
+			<div class="evidence">
+				<div class="tab-bar" role="tablist" aria-label="Details">
+					{#each TABS as [key, label] (key)}
+						<button role="tab" id="tab-{key}" aria-selected={tab === key} aria-controls="panel-{key}" tabindex={tab === key ? 0 : -1}
+							onclick={() => (tab = key)} onkeydown={tabKeys}>
+							{label}
+							{#if key === 'checks'}<span class="count" class:bad={failing.length}>{failing.length ? `${failing.length} to look at` : 'all passed'}</span>
+							{:else if key === 'github'}<span class="count">{d.github ? `${d.github.commits.length}${d.github.truncated ? '+' : ''} commits` : 'no data'}</span>
+							{:else}<span class="count">{d.hackatime ? hours(d.hackatime.seconds) : 'no data'}</span>{/if}
+						</button>
+					{/each}
+				</div>
+
+				{#if tab === 'checks'}
+					<div class="tab-panel" role="tabpanel" id="panel-checks" aria-labelledby="tab-checks">
+						<section class="part two">
+							<div class="stack">
+								<div class="stack-sm">
+									<h2>Every check</h2>
+									<ul class="checks">
+										{#each d.checks as c (c.id)}
+											{@const state = c.status === 'pass' ? 'pass' : c.status === 'inconclusive' ? 'unknown' : c.severity === 'info' || c.severity === 'warn' ? 'warn' : 'fail'}
+											<li class="{state} flat">{@render icon(state)}<div><span>{c.name}</span>{#if c.summary}<p>{c.summary}</p>{/if}</div></li>
+										{/each}
+									</ul>
+								</div>
+								<div class="stack-sm">
+									<h2>{d.user.name}</h2>
+									<p class="small muted">{d.user.email}</p>
+									{#if noteDraft === null}
+										{#if d.user.reviewer_note}<p class="pre small note full">{d.user.reviewer_note}</p>{/if}
+										<button class="link-btn small" onclick={() => (noteDraft = d.user.reviewer_note ?? '')}>{d.user.reviewer_note ? 'Edit the note on them' : 'Add a note on them'}</button>
+									{:else}
+										<label class="field">
+											<span>Note on {d.user.name}</span>
+											<textarea bind:value={noteDraft} style="min-height: 80px"></textarea>
+											<small>Reviewers only. Shown on all their ships.</small>
+										</label>
+										<div class="row">
+											<button class="btn small primary" onclick={saveNote}>Save</button>
+											<button class="btn small ghost" onclick={() => (noteDraft = null)}>Cancel</button>
+										</div>
+										{#if noteError}<p class="callout warn small">{noteError}</p>{/if}
+									{/if}
+									{#if p.submissions.length > 1}
+										<h2 style="margin-top: 12px">Ships</h2>
+										<ul class="ships small">
+											{#each p.submissions as s (s.id)}
+												<li>
+													{#if s.id === sub.id}<strong>This ship</strong>{:else}<a href="/review/{s.id}">#{s.id}</a>{/if}
+													<span class="muted">{STATUS_LABELS[s.status] ?? s.status} · {hours(s.new_seconds)} claimed{s.approved_seconds != null ? `, ${hours(s.approved_seconds)} approved` : ''} · {date(s.submitted_at)}</span>
+												</li>
+											{/each}
+										</ul>
+									{/if}
+								</div>
+							</div>
+							<div class="stack-sm">
+								<h2>Timeline</h2>
+								<ol class="timeline">
+									{#each d.events as ev (ev.id)}
+										{@const hidden = ev.kind === 'internal_comment' || ev.kind === 'flagged' || (!ev.message && ev.internal)}
+										<li class:internal={hidden} class:other={ev.submission_id !== sub.id}>
+											<div class="row between small">
+												<span>
+													{#if ev.kind === 'flagged'}<strong>{EVENT_LABELS.flagged}</strong>{:else}<strong>{ev.actor?.name ?? 'Someone'}</strong> {EVENT_LABELS[ev.kind] ?? ev.kind}{/if}
+													{#if ev.seconds != null} · {hours(ev.seconds)}{/if}
+													<span class="muted"> · ship #{ev.submission_id}</span>
+												</span>
+												<span class="muted">{date(ev.created_at)}{ev.edited_at ? ' (edited)' : ''}</span>
+											</div>
+											{#if ev.message}<p><span class="badge info tiny">They see this</span> {ev.message}</p>{/if}
+											{#if ev.deflation_reason}<p class="pre"><span class="badge tiny">Deflated because</span> {ev.deflation_reason}</p>{/if}
+											{#if ev.internal}<p class="pre"><span class="badge tiny">Reviewers only</span> {ev.internal}</p>{/if}
+										</li>
+									{:else}
+										<li class="muted small">Nothing yet.</li>
+									{/each}
+								</ol>
+								<form class="stack-sm" onsubmit={postComment}>
+									<label class="field">
+										<span>Comment</span>
+										<textarea bind:value={comment.message} style="min-height: 64px" placeholder={comment.internal ? 'A note for other reviewers' : 'A message for them, shown on their project page'}></textarea>
+									</label>
+									<div class="row between">
+										<label class="check small"><input type="checkbox" bind:checked={comment.internal} /> Only reviewers can see this</label>
+										<button class="btn small" disabled={!comment.message.trim()}>{comment.internal ? 'Add note' : 'Send to them'}</button>
+									</div>
+									{#if commentError}<p class="callout warn small">{commentError}</p>{/if}
+								</form>
+							</div>
+						</section>
+						<section class="part unified" aria-label="What goes to the Unified YSWS DB">
+							<div class="row between">
+								<h2>What goes to the Unified YSWS DB</h2>
+								{#if d.unified_preview}
+									<span class="small" class:ok={d.unified_preview.signed_off && !d.unified_preview.missing.length}>
+										{!d.unified_preview.signed_off ? 'Sent once HQ signs it off' : d.unified_preview.missing.length ? 'Held back until it’s complete' : 'Ready: the sync sends it with Submit to Unified YSWS ticked'}
+									</span>
+								{/if}
+							</div>
+							{#if d.unified_preview}
+								{@const u = d.unified_preview}
+								{#if u.missing.length}
+									<p class="callout warn small">"Submit to Unified YSWS" waits for: {u.missing.join(', ')}.</p>
+								{/if}
+								<div class="unified-grid">
+									<div class="stack-sm">
+										<span class="small muted">Optional - Override Hours Spent</span>
+										<strong class="hours-sent">{u.hours}h</strong>
+										<span class="small muted">Optional - Override Hours Spent Justification{u.signed_off ? '' : ' (so far; HQ’s sign-off adds a line)'}</span>
+										<pre class="justification">{u.justification}</pre>
+									</div>
+									<dl class="sent-fields small">
+										{#each u.fields as f (f.name)}
+											<dt>{f.name}</dt>
+											<dd class:missing={f.missing}>{f.missing ? 'Missing' : f.value}</dd>
+										{/each}
+									</dl>
+								</div>
+							{:else}
+								<p class="small muted">Nothing yet: the row is written once a reviewer approves the ship. Its justification carries Hackatime's numbers, the technical features, the reviewer's justification, every deflation and why, the fraud check if there was one, and HQ's sign-off.</p>
+							{/if}
+						</section>
+					</div>
+				{:else if tab === 'github'}
+					<div class="tab-panel part" role="tabpanel" id="panel-github" aria-labelledby="tab-github">
+						<GitHubPanel github={d.github} githubError={d.github_error} repoUrl={p.repo_url} days={d.days} windowStart={d.window_start} {reship} />
+					</div>
+				{:else}
+					<div class="tab-panel part" role="tabpanel" id="panel-hackatime" aria-labelledby="tab-hackatime">
+						<HackatimePanel hackatime={d.hackatime} hackatimeError={d.hackatime_error} submission={sub} earlierSeconds={p.approved_seconds}
+							days={d.days} windowStart={d.window_start} {reship} checks={d.checks} />
+					</div>
+				{/if}
 			</div>
 
-			<aside class="stack">
-				<section class="card">
-					<h2>Hours</h2>
-					<p><strong>{hours(d.submission.new_seconds)}</strong> claimed by this ship</p>
-					<p class="small muted">Project total when submitted: {hours(d.submission.hackatime_seconds)} · approved so far: {hours(p.approved_seconds)}</p>
-					{#if d.hackatime}
-						<hr />
-						<span class="small muted">Hackatime now</span>
-						<ul class="list small">
-							{#each d.hackatime.projects as h}<li><span style="flex: 1">{h.name}</span>{hours(h.seconds)}</li>{/each}
-						</ul>
-					{/if}
-				</section>
+			<!-- The hours and the decision, sized to the window. -->
+			<aside class="rail" id="decide" aria-label="Decision">
+				<dl class="numbers">
+					<div class="lead"><dt>Claimed</dt><dd>{hours(sub.new_seconds)}</dd></div>
+					{#if sub.approved_seconds != null}<div><dt>Approved so far</dt><dd>{hours(sub.approved_seconds)}</dd></div>{/if}
+					<div><dt>Hackatime now</dt><dd>{d.hackatime ? hours(d.hackatime.seconds) : '–'}</dd></div>
+					<div><dt>Earlier ships</dt><dd>{hours(p.approved_seconds)}</dd></div>
+				</dl>
+
+				{#if result}
+					<div class="callout good small" role="status">
+						<strong>Saved. It's now: {STATUS_LABELS[d.submission.status] ?? d.submission.status}.</strong>
+						{#if result.stamps_paid || result.boxes_granted.length}
+							<span>Paid {result.stamps_paid} stamps{result.boxes_granted.length ? ` and gave ${result.boxes_granted.length} box(es)` : ''}.</span>
+						{/if}
+					</div>
+				{/if}
+				{#if stage && d.can_decide}
+					<form class="decision" onsubmit={decide}>
+						<h2>{STAGES[stage].label}</h2>
+						<div class="form-cols">
+							<div class="form-a">
+								{#if stage !== 'review'}
+									<div class="chain small">
+										{#if approval}<p>{approval.actor?.name ?? 'A reviewer'} approved <strong>{hours(approval.seconds)}</strong> of {hours(sub.new_seconds)} · {date(approval.created_at)}</p>{/if}
+										{#if sub.technical_features}<p><span class="muted">Technical features:</span> {sub.technical_features}</p>{/if}
+										{#if approval?.internal}<p class="pre"><span class="muted">Justification:</span> {approval.internal}</p>{/if}
+										{#if approval?.deflation_reason}<p><span class="muted">Deflated because:</span> {approval.deflation_reason}</p>{/if}
+										{#if sub.override_reason}
+											<p class="override">Approved for <strong>more than Hackatime tracked</strong> ({hours(sub.approved_seconds)} of {hours(sub.new_seconds)}): {sub.override_reason}</p>
+										{/if}
+										{#if sub.fraud_reasons?.length}
+											<p>Sent to the fraud check for: {#each sub.fraud_reasons as r, i}{i ? ', ' : ''}<span class="badge warn">{reasonLabel(r)}</span>{/each}</p>
+										{/if}
+										{#if fraudPass}
+											<p>{fraudPass.actor?.name} {fraudPass.seconds < approval?.seconds ? `cut it to ${hours(fraudPass.seconds)}` : 'passed it'} in the fraud check{fraudPass.deflation_reason ? `: ${fraudPass.deflation_reason}` : ''}{fraudPass.internal ? ` (${fraudPass.internal})` : ''}</p>
+										{:else if stage === 'hq'}
+											<p class="muted">No fraud check: nothing was flagged.</p>
+										{/if}
+									</div>
+								{/if}
+								<div class="row actions">
+									<label class="check"><input type="radio" bind:group={action} value="approve" /> {approveWord}</label>
+									<label class="check"><input type="radio" bind:group={action} value="reject" /> Reject</label>
+									{#if stage !== 'review'}<label class="check"><input type="radio" bind:group={action} value="send_back" /> Send back</label>{/if}
+								</div>
+								{#if action === 'approve'}
+									<label class="field">
+										<span>Hours</span>
+										<input type="number" min="0" step="0.01" max={overriding ? undefined : toHours(maxSeconds)} bind:value={approvedHours} />
+										<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}; more needs a reason.` : `Up to ${hours(maxSeconds)}.`} {deflatedBy > 0 ? `Deflated by ${hours(deflatedBy)}: cut time can't be shipped again.` : "Cut time can't be shipped again."}</small>
+									</label>
+									{#if deflatedBy > 0}
+										<label class="field grow">
+											<span>Why deflated?</span>
+											<textarea bind:value={deflationReason} required placeholder="For example: about 2 hours were a tutorial followed line by line."></textarea>
+											<small>Required. Reviewers only; goes to the Unified YSWS DB.</small>
+										</label>
+									{/if}
+									{#if canOverride}
+										{#if goingOver}
+											<label class="field grow">
+												<span>Why more than Hackatime?</span>
+												<textarea bind:value={overrideReason} required placeholder="For example: 3 hours soldering and testing the board, which Hackatime can't track."></textarea>
+												<small>Required to go over. Goes to HQ and the Unified YSWS DB.</small>
+											</label>
+										{/if}
+									{/if}
+									{#if stage === 'review'}
+										<label class="check small"><input type="checkbox" bind:checked={sendToFraud} /> Send it to the fraud check</label>
+									{/if}
+									<p class="small muted">{whatNext}</p>
+								{/if}
+							</div>
+							<div class="form-b">
+								{#if action === 'approve' && stage === 'review'}
+									<label class="field grow">
+										<span>Technical features</span>
+										<textarea bind:value={technicalFeatures} required placeholder="For example: a level editor, online leaderboards, and its own physics engine."></textarea>
+										<small>Required. What accounts for the hours. Goes to the Unified YSWS DB.</small>
+									</label>
+								{/if}
+								<label class="field grow">
+									<span>{action === 'send_back' ? 'Why, for the reviewer who picks it up' : stage === 'review' ? 'Additional justification' : 'Notes'}</span>
+									<textarea bind:value={notes} required={action === 'send_back'} placeholder={stage === 'review' && action === 'approve' ? 'What you checked: you ran it, the commits match the time, the demo works.' : ''}></textarea>
+									<small>
+										{action === 'send_back' ? 'Required. ' : 'Reviewers only. '}{stage === 'review' && action === 'approve' ? 'Goes to the Unified YSWS DB.' : ''}
+									</small>
+								</label>
+								{#if action !== 'send_back'}
+									<label class="field grow">
+										<span>Feedback for them</span>
+										{#if templates.length}
+											<select onchange={useTemplate} aria-label="Insert a feedback template">
+												<option value="">Insert a template…</option>
+												{#each templates as t}<option value={t.id}>{t.title}</option>{/each}
+											</select>
+										{/if}
+										<textarea bind:value={feedback} required={action === 'reject'}></textarea>
+										<small>{action === 'reject' ? 'Required. ' : 'Optional. '}They see this on their project page.</small>
+									</label>
+								{/if}
+								{#if formError}<p class="callout warn small">{formError}</p>{/if}
+								<button class="btn primary submit" disabled={busy}>
+									{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Reject' : 'Send back'}
+								</button>
+							</div>
+						</div>
+					</form>
+				{:else if stage}
+					<h2>{STAGES[stage].label}</h2>
+					<p class="callout info small">{d.cant_decide_reason}</p>
+				{:else if !result}
+					<p class="callout info small">This ship has been decided: {STATUS_LABELS[sub.status] ?? sub.status}{sub.approved_seconds != null ? `, ${hours(sub.approved_seconds)}` : ''}.</p>
+				{/if}
 			</aside>
 		</div>
 	</div>
 {:else}
-	<p class="muted">Loading…</p>
+	<p class="loading muted">Loading… (this asks Hackatime and GitHub, so it can take a moment)</p>
 {/if}
+
+<style>
+	/* The review page fills the window like an app (after Ari): a slim bar,
+	   then the summary across the top, the details under it (the only part
+	   that scrolls), and the decision in a rail sized to the window. On small
+	   or short screens it falls back to one scrolling page. */
+	.review-page {
+		/* Tokens of its own, so the three themes below can swap them. */
+		--rv-page: transparent;
+		--rv-surface: var(--row-bg);
+		--rv-rail: rgb(0 0 0 / 0.3);
+		--rv-line: rgb(255 255 255 / 0.13);
+		--rv-sunk: rgb(0 0 0 / 0.28);
+		--rv-bar: rgb(0 0 0 / 0.55);
+		--rv-tabs: rgb(30 28 28 / 0.92);
+		--rv-on-danger: #000;
+		font-family: 'Crimson Pro', Georgia, serif;
+		font-size: 19px;
+		color: var(--text);
+		background: var(--rv-page);
+		min-height: 100dvh;
+		display: flex;
+		flex-direction: column;
+	}
+	/* Dark and light are calmer than the photo: a soft slate and a warm paper,
+	   neither pure black nor white. */
+	.review-page[data-theme='dark'] {
+		color-scheme: dark;
+		--bg: #1f2227; --rv-page: #1f2227; --rv-surface: #262a30; --rv-rail: #22262b; --rv-bar: #1b1e22; --rv-tabs: #262a30;
+		--rv-line: #363c44; --rv-sunk: #1d2025; --row-bg: #262a30;
+		--text: #e4e2dc; --muted: #a8acb2; --faint: #9095a0; --ink: #16181b;
+		--body: #3a4049; --head: #5d6776; --deep: #353b43; --deepest: #191b1f; --light: #4a515b;
+		--navy: #2f3540; --navy-deep: #1b1e23;
+		--good: #93c77f; --good-bg: #26312a; --warn: #e2a56e; --warn-bg: #3a2f26;
+		--info: #8fb3e3; --info-bg: #243142; --danger: #e8836f; --rv-on-danger: #16181b;
+	}
+	.review-page[data-theme='light'] {
+		color-scheme: light;
+		--bg: #e8e4dc; --rv-page: #e8e4dc; --rv-surface: #f3f0ea; --rv-rail: #ece8e0; --rv-bar: #ddd8ce; --rv-tabs: #f3f0ea;
+		--rv-line: #d3cdc2; --rv-sunk: #e6e1d8; --row-bg: #f3f0ea;
+		--text: #2b2c2f; --muted: #5d6067; --faint: #6c6f76; --ink: #2b2c2f;
+		--body: #dbd5ca; --head: #c3baa9; --deep: #ddd7cc; --deepest: #e4dfd6; --light: #cfc8bb;
+		--navy: #e0dad0; --navy-deep: #fbf9f5;
+		--good: #3f7a2c; --good-bg: #e0ead6; --warn: #a3541d; --warn-bg: #f2e3d5;
+		--info: #2f5f9c; --info-bg: #dce5f0; --danger: #b13b27; --rv-on-danger: #fff;
+	}
+	.review-page[data-theme='light'] :global(.callout),
+	.review-page[data-theme='dark'] :global(.callout) { border-color: var(--rv-line); }
+	.review-page[data-theme='light'] :global(.btn.ghost),
+	.review-page[data-theme='dark'] :global(.btn.ghost) { background: transparent; }
+	.review-page :global(.small) { font-size: 17px; }
+	.review-page :global(h2) { font-size: 24px; }
+	.review-page :global(.btn.small) { font-size: 18px; padding: 2px 12px; }
+	.review-page :global(.badge) { font-size: 16px; padding: 1px 10px; }
+	.review-page :global(.field > span) { font-size: 18px; padding: 3px 12px; border-radius: 10px 10px 0 0; }
+	.review-page :global(.field input), .review-page :global(.field textarea), .review-page :global(.field select) { font-size: 18px; padding: 6px 12px; border-radius: 0 0 10px 10px; }
+	/* The template picker sits flush on the text box under it. */
+	.review-page :global(.field span + select) { border-radius: 0; margin: 0; box-shadow: inset 0 -1px 0 var(--rv-line); }
+	.review-page :global(.field select + textarea) { border-radius: 0 0 10px 10px; margin-top: 0; }
+	.review-page :global(.field small) { font-size: 15px; padding-top: 3px; }
+	.review-page :global(.callout) { margin: 0; padding: 10px 14px; }
+	.loading { padding: 24px; }
+
+	.rv-bar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px 14px;
+		padding: 8px 16px;
+		background: var(--rv-bar);
+		border-bottom: 1px solid var(--rv-line);
+		font-size: 17px;
+	}
+	.back { display: inline-flex; align-items: center; gap: 2px; padding: 2px 12px 2px 6px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--head); color: var(--text); text-decoration: none; }
+	.back:hover { background: var(--deep); }
+	.back svg, .rv-bar .btn svg, .state { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+	.claim { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+	.themes { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--rv-sunk); }
+	.themes button { padding: 1px 12px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 16px; cursor: pointer; }
+	.themes button[aria-pressed='true'] { background: var(--body); color: var(--text); }
+	.notice { margin: 0; padding: 6px 16px; background: var(--info-bg); border-bottom: 1px solid var(--rv-line); }
+
+	.body {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas: 'base' 'rail' 'evidence';
+		background: var(--rv-surface);
+		flex: 1;
+	}
+	.base { grid-area: base; }
+	.evidence { grid-area: evidence; }
+	.rail { grid-area: rail; }
+
+	.base { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px 22px; padding: 16px 20px; border-bottom: 1px solid var(--rv-line); }
+	@media (min-width: 760px) {
+		.base { grid-template-columns: minmax(0, 200px) minmax(0, 1.15fr) minmax(0, 1fr); }
+		.base:not(:has(.shot)) { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+	}
+	.shot { display: block; align-self: start; border-radius: 10px; overflow: hidden; background: var(--deepest); }
+	.shot img { display: block; width: 100%; max-height: 180px; object-fit: contain; }
+	.summary { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+	.title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+	.title-row h1 { font-size: 34px; line-height: 1.05; overflow-wrap: anywhere; }
+	.description { margin: 0; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+	.links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+	.maker { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+	.note { margin: 0; padding: 4px 10px; border-radius: 8px; background: var(--rv-sunk); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+	.note.full { display: block; white-space: pre-wrap; }
+	.flags { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+	.flags-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+
+	.checks { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 5px; }
+	.checks li { display: flex; gap: 8px; align-items: flex-start; padding: 5px 10px; border-radius: 8px; font-size: 17px; line-height: 1.3; }
+	.checks li .state { margin-top: 2px; }
+	.checks li p { margin: 1px 0 0; color: var(--muted); font-size: 16px; }
+	.flags .checks li p { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+	.checks li.fail { background: var(--warn-bg); box-shadow: inset 0 0 0 1px var(--danger); }
+	.checks li.fail .state { color: var(--danger); }
+	.checks li.warn { background: var(--warn-bg); }
+	.checks li.warn .state { color: var(--warn); }
+	.checks li.unknown { background: var(--rv-sunk); box-shadow: inset 0 0 0 1px var(--head); }
+	.checks li.pass .state { color: var(--good); }
+	.checks li.flat { padding-block: 3px; }
+	.tag { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; font-size: 13px; background: var(--danger); color: var(--rv-on-danger); vertical-align: 2px; }
+
+	.evidence { display: flex; flex-direction: column; min-width: 0; }
+	.tab-bar { display: flex; gap: 4px; padding: 8px 20px 0; border-bottom: 1px solid var(--rv-line); position: sticky; top: 0; z-index: 1; background: var(--rv-tabs); }
+	.tab-bar button { display: inline-flex; align-items: baseline; gap: 8px; padding: 6px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 18px; cursor: pointer; }
+	.tab-bar button:hover { color: var(--text); }
+	.tab-bar button[aria-selected='true'] { color: var(--text); border-bottom-color: var(--text); }
+	.count { font-size: 14px; padding: 0 8px; border-radius: 999px; background: var(--rv-sunk); color: var(--muted); }
+	.count.bad { background: var(--warn-bg); color: var(--warn); }
+	.tab-panel { display: flex; flex-direction: column; }
+	.part { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px; min-width: 0; }
+	.part + .part { border-top: 1px solid var(--rv-line); }
+	.two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px 28px; }
+	@media (min-width: 1200px) { .two { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); } }
+	.unified-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px 28px; }
+	@media (min-width: 1200px) { .unified-grid { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); } }
+	.hours-sent { font-size: 26px; font-weight: 400; font-variant-numeric: tabular-nums; }
+	.justification { margin: 0; padding: 10px 14px; border-radius: 10px; background: var(--rv-sunk); font: inherit; font-size: 17px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+	.sent-fields { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; margin: 0; align-content: start; }
+	.sent-fields dt { color: var(--muted); }
+	.sent-fields dd { margin: 0; overflow-wrap: anywhere; }
+	.sent-fields dd.missing { color: var(--warn); }
+	.ships { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
+
+	.rail { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px; background: var(--rv-rail); border-bottom: 1px solid var(--rv-line); min-width: 0; }
+	.numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px; margin: 0; }
+	.numbers div { padding: 4px 10px; border-radius: 8px; background: var(--rv-sunk); }
+	.numbers dt { color: var(--muted); font-size: 14px; }
+	.numbers dd { margin: 0; font-size: 20px; font-variant-numeric: tabular-nums; }
+	.numbers .lead dd { font-size: 24px; }
+
+	.decision { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+	.form-cols, .form-a, .form-b { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+	.actions { gap: 4px 16px; }
+	.submit { align-self: stretch; }
+	.chain { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-radius: 10px; background: var(--rv-sunk); max-height: 150px; overflow-y: auto; scrollbar-width: thin; }
+	.chain p { margin: 0; }
+	.override { padding: 4px 8px; border: 1px solid var(--warn); background: var(--warn-bg); border-radius: 6px; }
+
+	.timeline { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+	.timeline li { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-radius: 10px; background: var(--rv-sunk); }
+	.timeline li p { margin: 0; }
+	.timeline li.internal { background: transparent; border: 2px dashed var(--deep); }
+	.timeline li.other { opacity: 0.7; }
+	.pre { white-space: pre-wrap; }
+	.tiny { font-size: 14px; padding: 0 8px; }
+
+	/* Big enough for the app layout: nothing but the details scrolls, and the
+	   rail's text boxes share whatever height is left. */
+	@media (min-width: 1000px) and (min-height: 620px) {
+		.review-page { height: 100dvh; overflow: hidden; }
+		.body {
+			min-height: 0;
+			grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+			grid-template-rows: auto minmax(0, 1fr);
+			grid-template-areas: 'base rail' 'evidence rail';
+		}
+		.base { max-height: 42dvh; overflow-y: auto; scrollbar-width: thin; }
+		.evidence { overflow-y: auto; min-height: 0; scrollbar-width: thin; }
+		.rail { border-bottom: 0; border-left: 1px solid var(--rv-line); min-height: 0; overflow-y: auto; scrollbar-width: none; }
+		.decision .form-b { flex: 1; min-height: 0; }
+		.decision .form-cols { flex: 1; min-height: 0; }
+		/* Only the lower text boxes share the leftover height; the reason
+		   boxes above them (deflation, going over) keep their own size. */
+		.decision .form-b .grow { flex: 1 1 0; min-height: 0; }
+		.decision .form-b .grow textarea { flex: 1; min-height: 44px; resize: none; }
+		.decision .form-a .grow textarea { min-height: 52px; height: 52px; }
+		.decision .grow :global(small) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
+	}
+	/* On short screens the text boxes need the room more than their hints do. */
+	@media (min-width: 1000px) and (min-height: 620px) and (max-height: 860px) {
+		.decision .grow :global(small) { display: none; }
+		.decision .form-b .grow textarea { min-height: 36px; }
+	}
+</style>
+

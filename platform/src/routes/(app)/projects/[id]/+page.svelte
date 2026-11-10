@@ -9,7 +9,7 @@
 	import { page } from '$app/state';
 	import { api, get } from '#lib/api.js';
 	import { refresh } from '#lib/session.svelte.js';
-	import { hours, date, projectStatus, EFFECTS, effectShort } from '#lib/format.js';
+	import { hours, date, projectStatus, inReview, EFFECTS, effectShort } from '#lib/format.js';
 
 	// A link as it's written on the card: no https:// or trailing slash.
 	const shortUrl = (url) => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -55,7 +55,9 @@
 	const stampFor = (sub) => postage[(Math.imul(sub.id, 2654435761) >>> 0) % postage.length];
 
 	const latest = $derived(project?.submissions[0]);
-	const isPending = $derived(latest?.status === 'pending');
+	const isPending = $derived(inReview(latest?.status));
+	const shipLabels = { pending: 'In review', final_check: 'Final check', approved: 'Approved', rejected: 'Not approved' };
+	const messageFrom = { comment: 'Comment', approval: 'Reviewer', final_approval: 'Final check', rejection: 'Reviewer', fraud_pass: 'Final check' };
 	// ---- Stamps on the project ----
 	// Stamps stuck on this project are part of it, so they're drawn for anyone
 	// viewing it. Only the owner can stick new ones on or move them; this page
@@ -293,7 +295,9 @@
 					<div class="panel-head">Ship it</div>
 					<div class="panel-body">
 						<span class="small muted">A reviewer tries your project and approves the new hours you tracked on it. Approved hours pay stamps.</span>
-						{#if isPending}
+						{#if latest?.status === 'final_check'}
+							<p class="callout info small">A reviewer approved {hours(latest.approved_seconds)}. It's waiting for a final check; your stamps are paid once it's signed off. You can ship again after that.</p>
+						{:else if isPending}
 							<p class="callout info small">Waiting for review since {date(latest.submitted_at)}{priority ? ', with priority review from your Express stamp' : ''}. The result shows up below.</p>
 						{:else if missing.length}
 							<p class="callout warn small">Before you can ship, add {missing.join(', ')}. <a href="/projects/{project.id}/edit">Edit project</a></p>
@@ -331,15 +335,25 @@
 		<section class="stack ships">
 			<h2>Ships</h2>
 			{#each project.submissions as sub, i}
-				{@const label = sub.status === 'pending' ? 'In review' : sub.status === 'approved' ? 'Approved' : 'Not approved'}
+				{@const label = shipLabels[sub.status] ?? sub.status}
 				<!-- Each ship is a postcard: the reviewer's note on the left, the
 				     stamp (hours), postmark (status and date) and details on the right. -->
 				<article class="postcard {sub.status}" aria-label="Ship #{project.submissions.length - i}: {label}">
 					<div class="message">
 						<h3>Ship #{project.submissions.length - i}</h3>
-						{#if sub.feedback}
+						{#if sub.status === 'final_check'}
+							<p class="note">A reviewer approved {hours(sub.approved_seconds)}. A final check comes next, then your stamps are paid.</p>
+						{/if}
+						{#if sub.messages?.length}
+							{#each sub.messages as m}
+								<p class="note">“{m.message}”</p>
+								<span class="sign">{messageFrom[m.kind] ?? 'Reviewer'} · {date(m.created_at)}</span>
+							{/each}
+						{:else if sub.feedback}
 							<p class="note">“{sub.feedback}”</p>
 							<span class="sign">Your reviewer</span>
+						{:else if sub.status === 'final_check'}
+							<!-- said above -->
 						{:else if sub.status === 'pending'}
 							<p class="note">A reviewer will try your project soon. Keep building while you wait.</p>
 						{:else if sub.status === 'approved'}

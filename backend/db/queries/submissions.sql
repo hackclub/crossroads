@@ -13,9 +13,10 @@ values ($1, $2, $3, $4)
 returning *;
 
 -- name: ClaimedSecondsForUser :one
--- Time the user has already claimed: everything their pending and approved
--- submissions counted, including time a reviewer didn't accept.
+-- Time the user has already claimed: everything their submissions in review
+-- (at any stage) and approved counted, including time a reviewer didn't
+-- accept.
 select coalesce(sum(submissions.new_seconds), 0)::bigint
 from submissions
 join projects on projects.id = submissions.project_id
-where projects.user_id = $1 and submissions.status in ('pending', 'approved');
+where projects.user_id = $1 and submissions.status <> 'rejected';

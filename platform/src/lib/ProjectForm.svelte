@@ -5,7 +5,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, get } from './api.js';
-	import { hours } from './format.js';
+	import { hours, inReview } from './format.js';
 	import ImageDrop from './ImageDrop.svelte';
 
 	let { project: projectProp = null } = $props();
@@ -24,7 +24,7 @@
 	let error = $state('');
 	let saving = $state(false);
 
-	const locked = project?.submissions?.[0]?.status === 'pending';
+	const locked = inReview(project?.submissions?.[0]?.status);
 	const cancelHref = editing ? `/projects/${project.id}` : '/home';
 
 	onMount(async () => {

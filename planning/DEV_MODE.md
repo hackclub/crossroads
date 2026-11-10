@@ -20,6 +20,8 @@ set -a; . ./.env; set +a; go run .
 cd platform && npm install && npm run dev
 ```
 
+In dev mode the backend never starts the Airtable sync or the Sidekick endpoint, even if `AIRTABLE_TOKEN` or `SIDEKICK_SECRET` is set, so nothing can reach Airtable or the Unified YSWS DB.
+
 Open **http://localhost:5173** (use `localhost`, not `127.0.0.1`; the session cookie is tied to the hostname).
 
 The backend still refuses to start without `HCA_CLIENT_ID` and `HCA_CLIENT_SECRET`. In dev mode they can be placeholders like `placeholder`; only the real "Sign in with Hack Club" button needs real ones.
@@ -36,8 +38,9 @@ You can also sign in from a link: `http://localhost:5173/dev/login?name=alice&ro
 
 Once signed in, a purple **Dev mode** box sits bottom right. It has:
 
-- **Sign in as:** one-click switches between alice and bob (participants), rita (reviewer) and adam (admin), staying on the same page.
+- **Sign in as:** one-click switches between alice and bob (participants), rita (reviewer, every review stage) and adam (admin), staying on the same page. For a reviewer with only some stages, use a link like `/dev/login?name=fern&role=reviewer&stages=fraud` (`stages` takes any of `review`, `fraud`, `hq`).
 - **Fake Hackatime:** add hours to any Hackatime project name for the signed-in user. New names become new Hackatime projects you can link.
+- **Fake GitHub, link checks and Unified YSWS DB** for the review page (`backend/devgithub/`, `linkcheck.Dev`, `unified.Dev`). Repos owned by `dev-…` on github.com exist, with made-up commits. Words in a repo's name act out a case: `private`, `missing` or `broken` (doesn't exist), `stale` (no commits since the event started), `template` (a template README), `no-readme`, `team` (someone else made a third of the commits). Demo links on `dev-…` hosts open unless they contain `broken`, and a repo or demo with `double-dip` in it is "already in the Unified YSWS DB". Nothing is sent anywhere real.
 
 Every new dev user starts with three fake Hackatime projects: `crossroads-game` (14h), `personal-site` (6h) and `discord-bot` (2.5h).
 

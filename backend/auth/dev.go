@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"cmp"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -17,6 +18,9 @@ var devName = regexp.MustCompile(`^[a-z0-9-]{1,30}$`)
 // in production: anyone could sign in as anyone.
 //
 // GET /dev/login?name=alice&role=participant|reviewer|admin&verified=1&next=/home
+//
+// Reviewers can decide every review stage unless stages= lists some of
+// review, fraud and hq (stages=hq for an HQ-only reviewer).
 //
 // The user is created on first use with a fake Slack ID (so the dev Hackatime
 // fake can find them), a test address, and verified identity unless
@@ -61,6 +65,16 @@ func (a *Auth) DevLogin(w http.ResponseWriter, r *http.Request) {
 	})
 	if err == nil {
 		_, err = a.Queries.SetUserRole(r.Context(), db.SetUserRoleParams{ID: user.ID, Role: role})
+	}
+	if err == nil {
+		stages := cmp.Or(q.Get("stages"), "review,fraud,hq")
+		reviewer := role == db.UserRoleReviewer
+		_, err = a.Queries.SetUserPermissions(r.Context(), db.SetUserPermissionsParams{
+			ID:             user.ID,
+			CanReview:      reviewer && strings.Contains(stages, "review"),
+			CanFraudReview: reviewer && strings.Contains(stages, "fraud"),
+			CanHqReview:    reviewer && strings.Contains(stages, "hq"),
+		})
 	}
 	var token string
 	if err == nil {

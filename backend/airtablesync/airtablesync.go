@@ -11,20 +11,22 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/scherepi/crossroads-backend/airtable"
 	"github.com/scherepi/crossroads-backend/db"
+	"github.com/scherepi/crossroads-backend/unified"
 )
 
 const (
-	// The YSWS template table that feeds the Unified YSWS DB. A person ticks
-	// its "Automation - Submit to Unified YSWS" box after checking a row; the
-	// sync never does.
-	submissionsTable = "YSWS Project Submission"
-	ordersTable      = "Shop Orders"
+	// The YSWS template table that feeds the Unified YSWS DB. The sync ticks
+	// its "Automation - Submit to Unified YSWS" box on rows HQ has signed off
+	// on Crossroads, once the person is YSWS-eligible. Rows from before HQ
+	// sign-off existed are left for a person to tick.
+	submissionsTable   = "YSWS Project Submission"
+	submitUnifiedField = "Automation - Submit to Unified YSWS"
+	ordersTable        = "Shop Orders"
 )
 
 type Syncer struct {
@@ -53,6 +55,7 @@ func (s *Syncer) Run(ctx context.Context, interval time.Duration) {
 func (s *Syncer) SyncOnce(ctx context.Context) error {
 	return errors.Join(
 		s.syncSubmissions(ctx),
+		s.submitUnified(ctx),
 		// Before pushing orders, so a newly fulfilled one shows as fulfilled
 		// in the same pass.
 		s.pullFulfilled(ctx),
@@ -80,6 +83,50 @@ func (s *Syncer) syncSubmissions(ctx context.Context) error {
 			}); err != nil {
 				return err
 			}
+			if readyForUnified(batch[i]) {
+				if err := s.Queries.MarkUnifiedSubmitted(ctx, batch[i].Submission.ID); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// readyForUnified says whether a row can go to the Unified YSWS DB: HQ signed
+// it off, its owner is YSWS-eligible, and it has everything the Unified YSWS
+// DB needs (the review page's unified_ready check says what's missing).
+func readyForUnified(row db.ListSubmissionsToSyncRow) bool {
+	return row.Submission.HqReviewerID != nil && row.User.YswsEligible && len(unified.Missing(row.User, row.Project)) == 0
+}
+
+// submitUnified sends rows that went into Airtable before they were ready
+// (their owner wasn't YSWS-eligible yet, or a name, address or screenshot was
+// missing) once they are. The whole row goes again, with the box ticked, so
+// the Unified YSWS DB gets what was filled in since.
+func (s *Syncer) submitUnified(ctx context.Context) error {
+	waiting, err := s.Queries.ListSubmissionsToSubmitUnified(ctx)
+	if err != nil {
+		return err
+	}
+	var rows []db.ListSubmissionsToSyncRow
+	for _, w := range waiting {
+		if row := db.ListSubmissionsToSyncRow(w); readyForUnified(row) {
+			rows = append(rows, row)
+		}
+	}
+	for batch := range chunks(rows) {
+		records := make([]airtable.Record, len(batch))
+		for i, row := range batch {
+			records[i] = airtable.Record{ID: *row.Submission.AirtableRecordID, Fields: s.submissionFields(row)}
+		}
+		if err := s.Airtable.Update(ctx, submissionsTable, records); err != nil {
+			return fmt.Errorf("submitting to Unified YSWS: %w", err)
+		}
+		for _, row := range batch {
+			if err := s.Queries.MarkUnifiedSubmitted(ctx, row.Submission.ID); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -98,14 +145,12 @@ func (s *Syncer) submissionFields(row db.ListSubmissionsToSyncRow) airtable.Fiel
 		"Email":           user.Email,
 		"Phone Number":    user.PhoneNumber,
 		"Slack ID":        user.SlackID,
-		"GitHub Username": githubUsername(project.RepoUrl),
+		"GitHub Username": unified.GitHubUsername(project.RepoUrl),
 		"YSWS Eligible":   user.YswsEligible,
 		"Hackatime List":  hackatimeProjects,
 
-		"Optional - Override Hours Spent": hours,
-		"Optional - Override Hours Spent Justification": fmt.Sprintf(
-			"Reviewed on Crossroads. The reviewer approved %.2f of the %.2f new Hackatime hours on this submission.",
-			hours, float64(sub.NewSeconds)/3600),
+		"Optional - Override Hours Spent":               hours,
+		"Optional - Override Hours Spent Justification": s.justification(row),
 		"Justification - Hackatime Project Name(s) + Date Range(s)": fmt.Sprintf("%s, %s to %s",
 			hackatimeProjects, s.HoursStart.Format(time.DateOnly), sub.SubmittedAt.UTC().Format(time.DateOnly)),
 		"Justification - Submitter Hackatime ID": user.SlackID,
@@ -115,6 +160,9 @@ func (s *Syncer) submissionFields(row db.ListSubmissionsToSyncRow) airtable.Fiel
 	}
 	if user.Birthday != nil {
 		f["Birthday"] = user.Birthday.Format(time.DateOnly)
+	}
+	if readyForUnified(row) {
+		f[submitUnifiedField] = true
 	}
 	if row.EarlierApprovals > 0 {
 		f["Optional - Override Duplicate Justification"] = "An update to a project already approved on Crossroads. " +
@@ -132,20 +180,36 @@ func (s *Syncer) submissionFields(row db.ListSubmissionsToSyncRow) airtable.Fiel
 	return f
 }
 
-// githubUsername returns the owner of a github.com repo link, or nil.
-func githubUsername(repoURL *string) *string {
-	if repoURL == nil {
-		return nil
+// justification explains the hours to whoever audits the Unified YSWS DB:
+// where the time came from, and who checked it at each stage.
+func (s *Syncer) justification(row db.ListSubmissionsToSyncRow) string {
+	return unified.Justification(ReviewOf(row, s.HoursStart))
+}
+
+// ReviewOf is what a synced row's justification is written from.
+func ReviewOf(row db.ListSubmissionsToSyncRow, hoursStart time.Time) unified.Review {
+	sub := row.Submission
+	r := unified.Review{
+		HackatimeProjects: sub.HackatimeProjects, HackatimeSeconds: sub.HackatimeSeconds, NewSeconds: sub.NewSeconds,
+		ApprovedSeconds: *sub.ApprovedSeconds, HoursStart: hoursStart, SubmittedAt: sub.SubmittedAt,
+		ReviewerName: row.ReviewerName, ReviewerSeconds: *sub.ApprovedSeconds,
+		ReviewerDeflation: deref(row.ReviewerDeflation), TechnicalFeatures: deref(sub.TechnicalFeatures),
+		Notes: deref(sub.InternalNotes), OverrideReason: deref(sub.OverrideReason),
+		FraudReasons: sub.FraudReasons, FraudReviewer: row.FraudReviewerName, FraudSeconds: row.FraudSeconds,
+		FraudDeflation: deref(row.FraudDeflation), HQName: row.HqReviewerName, HQDeflation: deref(row.HqDeflation),
+		EarlierApproval: row.EarlierApprovals > 0,
 	}
-	u, err := url.Parse(*repoURL)
-	if err != nil || strings.TrimPrefix(strings.ToLower(u.Host), "www.") != "github.com" {
-		return nil
+	if row.ReviewerSeconds != nil {
+		r.ReviewerSeconds = *row.ReviewerSeconds
 	}
-	owner, _, _ := strings.Cut(strings.Trim(u.Path, "/"), "/")
-	if owner == "" {
-		return nil
+	return r
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
 	}
-	return &owner
+	return *s
 }
 
 // pullFulfilled marks orders fulfilled when someone ticks Fulfilled on them in

@@ -4,7 +4,7 @@
 	import { session } from '#lib/session.svelte.js';
 	import Station from '#lib/Station.svelte';
 	import StampIcon from '#lib/StampIcon.svelte';
-	import { hours, approvedSeconds, projectStatus, GOAL_HOURS } from '#lib/format.js';
+	import { hours, approvedSeconds, projectStatus, inReview, GOAL_HOURS } from '#lib/format.js';
 
 	let projects = $state(null);
 	let details = $state({}); // project id → GET /projects/{id}, for unshipped time
@@ -40,7 +40,7 @@
 	// The three hour buckets, in hours, in the bar's order.
 	const approvedH = $derived(projects ? approvedSeconds(projects) / 3600 : 0);
 	const reviewH = $derived(
-		projects ? projects.reduce((t, p) => t + (p.submissions[0]?.status === 'pending' ? p.submissions[0].new_seconds : 0), 0) / 3600 : 0
+		projects ? projects.reduce((t, p) => t + (inReview(p.submissions[0]?.status) ? (p.submissions[0].approved_seconds ?? p.submissions[0].new_seconds) : 0), 0) / 3600 : 0
 	);
 	const unshippedH = $derived(Object.values(details).reduce((t, d) => t + (d.unsubmitted_seconds ?? 0), 0) / 3600);
 
