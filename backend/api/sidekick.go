@@ -321,7 +321,7 @@ func (a *API) skFetchProjects(w http.ResponseWriter, r *http.Request, input json
 	offset := 0
 	if in.Cursor != "" {
 		n, err := strconv.Atoi(strings.TrimPrefix(in.Cursor, "o"))
-		if err != nil || n < 0 {
+		if err != nil || n < 0 || n > math.MaxInt32 {
 			sidekickError(w, http.StatusBadRequest, "VALIDATION_ERROR", "That cursor isn't one of ours.")
 			return
 		}
