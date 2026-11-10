@@ -820,14 +820,17 @@
 		.rail { border-bottom: 0; border-left: 1px solid var(--rv-line); min-height: 0; overflow-y: auto; scrollbar-width: none; }
 		.decision .form-b { flex: 1; min-height: 0; }
 		.decision .form-cols { flex: 1; min-height: 0; }
-		.decision .grow { flex: 1 1 0; min-height: 0; }
-		.decision .grow textarea { flex: 1; min-height: 44px; resize: none; }
+		/* Only the lower text boxes share the leftover height; the reason
+		   boxes above them (deflation, going over) keep their own size. */
+		.decision .form-b .grow { flex: 1 1 0; min-height: 0; }
+		.decision .form-b .grow textarea { flex: 1; min-height: 44px; resize: none; }
+		.decision .form-a .grow textarea { min-height: 52px; height: 52px; }
 		.decision .grow :global(small) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
 	}
 	/* On short screens the text boxes need the room more than their hints do. */
 	@media (min-width: 1000px) and (min-height: 620px) and (max-height: 860px) {
 		.decision .grow :global(small) { display: none; }
-		.decision .grow textarea { min-height: 36px; }
+		.decision .form-b .grow textarea { min-height: 36px; }
 	}
 </style>
 
