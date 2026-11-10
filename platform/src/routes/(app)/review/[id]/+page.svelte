@@ -777,7 +777,12 @@
 		.decision .form-cols { flex: 1; min-height: 0; }
 		.decision .grow { flex: 1 1 0; min-height: 0; }
 		.decision .grow textarea { flex: 1; min-height: 44px; resize: none; }
-		.decision .grow :global(small) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+		.decision .grow :global(small) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
+	}
+	/* On short screens the text boxes need the room more than their hints do. */
+	@media (min-width: 1000px) and (min-height: 620px) and (max-height: 860px) {
+		.decision .grow :global(small) { display: none; }
+		.decision .grow textarea { min-height: 36px; }
 	}
 </style>
 
