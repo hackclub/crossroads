@@ -42,7 +42,7 @@
 	}
 </script>
 
-<section class="card stack">
+<section class="stack code-card">
 	<div class="row between">
 		<h2>Code</h2>
 		{#if github}
@@ -50,6 +50,8 @@
 		{/if}
 	</div>
 
+	<div class="code-grid">
+	<div class="code-left stack">
 	{#if github}
 		<div class="row small facts">
 			<span class="chip">Public</span>
@@ -120,7 +122,8 @@
 			</details>
 		</div>
 	{/if}
-
+		</div>
+		<div class="code-right">
 	{#if github?.commits.length}
 		<div class="stack-sm">
 			<h3 class="small">{github.commits.length}{github.truncated ? '+' : ''} commits {since}</h3>
@@ -136,9 +139,19 @@
 			</ul>
 		</div>
 	{/if}
+		</div>
+	</div>
 </section>
 
 <style>
+	.code-card { container-type: inline-size; }
+	.code-grid { display: flex; flex-direction: column; gap: var(--gap); }
+	.code-right { min-width: 0; }
+	/* Wide: the numbers and charts beside the commit list, like Sidekick. */
+	@container (min-width: 1000px) {
+		.code-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+		.commits { max-height: 380px; }
+	}
 	.facts { gap: 6px 10px; }
 	.facts .chip { font-size: 16px; padding: 0 12px; }
 	details summary { cursor: pointer; color: var(--muted); font-size: 16px; }

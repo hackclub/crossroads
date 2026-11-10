@@ -223,20 +223,17 @@
 	<p class="callout warn">{error}</p>
 {:else if d}
 	{@const p = d.project}
+	{@const reship = p.submissions.some((s) => s.id < sub.id && s.status === 'approved')}
 	<div class="review-page">
-		<header class="head">
-			<div class="title">
-				<a class="back" href="/review?stage={stage ?? 'review'}">
-					<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5" /></svg>
-					Queue
-				</a>
-				<span class="muted">#{id}</span>
-				<h1>{p.name}</h1>
-				<span class="by">by <strong>{d.user.name}</strong></span>
-				<span class="badge {statusTone(sub.status)}">{STATUS_LABELS[sub.status] ?? sub.status}</span>
-			</div>
-			{#if stage}
-				<div class="claim small">
+		<!-- One bar for getting around and holding the ship, as in Ari. -->
+		<header class="topbar">
+			<a class="back" href="/review?stage={stage ?? 'review'}">
+				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5" /></svg>
+				{stage ? STAGES[stage].label : 'Review'} queue
+			</a>
+			<span class="muted">Ship #{id}</span>
+			<div class="claim">
+				{#if stage}
 					{#if mine}
 						<span>Yours until {time(d.claim.expires_at)}</span>
 						<button class="btn small ghost" onclick={claim}>Keep it longer</button>
@@ -251,122 +248,100 @@
 							<button class="btn small ghost" onclick={skip}>Skip</button>
 						{/if}
 					{/if}
-				</div>
-			{/if}
+				{/if}
+				<a class="btn small jump" href="#decide">Decide</a>
+			</div>
 		</header>
 		{#if claimError}<p class="callout warn small">{claimError}</p>{/if}
 		{#if nextMsg}<p class="callout info small" role="status">{nextMsg}</p>{/if}
 
-		<div class="bento">
-			<div class="who">
-				<section class="card">
-					<h2>{d.user.name}</h2>
-					<dl class="facts small">
-						<dt>Email</dt><dd>{d.user.email}</dd>
-						<dt>Slack</dt><dd>{d.user.slack_id ?? 'Not linked'}</dd>
-						<dt>Identity</dt><dd>{d.user.verification_status}{d.user.ysws_eligible ? ', YSWS-eligible' : ', not YSWS-eligible yet'}</dd>
-						<dt>Shipped</dt><dd>{date(sub.submitted_at)}</dd>
-					</dl>
-					{#if stage === 'fraud' && d.telescreen_url}
-						<a class="btn small" href={d.telescreen_url} target="_blank" rel="noreferrer">Telescreen profile</a>
-					{/if}
-					{#if noteDraft === null}
-						{#if d.user.reviewer_note}<p class="pre small note">{d.user.reviewer_note}</p>{/if}
-						<button class="link-btn small" onclick={() => (noteDraft = d.user.reviewer_note ?? '')}>{d.user.reviewer_note ? 'Edit reviewer note' : 'Add a reviewer note'}</button>
-					{:else}
-						<label class="field">
-							<span>Reviewer note</span>
-							<textarea bind:value={noteDraft} style="min-height: 90px"></textarea>
-							<small>Reviewers only. Shown on all of this person's ships.</small>
-						</label>
-						<div class="row">
-							<button class="btn small primary" onclick={saveNote}>Save</button>
-							<button class="btn small ghost" onclick={() => (noteDraft = null)}>Cancel</button>
+		<div class="frame">
+			<main class="pane">
+				<!-- What the automatic checks flagged comes first (Ari's "automated flags"). -->
+				<section class="part flags" aria-label="Checks">
+					{#if failing.length}
+						<div class="part-head">
+							<h2>{failing.length} {failing.length === 1 ? 'thing' : 'things'} to look at</h2>
+							<span class="muted small">Checks run just now</span>
 						</div>
-						{#if noteError}<p class="callout warn small">{noteError}</p>{/if}
+						<ul class="checks">
+							{#each failing as c (c.id)}
+								{@const state = c.status === 'inconclusive' ? 'unknown' : c.severity === 'info' || c.severity === 'warn' ? 'warn' : 'fail'}
+								<li class={state}>
+									{@render icon(state)}
+									<div>
+										<strong>{c.status === 'inconclusive' ? "Couldn't check: " : ''}{c.name}</strong>
+										{#if c.fraud}<span class="tag">fraud signal</span>{/if}
+										{#if c.summary}<p>{c.summary}</p>{/if}
+									</div>
+								</li>
+							{/each}
+						</ul>
 					{/if}
-				</section>
-
-				<section class="card">
-					<h2>Hours</h2>
-					<dl class="numbers">
-						<dt>Claimed by this ship</dt><dd>{hours(sub.new_seconds)}</dd>
-						{#if sub.approved_seconds != null}<dt>Approved so far</dt><dd>{hours(sub.approved_seconds)}</dd>{/if}
-						<dt>Hackatime when shipped</dt><dd>{hours(sub.hackatime_seconds)}</dd>
-						{#if d.hackatime}<dt>Hackatime now</dt><dd>{hours(d.hackatime.seconds)}</dd>{/if}
-						<dt>Approved on earlier ships</dt><dd>{hours(p.approved_seconds)}</dd>
-					</dl>
-					{#if d.hackatime?.projects.length}
-						<p class="small muted">{d.hackatime.projects.map((h) => `${h.name} ${hours(h.seconds)}`).join(' · ')}</p>
-					{/if}
-				</section>
-
-			</div>
-
-			<div class="checks-col">
-				<section class="card">
-					<div class="row between">
-						<h2>Checks</h2>
-						<span class="small" class:ok={failing.length === 0}>{failing.length === 0 ? `All ${passing.length} passed` : `${failing.length} to look at`}</span>
-					</div>
-					<ul class="checks">
-						{#each failing as c (c.id)}
-							{@const state = c.status === 'inconclusive' ? 'unknown' : c.severity === 'info' || c.severity === 'warn' ? 'warn' : 'fail'}
-							<li class={state}>
-								{@render icon(state)}
-								<div>
-									<strong>{c.status === 'inconclusive' ? "Couldn't check: " : ''}{c.name}</strong>
-									{#if c.fraud}<span class="tag">fraud signal</span>{/if}
-									{#if c.summary}<p>{c.summary}</p>{/if}
-								</div>
-							</li>
-						{/each}
-					</ul>
 					{#if passing.length}
-						<details open={failing.length === 0}>
-							<summary class="small">{failing.length ? `${passing.length} passed` : 'Show them'}</summary>
+						<details class="passed">
+							<summary>
+								{@render icon('pass')}
+								<span class:ok={failing.length === 0}>{failing.length === 0 ? `All ${passing.length} checks passed` : `${passing.length} more passed`}</span>
+							</summary>
 							<ul class="checks">
 								{#each passing as c (c.id)}
-									<li class="pass">{@render icon('pass')}<div><span>{c.name}</span>{#if c.summary && c.id === 'repo_works'}<p>{c.summary}</p>{/if}</div></li>
+									<li class="pass">{@render icon('pass')}<div><span>{c.name}</span>{#if c.summary && (c.id === 'repo_works' || c.id === 'new_commits')}<p>{c.summary}</p>{/if}</div></li>
 								{/each}
 							</ul>
 						</details>
 					{/if}
-					<p class="small muted">Run just now. "Fraud signal" checks send an approval to the fraud check.</p>
 				</section>
-			</div>
 
-			<div class="main-col">
-				<section class="card project">
+				<!-- The project and who made it, as one header (Ari's project header,
+				     Sidekick's person and project cards side by side). -->
+				<section class="part project" class:has-shot={p.screenshot_url}>
 					{#if p.screenshot_url}
 						<a class="shot" href={p.screenshot_url} target="_blank" rel="noreferrer"><img src={p.screenshot_url} alt="Screenshot of {p.name}" /></a>
 					{/if}
-					<div class="stack-sm about">
-						<h2>Project</h2>
-						<p class="pre">{p.description}</p>
-						<div class="row links">
+					<div class="summary">
+						<h1>{p.name}</h1>
+						<div class="tags">
+							<span class="badge {statusTone(sub.status)}">{STATUS_LABELS[sub.status] ?? sub.status}</span>
+							{#if reship}<span class="badge">Update</span>{/if}
+							<span class="muted small">shipped {date(sub.submitted_at)}</span>
+						</div>
+						<p class="pre description">{p.description}</p>
+						<div class="links">
 							{#if p.demo_url}<a class="btn small primary" href={p.demo_url} target="_blank" rel="noreferrer">Try the demo</a>{/if}
 							{#if p.repo_url}<a class="btn small ghost" href={p.repo_url} target="_blank" rel="noreferrer">Repo</a>{/if}
 						</div>
-						{#if p.submissions.length > 1}
-							<ul class="ships small">
-								{#each p.submissions as s (s.id)}
-									<li>
-										{#if s.id === sub.id}<strong>This ship</strong>{:else}<a href="/review/{s.id}">#{s.id}</a>{/if}
-										<span class="badge tiny {statusTone(s.status)}">{STATUS_LABELS[s.status] ?? s.status}</span>
-										<span class="muted">{hours(s.new_seconds)} claimed{s.approved_seconds != null ? `, ${hours(s.approved_seconds)} approved` : ''} · {date(s.submitted_at)}</span>
-									</li>
-								{/each}
-							</ul>
+						<div class="maker">
+							<strong>{d.user.name}</strong>
+							<span class="muted small">{d.user.email} · {d.user.slack_id ?? 'no Slack'} · {d.user.verification_status}{d.user.ysws_eligible ? ', YSWS-eligible' : ', not YSWS-eligible yet'}</span>
+							{#if stage === 'fraud' && d.telescreen_url}
+								<a class="btn small" href={d.telescreen_url} target="_blank" rel="noreferrer">Telescreen profile</a>
+							{/if}
+						</div>
+						{#if noteDraft === null}
+							{#if d.user.reviewer_note}<p class="pre small note">{d.user.reviewer_note}</p>{/if}
+							<button class="link-btn small" onclick={() => (noteDraft = d.user.reviewer_note ?? '')}>{d.user.reviewer_note ? 'Edit the note on them' : 'Add a note on them'}</button>
+						{:else}
+							<label class="field">
+								<span>Note on {d.user.name}</span>
+								<textarea bind:value={noteDraft} style="min-height: 80px"></textarea>
+								<small>Reviewers only. Shown on all their ships.</small>
+							</label>
+							<div class="row">
+								<button class="btn small primary" onclick={saveNote}>Save</button>
+								<button class="btn small ghost" onclick={() => (noteDraft = null)}>Cancel</button>
+							</div>
+							{#if noteError}<p class="callout warn small">{noteError}</p>{/if}
 						{/if}
 					</div>
 				</section>
 
-				<CodeActivity github={d.github} githubError={d.github_error} days={d.days} windowStart={d.window_start} repoUrl={p.repo_url}
-					reship={p.submissions.some((s) => s.id < sub.id && s.status === 'approved')} />
+				<div class="part">
+					<CodeActivity github={d.github} githubError={d.github_error} days={d.days} windowStart={d.window_start} repoUrl={p.repo_url} {reship} />
+				</div>
 
-				<section class="card">
-					<h2>Timeline</h2>
+				<section class="part">
+					<div class="part-head"><h2>Timeline</h2></div>
 					<ol class="timeline">
 						{#each d.events as ev (ev.id)}
 							{@const hidden = ev.kind === 'internal_comment' || ev.kind === 'flagged' || (!ev.message && ev.internal)}
@@ -398,12 +373,39 @@
 						{#if commentError}<p class="callout warn small">{commentError}</p>{/if}
 					</form>
 				</section>
-			</div>
+			</main>
 
-			<div class="decide-col">
-				<div class="decide">
+			<!-- The rail: the hours, then the decision. It stays in view while the
+			     evidence scrolls past (Ari's review rail). -->
+			<aside class="rail" id="decide" aria-label="Decision">
+				<div class="rail-inner">
+				<section class="part">
+					<div class="part-head"><h2>Hours</h2></div>
+					<dl class="numbers">
+						<dt>Claimed by this ship</dt><dd>{hours(sub.new_seconds)}</dd>
+						{#if sub.approved_seconds != null}<dt>Approved so far</dt><dd>{hours(sub.approved_seconds)}</dd>{/if}
+						<dt>Hackatime when shipped</dt><dd>{hours(sub.hackatime_seconds)}</dd>
+						{#if d.hackatime}<dt>Hackatime now</dt><dd>{hours(d.hackatime.seconds)}</dd>{/if}
+						<dt>Approved on earlier ships</dt><dd>{hours(p.approved_seconds)}</dd>
+					</dl>
+					{#if d.hackatime?.projects.length > 1}
+						<p class="small muted">{d.hackatime.projects.map((h) => `${h.name} ${hours(h.seconds)}`).join(' · ')}</p>
+					{/if}
+					{#if p.submissions.length > 1}
+						<ul class="ships small">
+							{#each p.submissions as s (s.id)}
+								<li>
+									{#if s.id === sub.id}<strong>This ship</strong>{:else}<a href="/review/{s.id}">#{s.id}</a>{/if}
+									<span class="muted">{STATUS_LABELS[s.status] ?? s.status} · {hours(s.approved_seconds ?? s.new_seconds)}</span>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</section>
+
+				<section class="part decide">
 					{#if result}
-						<section class="callout good stack-sm" role="status">
+						<div class="callout good stack-sm" role="status">
 							<strong>Saved. It's now: {STATUS_LABELS[d.submission.status] ?? d.submission.status}.</strong>
 							{#if result.stamps_paid || result.boxes_granted.length}
 								<span>Paid {result.stamps_paid} stamps{result.boxes_granted.length ? ` and gave ${result.boxes_granted.length} box(es)` : ''}.</span>
@@ -411,11 +413,13 @@
 							{#if result.stage && canDecideStage(session.me, result.stage)}
 								<div class="row"><button class="btn small primary" onclick={() => next(result.stage)}>Next in {STAGES[result.stage].label.toLowerCase()}</button></div>
 							{/if}
-						</section>
+						</div>
 					{/if}
 					{#if stage && d.can_decide}
-						<form class="card" onsubmit={decide}>
+						<form class="decision" onsubmit={decide}>
 							<h2>{STAGES[stage].label}</h2>
+							<div class="form-cols">
+								<div class="form-a">
 							{#if stage !== 'review'}
 								<div class="chain small">
 									{#if approval}<p>{approval.actor?.name ?? 'A reviewer'} approved <strong>{hours(approval.seconds)}</strong> of {hours(sub.new_seconds)} · {date(approval.created_at)}</p>{/if}
@@ -462,6 +466,8 @@
 								{/if}
 								<p class="small muted">{whatNext}</p>
 							{/if}
+								</div>
+								<div class="form-b">
 							{#if action !== 'send_back'}
 								<label class="field">
 									<span>Feedback for them</span>
@@ -486,14 +492,18 @@
 							<button class="btn primary submit" disabled={busy}>
 								{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Reject' : 'Send back'}
 							</button>
+								</div>
+							</div>
 						</form>
 					{:else if stage}
+						<div class="part-head"><h2>{STAGES[stage].label}</h2></div>
 						<p class="callout info small">{d.cant_decide_reason}</p>
 					{:else if !result}
 						<p class="callout info small">This ship has been decided: {STATUS_LABELS[sub.status] ?? sub.status}{sub.approved_seconds != null ? `, ${hours(sub.approved_seconds)}` : ''}.</p>
 					{/if}
+				</section>
 				</div>
-			</div>
+			</aside>
 		</div>
 	</div>
 {:else}
@@ -501,81 +511,60 @@
 {/if}
 
 <style>
-	/* The review page leaves the site's reading column for most of the screen,
-	   in Sidekick's arrangement: who and what's flagged on the left, the
-	   project and its evidence in the middle, the decision on the right, where
-	   it stays while you scroll. Narrower screens fold to two columns, then one. */
+	/* After Ari: a slim bar, then one frame with two panes. The evidence on
+	   the left reads top to bottom (flags, the project and its maker, the
+	   code, the timeline); the rail on the right holds the hours and the
+	   decision and stays in view. Sections inside a pane are divided by rules,
+	   not boxed in cards. Under 1000px the rail follows the evidence. */
 	.review-page {
-		--rv-width: min(1880px, calc(100vw - 64px));
+		--rv-width: min(1720px, calc(100vw - 64px));
 		width: var(--rv-width);
 		margin-left: calc((100% - var(--rv-width)) / 2);
 		font-size: 19px;
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: 10px;
 	}
 	.review-page :global(.small) { font-size: 17px; }
-	.review-page :global(.card) { padding: 16px 20px; gap: 10px; border-radius: 18px; }
-	.review-page :global(.card h2) { font-size: 28px; }
 	.review-page :global(.btn.small) { font-size: 18px; padding: 2px 12px; }
 	.review-page :global(.field > span) { font-size: 19px; padding: 4px 14px; }
 	.review-page :global(.field input), .review-page :global(.field textarea), .review-page :global(.field select) { font-size: 19px; padding: 8px 14px; }
 	.review-page :global(.field small) { font-size: 16px; }
 	.review-page :global(.field textarea) { min-height: 72px; }
 	.review-page :global(.callout) { margin: 0; }
+	.review-page :global(.badge) { font-size: 16px; padding: 1px 10px; }
+	.review-page :global(h2) { font-size: 26px; }
 
-	.head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; }
-	.title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
-	.title h1 { font-size: 40px; line-height: 1.1; overflow-wrap: anywhere; }
-	.title .badge { align-self: center; }
-	.back { display: inline-flex; align-items: center; gap: 2px; align-self: center; padding: 2px 12px 2px 6px; border-radius: 999px; background: rgb(0 0 0 / 0.35); box-shadow: inset 0 0 0 1px var(--head); color: var(--text); text-decoration: none; font-size: 17px; }
+	.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+	.back { display: inline-flex; align-items: center; gap: 2px; padding: 2px 12px 2px 6px; border-radius: 999px; background: rgb(0 0 0 / 0.35); box-shadow: inset 0 0 0 1px var(--head); color: var(--text); text-decoration: none; font-size: 17px; }
 	.back:hover { background: var(--deep); }
 	.back svg, .state { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-	.claim { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+	.claim { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-left: auto; font-size: 17px; }
 
-	.bento {
+	.frame {
 		display: grid;
-		gap: 12px;
-		align-items: start;
 		grid-template-columns: minmax(0, 1fr);
-		grid-template-areas: 'checks' 'decide' 'who' 'main';
+		background: var(--row-bg);
+		border-radius: var(--radius);
+		overflow: clip;
 	}
-	.who { grid-area: who; }
-	.checks-col { grid-area: checks; }
-	.main-col { grid-area: main; }
-	.decide-col { grid-area: decide; align-self: stretch; }
-	.who, .checks-col, .main-col, .decide { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-	/* Two columns: the evidence on the left; what's flagged, the decision and
-	   the person on the right, in the order a reviewer needs them. */
+	.pane, .rail, .rail-inner { display: flex; flex-direction: column; min-width: 0; }
+	.part { display: flex; flex-direction: column; gap: 12px; padding: 20px 24px; min-width: 0; }
+	.part + .part { border-top: 1px solid rgb(255 255 255 / 0.12); }
+	.part-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+	.rail { border-top: 1px solid rgb(255 255 255 / 0.12); background: rgb(0 0 0 / 0.25); }
+	.jump { display: inline-flex; }
 	@media (min-width: 1000px) {
-		.bento {
-			grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
-			grid-template-rows: auto auto 1fr;
-			grid-template-areas: 'main checks' 'main decide' 'main who';
-		}
+		.frame { grid-template-columns: minmax(0, 1fr) minmax(0, 420px); }
+		.rail { border-top: 0; border-left: 1px solid rgb(255 255 255 / 0.12); }
+		.rail-inner { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; scrollbar-width: thin; }
+		.jump { display: none; }
 	}
-	@media (min-width: 1500px) {
-		.bento {
-			grid-template-columns: minmax(0, 360px) minmax(0, 1fr) minmax(0, 440px);
-			grid-template-rows: auto 1fr;
-			grid-template-areas: 'who main decide' 'checks main decide';
-		}
-		.decide { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; scrollbar-width: thin; }
-	}
-
-	.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 12px; margin: 0; }
-	.facts dt { color: var(--muted); }
-	.facts dd { margin: 0; overflow-wrap: anywhere; }
-	.note { padding: 8px 12px; border-radius: 10px; background: rgb(0 0 0 / 0.3); margin: 0; }
-	.numbers { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; margin: 0; }
-	.numbers dt { color: var(--muted); }
-	.numbers dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-	.numbers dt:first-child, .numbers dt:first-child + dd { color: var(--text); font-size: 24px; }
 
 	.checks { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
-	.checks li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 10px; border-radius: 10px; font-size: 17px; line-height: 1.35; }
-	.checks li .state { margin-top: 2px; }
-	.checks li p { margin: 2px 0 0; color: var(--muted); }
+	.checks li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 12px; border-radius: 10px; font-size: 18px; line-height: 1.35; }
+	.checks li .state { margin-top: 3px; }
+	.checks li p { margin: 2px 0 0; color: var(--muted); font-size: 17px; }
 	.checks li.fail { background: var(--warn-bg); box-shadow: inset 0 0 0 1px var(--danger); }
 	.checks li.fail .state { color: var(--danger); }
 	.checks li.warn { background: var(--warn-bg); }
@@ -584,17 +573,32 @@
 	.checks li.pass { padding-block: 2px; }
 	.checks li.pass .state { color: var(--good); }
 	.tag { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; font-size: 14px; background: var(--danger); color: var(--ink); vertical-align: 2px; }
-	details summary { cursor: pointer; color: var(--muted); }
+	.passed summary { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--muted); font-size: 17px; list-style: none; }
+	.passed summary::-webkit-details-marker { display: none; }
+	.passed summary .state { color: var(--good); }
+	.passed[open] summary { margin-bottom: 6px; }
+	.flags:has(.checks li.fail, .checks li.warn, .checks li.unknown) .passed { margin-top: -2px; }
 
-	.project { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
-	@media (min-width: 700px) { .project:has(.shot) { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); align-items: start; } }
+	.project { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px 24px; }
+	@media (min-width: 760px) { .project.has-shot { grid-template-columns: minmax(0, 320px) minmax(0, 1fr); align-items: start; } }
 	.shot { display: block; border-radius: 12px; overflow: hidden; background: var(--deepest); }
-	.shot img { display: block; width: 100%; max-height: 280px; object-fit: contain; }
-	.about p { margin: 0; }
-	.links { margin-top: 6px; }
-	.ships { list-style: none; padding: 8px 0 0; margin: 4px 0 0; border-top: 1px solid var(--deep); display: flex; flex-direction: column; gap: 4px; }
+	.shot img { display: block; width: 100%; max-height: 240px; object-fit: contain; }
+	.summary { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+	.summary h1 { font-size: 44px; line-height: 1.05; overflow-wrap: anywhere; }
+	.tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+	.description { margin: 0; max-width: 70ch; }
+	.links { display: flex; flex-wrap: wrap; gap: 8px; }
+	.maker { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding-top: 10px; border-top: 1px solid rgb(255 255 255 / 0.12); }
+	.note { padding: 8px 12px; border-radius: 10px; background: rgb(0 0 0 / 0.3); margin: 0; }
 
-	.decide form { gap: 12px; }
+	.numbers { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; margin: 0; }
+	.numbers dt { color: var(--muted); }
+	.numbers dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+	.numbers dt:first-child, .numbers dt:first-child + dd { color: var(--text); font-size: 24px; }
+	.ships { list-style: none; padding: 8px 0 0; margin: 0; border-top: 1px solid rgb(255 255 255 / 0.12); display: flex; flex-direction: column; gap: 2px; }
+
+	.decision { display: flex; flex-direction: column; gap: 12px; }
+	.form-cols, .form-a, .form-b { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 	.actions { gap: 4px 16px; }
 	.submit { align-self: stretch; }
 	.chain { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 10px; background: rgb(0 0 0 / 0.3); }
