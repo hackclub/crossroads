@@ -15,6 +15,7 @@
 package devgithub
 
 import (
+	"crypto/sha1"
 	"encoding/base64"
 	"fmt"
 	"hash/fnv"
@@ -115,7 +116,7 @@ func (f *Fake) all(r *http.Request) []commit {
 			author = "dev-friend"
 		}
 		out = append(out, commit{
-			sha: fmt.Sprintf("%040x", uint64(h)*2654435761+uint64(i)), message: messages[h%uint32(len(messages))],
+			sha: fmt.Sprintf("%x", sha1.Sum([]byte(fmt.Sprintf("%s/%s#%d", owner, repo, i)))), message: messages[h%uint32(len(messages))],
 			author: author, date: t.UTC(),
 		})
 	}

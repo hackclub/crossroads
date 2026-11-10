@@ -34,8 +34,9 @@
 	let showAll = $state(false);
 	const commits = $derived(github ? (showAll ? github.commits : github.commits.slice(0, 8)) : []);
 
+	// In UTC, like the days in the charts.
 	function shortDate(iso) {
-		return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+		return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 	}
 	function columnLabel(c) {
 		return `${utcDay(c.day)}: ${hours(c.seconds)} on Hackatime, ${c.commits} commit${c.commits === 1 ? '' : 's'}`;
