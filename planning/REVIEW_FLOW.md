@@ -26,6 +26,16 @@ A reviewer who can also sign off (an admin, or someone with `can_hq_review`) ski
 
 **More than Hackatime tracked.** At the first stage and at HQ, a reviewer can tick "Approve more than Hackatime tracked" and approve more hours than the ship claimed, for work Hackatime can't see (soldering, design, testing hardware). They have to say why. An approval over Hackatime **always waits for HQ sign-off**, even from someone who could sign off themselves, and HQ sees the reason first. The fraud check can only cut. The reason goes on the timeline and into the Unified YSWS justification, but not to the participant. In Sidekick, the same thing is the "Why more hours than Hackatime tracked?" field when approving. Going over doesn't change the time-accounting: the next ship still only claims Hackatime time nobody has claimed yet.
 
+**What each stage writes** (the decision form, in Ari's order):
+
+| Field | Who | Required | Goes to |
+|---|---|---|---|
+| Hours | every stage | | the Unified YSWS hours |
+| Why deflated? | any stage that approves fewer hours than came in | yes, when it cuts | the justification, and that stage's timeline event |
+| Technical features | the first reviewer | yes, to approve | the justification |
+| Justification (later stages: notes) | everyone | to send back | the justification (the first reviewer's) |
+| Feedback for them | everyone | to reject | the participant's project page only |
+
 **Sent back** clears every decision on the ship and puts it back in the review queue. The timeline keeps the old approval, and the person sending it back has to say why.
 
 Participants see three states: **In review** (`pending`), **Approved, final check** (`fraud_check` or `awaiting_hq`: a reviewer approved it and it's waiting to be signed off), and **Approved** or **Rejected**. They aren't told when a ship is at the fraud check. They see the feedback on each decision and any comment a reviewer marks for them.
@@ -94,6 +104,30 @@ Nothing is paid until a ship is signed off. Then, in the same transaction, the b
 The Airtable sync copies signed-off ships into **YSWS Project Submission** with a justification that names everyone who checked the hours: Hackatime's numbers, the reviewer's hours and notes, the fraud check (and what flagged it), and HQ's sign-off. It **ticks "Automation - Submit to Unified YSWS"** on rows HQ signed off, as soon as the person is YSWS-eligible; rows for people who aren't eligible yet are ticked on a later pass, once they are. Ships approved before the stages existed have no HQ sign-off, so the sync leaves them for a person to tick, as before.
 
 **Dev mode never syncs.** With `DEV_MODE=1` the backend won't start the Airtable sync or the Sidekick endpoint, even if `AIRTABLE_TOKEN` or `SIDEKICK_SECRET` is set. Test ships can't reach Airtable or the Unified YSWS DB.
+
+## What a signed-off ship looks like in Airtable
+
+The review page previews this under **What goes to the Unified YSWS DB**, built by the same code the sync uses (`unified.Justification`). An example, from the test data: Tiny Compiler claimed 5h; Rita approved 4.5h and sent it to the fraud check; Fern cut it to 4h; Hugo signed off.
+
+The row in **YSWS Project Submission** gets the project's links, description and screenshot, the person's name, email, phone, birthday, address and Slack ID (from Hack Club Auth), the GitHub username (the repo's owner), "Hackatime List", the date range and Hackatime ID fields, and:
+
+- **Optional - Override Hours Spent:** `4`
+- **Optional - Override Hours Spent Justification:**
+
+```
+Reviewed on Crossroads by a reviewer, a fraud check and HQ.
+Hackatime: 5.00h of new time on tiny-compiler (5.00h tracked from 2026-10-30 to 2026-11-09, minus time already paid for).
+Technical features: A hand-written lexer and recursive-descent parser, type checking for integers and functions, and a WebAssembly backend whose output runs in the browser playground.
+Reviewer Rita approved 4.50h. Compiled and ran the three example programs in the demo playground, and tried a type error on purpose: the error message points at the right line. Hackatime has the time on tiny-compiler, but the repo has no commits since the event started, so I sent it to the fraud check.
+Deflated from 5.00h to 4.50h by the reviewer: About 30 minutes went into a README section copied from the WebAssembly docs.
+Sent to a fraud check because: the reviewer asked. Fern passed it at 4.00h.
+Deflated from 4.50h to 4.00h in the fraud check: One 40-minute Hackatime span on Nov 6 has no edits around it, so I counted it out.
+Signed off by Hugo at 4.00h.
+```
+
+- **Automation - Submit to Unified YSWS:** ticked, because HQ signed it off, Mei is YSWS-eligible, and nothing the Unified YSWS DB needs is missing.
+
+Lines appear only when they apply: no fraud check gives "No automatic check flagged it for a fraud check (…)"; an update adds "This is an update to a project already approved on Crossroads"; going over Hackatime adds "More than Hackatime tracked (…), because: …". The feedback for the participant never goes to Airtable.
 
 ## Sidekick
 

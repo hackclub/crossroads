@@ -405,7 +405,7 @@
 						<h2>What goes to the Unified YSWS DB</h2>
 						{#if d.unified_preview}
 							<span class="small" class:ok={d.unified_preview.signed_off && !d.unified_preview.missing.length}>
-								{!d.unified_preview.signed_off ? 'Sent once HQ signs it off' : d.unified_preview.missing.length ? 'Held back until it’s complete' : 'Sent and submitted'}
+								{!d.unified_preview.signed_off ? 'Sent once HQ signs it off' : d.unified_preview.missing.length ? 'Held back until it’s complete' : 'Ready: the sync sends it with Submit to Unified YSWS ticked'}
 							</span>
 						{/if}
 					</div>
@@ -532,7 +532,7 @@
 										<label class="field grow">
 											<span>Why deflated?</span>
 											<textarea bind:value={deflationReason} required placeholder="For example: about 2 hours were a tutorial followed line by line."></textarea>
-											<small>Required. Reviewers only; it goes to the Unified YSWS DB.</small>
+											<small>Required. Reviewers only; goes to the Unified YSWS DB.</small>
 										</label>
 									{/if}
 									{#if canOverride}
@@ -544,7 +544,7 @@
 											<label class="field grow">
 												<span>Why more than Hackatime?</span>
 												<textarea bind:value={overrideReason} required={Number(approvedHours) * 3600 > sub.new_seconds} placeholder="For example: 3 hours soldering and testing the board, which Hackatime can't track."></textarea>
-												<small>Required to go over. HQ sees it, and it goes to the Unified YSWS DB.</small>
+												<small>Required to go over. Goes to HQ and the Unified YSWS DB.</small>
 											</label>
 										{/if}
 									{/if}
@@ -559,14 +559,14 @@
 									<label class="field grow">
 										<span>Technical features</span>
 										<textarea bind:value={technicalFeatures} required placeholder="For example: a level editor, online leaderboards, and its own physics engine."></textarea>
-										<small>Required. The specific features that account for these hours. Reviewers only; it goes to the Unified YSWS DB.</small>
+										<small>Required. What accounts for the hours. Goes to the Unified YSWS DB.</small>
 									</label>
 								{/if}
 								<label class="field grow">
 									<span>{action === 'send_back' ? 'Why, for the reviewer who picks it up' : stage === 'review' ? 'Justification' : 'Notes'}</span>
 									<textarea bind:value={notes} required={action === 'send_back'} placeholder={stage === 'review' && action === 'approve' ? 'What you checked: you ran it, the commits match the time, the demo works.' : ''}></textarea>
 									<small>
-										{action === 'send_back' ? 'Required. ' : 'Reviewers only. '}{stage === 'review' && action === 'approve' ? 'Why these hours. It goes to the Unified YSWS DB.' : ''}
+										{action === 'send_back' ? 'Required. ' : 'Reviewers only. '}{stage === 'review' && action === 'approve' ? 'Goes to the Unified YSWS DB.' : ''}
 									</small>
 								</label>
 								{#if action !== 'send_back'}
@@ -777,6 +777,7 @@
 		.decision .form-cols { flex: 1; min-height: 0; }
 		.decision .grow { flex: 1 1 0; min-height: 0; }
 		.decision .grow textarea { flex: 1; min-height: 44px; resize: none; }
+		.decision .grow :global(small) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	}
 </style>
 
