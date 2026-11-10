@@ -16,6 +16,7 @@ import (
 	"github.com/scherepi/crossroads-backend/airtable"
 	"github.com/scherepi/crossroads-backend/db"
 	"github.com/scherepi/crossroads-backend/db/dbtest"
+	"github.com/scherepi/crossroads-backend/unified"
 )
 
 // fakeAirtable keeps records in memory. Its only formula is the one
@@ -287,9 +288,9 @@ func TestGithubUsername(t *testing.T) {
 		"https://github.com/":                 "",
 		"https://heidi.github.io/racer":       "",
 	} {
-		got := githubUsername(&in)
+		got := unified.GitHubUsername(&in)
 		if (got == nil && want != "") || (got != nil && *got != want) {
-			t.Errorf("githubUsername(%q) = %v, want %q", in, got, want)
+			t.Errorf("GitHubUsername(%q) = %v, want %q", in, got, want)
 		}
 	}
 }
@@ -323,13 +324,26 @@ func TestHQSignedOffShipsGoToUnifiedYSWS(t *testing.T) {
 		}
 	}
 
-	// Once they're verified, the next pass ticks the box, once.
+	// Verified, but the project has no screenshot or demo link, which the
+	// Unified YSWS DB needs: still not ticked.
 	e.exec(t, "update users set ysws_eligible = true where id = $1", e.user.ID)
+	e.sync(t)
+	if _, ok := e.airtable.records(submissionsTable)[0].Fields[submitUnifiedField]; ok {
+		t.Error("ticked for Unified YSWS without a screenshot or demo link")
+	}
+
+	// Once they're added, the next pass sends the whole row again, ticked,
+	// and only once.
+	e.exec(t, `update projects set demo_url = 'https://heidi.example.com/racer', screenshot_url = 'https://heidi.example.com/racer.png' where id = $1`, project)
 	e.sync(t)
 	writes := e.airtable.writes()
 	e.sync(t)
-	if e.airtable.records(submissionsTable)[0].Fields[submitUnifiedField] != true {
-		t.Error("not ticked after they became eligible")
+	fields = e.airtable.records(submissionsTable)[0].Fields
+	if fields[submitUnifiedField] != true {
+		t.Error("not ticked once it was complete")
+	}
+	if fields["Playable URL"] == nil || fields["Screenshot"] == nil {
+		t.Errorf("the demo link and screenshot weren't sent with the tick: %v, %v", fields["Playable URL"], fields["Screenshot"])
 	}
 	if e.airtable.writes() != writes {
 		t.Error("ticked again on the next pass")

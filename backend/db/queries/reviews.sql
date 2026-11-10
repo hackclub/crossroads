@@ -157,12 +157,12 @@ where projects.id <> sqlc.arg(project_id)
     )
 order by projects.id;
 
--- name: LongestProjectDay :one
--- The project's busiest UTC day on or after since, from the activity poller.
+-- name: ListProjectDays :many
+-- The project's Hackatime time per UTC day on or after since, from the
+-- activity poller. Daily totals only.
 select day, seconds from project_activity
 where project_id = $1 and day >= sqlc.arg(since)::date
-order by seconds desc, day
-limit 1;
+order by day;
 
 -- name: AddShipEvent :one
 insert into ship_events (submission_id, kind, actor_id, stage, seconds, message, internal)

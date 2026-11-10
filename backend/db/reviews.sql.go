@@ -485,6 +485,44 @@ func (q *Queries) ListFeedbackTemplates(ctx context.Context) ([]FeedbackTemplate
 	return items, nil
 }
 
+const listProjectDays = `-- name: ListProjectDays :many
+select day, seconds from project_activity
+where project_id = $1 and day >= $2::date
+order by day
+`
+
+type ListProjectDaysParams struct {
+	ProjectID int64
+	Since     time.Time
+}
+
+type ListProjectDaysRow struct {
+	Day     time.Time
+	Seconds int32
+}
+
+// The project's Hackatime time per UTC day on or after since, from the
+// activity poller. Daily totals only.
+func (q *Queries) ListProjectDays(ctx context.Context, arg ListProjectDaysParams) ([]ListProjectDaysRow, error) {
+	rows, err := q.db.Query(ctx, listProjectDays, arg.ProjectID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListProjectDaysRow
+	for rows.Next() {
+		var i ListProjectDaysRow
+		if err := rows.Scan(&i.Day, &i.Seconds); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjectShipEvents = `-- name: ListProjectShipEvents :many
 select ship_events.id, ship_events.submission_id, ship_events.kind, ship_events.actor_id, ship_events.stage, ship_events.seconds, ship_events.message, ship_events.internal, ship_events.created_at, ship_events.edited_at, actor.name as actor_name, actor.slack_id as actor_slack_id, actor.hca_id as actor_hca_id
 from ship_events
@@ -802,31 +840,6 @@ func (q *Queries) LockUser(ctx context.Context, id int64) (User, error) {
 		&i.CanHqReview,
 		&i.ReviewerNote,
 	)
-	return i, err
-}
-
-const longestProjectDay = `-- name: LongestProjectDay :one
-select day, seconds from project_activity
-where project_id = $1 and day >= $2::date
-order by seconds desc, day
-limit 1
-`
-
-type LongestProjectDayParams struct {
-	ProjectID int64
-	Since     time.Time
-}
-
-type LongestProjectDayRow struct {
-	Day     time.Time
-	Seconds int32
-}
-
-// The project's busiest UTC day on or after since, from the activity poller.
-func (q *Queries) LongestProjectDay(ctx context.Context, arg LongestProjectDayParams) (LongestProjectDayRow, error) {
-	row := q.db.QueryRow(ctx, longestProjectDay, arg.ProjectID, arg.Since)
-	var i LongestProjectDayRow
-	err := row.Scan(&i.Day, &i.Seconds)
 	return i, err
 }
 

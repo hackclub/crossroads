@@ -15,9 +15,12 @@ import (
 
 	"github.com/scherepi/crossroads-backend/auth"
 	"github.com/scherepi/crossroads-backend/db"
+	"github.com/scherepi/crossroads-backend/github"
 	"github.com/scherepi/crossroads-backend/hackatime"
 	"github.com/scherepi/crossroads-backend/hca"
+	"github.com/scherepi/crossroads-backend/linkcheck"
 	"github.com/scherepi/crossroads-backend/respond"
+	"github.com/scherepi/crossroads-backend/unified"
 	"github.com/scherepi/crossroads-backend/uploads"
 )
 
@@ -35,6 +38,14 @@ type API struct {
 	// turns the endpoint off.
 	SidekickSecret string
 	PublicURL      string // the site, for links Sidekick shows reviewers
+	// For the review checks (checks.go). Any of them can be nil, and the
+	// checks that need it say they couldn't run.
+	GitHub  *github.Client
+	Links   linkcheck.Checker
+	Unified unified.Lookup // reads the Unified YSWS DB; nil when no token is set
+	// A person's Telescreen profile, with {slack_id} for their Slack ID, shown
+	// to fraud reviewers. Empty hides the link.
+	TelescreenProfileURL string
 }
 
 func (a *API) Routes() chi.Router {

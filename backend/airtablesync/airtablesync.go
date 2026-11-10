@@ -11,12 +11,12 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/scherepi/crossroads-backend/airtable"
 	"github.com/scherepi/crossroads-backend/db"
+	"github.com/scherepi/crossroads-backend/unified"
 )
 
 const (
@@ -93,29 +93,38 @@ func (s *Syncer) syncSubmissions(ctx context.Context) error {
 	return nil
 }
 
-// readyForUnified says whether a new row can go straight to the Unified YSWS
-// DB: HQ signed it off, and its owner is YSWS-eligible.
+// readyForUnified says whether a row can go to the Unified YSWS DB: HQ signed
+// it off, its owner is YSWS-eligible, and it has everything the Unified YSWS
+// DB needs (the review page's unified_ready check says what's missing).
 func readyForUnified(row db.ListSubmissionsToSyncRow) bool {
-	return row.Submission.HqReviewerID != nil && row.User.YswsEligible
+	return row.Submission.HqReviewerID != nil && row.User.YswsEligible && len(unified.Missing(row.User, row.Project)) == 0
 }
 
-// submitUnified ticks the Unified YSWS box on rows that went into Airtable
-// before their owner was YSWS-eligible, now that they are.
+// submitUnified sends rows that went into Airtable before they were ready
+// (their owner wasn't YSWS-eligible yet, or a name, address or screenshot was
+// missing) once they are. The whole row goes again, with the box ticked, so
+// the Unified YSWS DB gets what was filled in since.
 func (s *Syncer) submitUnified(ctx context.Context) error {
-	rows, err := s.Queries.ListSubmissionsToSubmitUnified(ctx)
+	waiting, err := s.Queries.ListSubmissionsToSubmitUnified(ctx)
 	if err != nil {
 		return err
+	}
+	var rows []db.ListSubmissionsToSyncRow
+	for _, w := range waiting {
+		if row := db.ListSubmissionsToSyncRow(w); readyForUnified(row) {
+			rows = append(rows, row)
+		}
 	}
 	for batch := range chunks(rows) {
 		records := make([]airtable.Record, len(batch))
 		for i, row := range batch {
-			records[i] = airtable.Record{ID: *row.AirtableRecordID, Fields: airtable.Fields{submitUnifiedField: true}}
+			records[i] = airtable.Record{ID: *row.Submission.AirtableRecordID, Fields: s.submissionFields(row)}
 		}
 		if err := s.Airtable.Update(ctx, submissionsTable, records); err != nil {
 			return fmt.Errorf("submitting to Unified YSWS: %w", err)
 		}
 		for _, row := range batch {
-			if err := s.Queries.MarkUnifiedSubmitted(ctx, row.ID); err != nil {
+			if err := s.Queries.MarkUnifiedSubmitted(ctx, row.Submission.ID); err != nil {
 				return err
 			}
 		}
@@ -136,7 +145,7 @@ func (s *Syncer) submissionFields(row db.ListSubmissionsToSyncRow) airtable.Fiel
 		"Email":           user.Email,
 		"Phone Number":    user.PhoneNumber,
 		"Slack ID":        user.SlackID,
-		"GitHub Username": githubUsername(project.RepoUrl),
+		"GitHub Username": unified.GitHubUsername(project.RepoUrl),
 		"YSWS Eligible":   user.YswsEligible,
 		"Hackatime List":  hackatimeProjects,
 
@@ -213,22 +222,6 @@ func (s *Syncer) justification(row db.ListSubmissionsToSyncRow) string {
 		b.WriteString(" This is an update to a project already approved on Crossroads: only time added since then is counted.")
 	}
 	return b.String()
-}
-
-// githubUsername returns the owner of a github.com repo link, or nil.
-func githubUsername(repoURL *string) *string {
-	if repoURL == nil {
-		return nil
-	}
-	u, err := url.Parse(*repoURL)
-	if err != nil || strings.TrimPrefix(strings.ToLower(u.Host), "www.") != "github.com" {
-		return nil
-	}
-	owner, _, _ := strings.Cut(strings.Trim(u.Path, "/"), "/")
-	if owner == "" {
-		return nil
-	}
-	return &owner
 }
 
 // pullFulfilled marks orders fulfilled when someone ticks Fulfilled on them in

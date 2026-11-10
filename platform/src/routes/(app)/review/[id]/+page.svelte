@@ -10,6 +10,7 @@
 	import { session } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
 	import { STAGES, canDecideStage, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, time, toSeconds, toHours } from '#lib/review.js';
+	import CodeActivity from '#lib/review/CodeActivity.svelte';
 
 	let d = $state(null);
 	let error = $state('');
@@ -369,6 +370,9 @@
 					{#if p.screenshot_url}<img src={p.screenshot_url} alt="Screenshot" style="max-height: 280px; object-fit: contain; align-self: flex-start" />{/if}
 				</section>
 
+				<CodeActivity github={d.github} githubError={d.github_error} days={d.days} windowStart={d.window_start} repoUrl={p.repo_url}
+					reship={p.submissions.some((s) => s.id < sub.id && s.status === 'approved')} />
+
 				<section class="card">
 					<h2>Timeline</h2>
 					<ol class="timeline">
@@ -457,6 +461,9 @@
 				<section class="card">
 					<h2>About them</h2>
 					<p class="small">Identity: {d.user.verification_status}{d.user.ysws_eligible ? ', YSWS-eligible' : ', not YSWS-eligible yet'}</p>
+					{#if stage === 'fraud' && d.telescreen_url}
+						<div class="row"><a class="btn small" href={d.telescreen_url} target="_blank" rel="noreferrer">Telescreen profile ↗</a></div>
+					{/if}
 					{#if noteDraft === null}
 						{#if d.user.reviewer_note}<p class="pre small">{d.user.reviewer_note}</p>{:else}<p class="small muted">No reviewer note on this person.</p>{/if}
 						<div class="row"><button class="link-btn small" onclick={() => (noteDraft = d.user.reviewer_note ?? '')}>{d.user.reviewer_note ? 'Edit note' : 'Add a note'}</button></div>

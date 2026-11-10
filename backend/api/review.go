@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,7 +16,9 @@ import (
 
 	"github.com/scherepi/crossroads-backend/auth"
 	"github.com/scherepi/crossroads-backend/db"
+	"github.com/scherepi/crossroads-backend/github"
 	"github.com/scherepi/crossroads-backend/respond"
+	"github.com/scherepi/crossroads-backend/unified"
 )
 
 // respondProblem answers with err's message if it's a reviewError, and as a
@@ -439,9 +442,21 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		ProjectsSharingLinks []sharedLinkProjectJSON `json:"projects_sharing_links"`
 		Hackatime            *reviewHackatimeJSON    `json:"hackatime"`
 		HackatimeError       string                  `json:"hackatime_error,omitempty"`
-		Claim                *claimJSON              `json:"claim"`
-		CanDecide            bool                    `json:"can_decide"`
-		CantDecideReason     string                  `json:"cant_decide_reason,omitempty"`
+		// The repo on GitHub, and its commits during this ship; null when the
+		// repo isn't on GitHub, or GitHub couldn't be asked (GitHubError).
+		GitHub      *github.Report `json:"github"`
+		GitHubError string         `json:"github_error,omitempty"`
+		// This project in the Unified YSWS DB under other programs; null when
+		// the Unified YSWS DB isn't being searched.
+		UnifiedRecords []unified.Record `json:"unified_records"`
+		// Hackatime time and commits per day since WindowStart: the last
+		// approved ship, or the event's start. Daily totals, never heartbeats.
+		Days             []dayJSON  `json:"days"`
+		WindowStart      time.Time  `json:"window_start"`
+		TelescreenURL    string     `json:"telescreen_url,omitempty"`
+		Claim            *claimJSON `json:"claim"`
+		CanDecide        bool       `json:"can_decide"`
+		CantDecideReason string     `json:"cant_decide_reason,omitempty"`
 	}{
 		Submission: toReviewerSubmissionJSON(s),
 		Stage:      stageName(s.Status),
@@ -455,6 +470,12 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		ProjectsSharingLinks: report.SharedLinks,
 		Hackatime:            report.Hackatime,
 		HackatimeError:       report.HackatimeError,
+		GitHub:               report.GitHub,
+		GitHubError:          report.GitHubError,
+		UnifiedRecords:       report.Unified,
+		Days:                 report.Days,
+		WindowStart:          report.WindowStart,
+		TelescreenURL:        a.telescreenURL(row.User.SlackID),
 		Claim:                claim,
 		CanDecide:            cantDecide == "",
 		CantDecideReason:     cantDecide,
@@ -554,4 +575,12 @@ func nonEmpty(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// telescreenURL is the person's Telescreen profile, for fraud reviewers.
+func (a *API) telescreenURL(slackID *string) string {
+	if a.TelescreenProfileURL == "" || slackID == nil {
+		return ""
+	}
+	return strings.ReplaceAll(a.TelescreenProfileURL, "{slack_id}", url.PathEscape(*slackID))
 }

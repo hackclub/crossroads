@@ -32,6 +32,7 @@ const REASONS = {
 	shared_links: 'Shared repo or demo',
 	large_ship: 'Big ship',
 	long_day: 'Very long day',
+	unified_double_dip: 'Paid by another program',
 	manual: 'Reviewer asked',
 	everything: 'All ships'
 };

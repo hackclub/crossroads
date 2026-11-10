@@ -44,7 +44,33 @@ When the first reviewer approves, any of these sends it to `fraud_check`:
 | `manual` | The reviewer ticked "send to the fraud check" |
 | `everything` | An admin turned on "send every ship through the fraud check" |
 
-`identity` (not YSWS-eligible) is shown but isn't a fraud signal. The ship can still be approved; the Unified YSWS submission waits until they're verified.
+| `unified_double_dip` | The repo or demo is already in the Unified YSWS DB from another program (needs `UNIFIED_AIRTABLE_TOKEN`; Sidekick's AT1) |
+
+The other checks are for the reviewer to judge and don't send a ship anywhere. Most are Sidekick's:
+
+| Check | Fails when | Sidekick |
+|---|---|---|
+| `repo_works` | The repo link isn't a link, doesn't open, or GitHub says the repo doesn't exist or is private | D2, D3, G1 |
+| `demo_works` | The demo link isn't a link, doesn't open, or is on a notebook or puzzle site (Colab, Kaggle, Binder, LeetCode) | D2, D4 |
+| `readme` | The repo has no README, only a title, or a project generator's template | G2 |
+| `new_commits` | No commits since the last approved ship, or since the event started for a first ship | G3 |
+| `full_name` | No first or last name on file, or one that's a placeholder or has digits or symbols | |
+| `unified_ready` | Something the Unified YSWS DB needs is missing (below) | D1 |
+| `identity` | They aren't verified and YSWS-eligible | D5 |
+
+A link that answers 401, 403 or 429, or takes too long, is "couldn't check" rather than broken: plenty of sites block scripts. Check those by hand. The `readme` and `new_commits` checks need the repo on GitHub.
+
+**What the Unified YSWS DB needs** (`unified.Missing`): a real full name, email, birthday, an address with street, city, postal code and country, a description, a screenshot, a repo on GitHub (it asks for a GitHub username) and a demo link, plus YSWS eligibility. A ship missing any of these can still be approved and signed off; the Airtable sync copies its row but **doesn't tick "Automation - Submit to Unified YSWS" until it's complete**, then sends the whole row again with the box ticked.
+
+## What reviewers see
+
+Besides the checks, the review page shows:
+
+- **Code**: the repo on GitHub (language, created, last push, all-time commits), and for this ship (since the last approved ship, or the event's start, until it shipped) the commits, lines added and removed, who made them, and each commit with a link to it. Line counts need `GITHUB_TOKEN` and cover the newest 60 commits.
+- **Hackatime hours and commits per day** over the same window, as two small charts with a table view. Daily totals only: **reviewers never see heartbeats**.
+- On the fraud check, a link to the person's **Telescreen** profile, when `TELESCREEN_PROFILE_URL` is set.
+
+GitHub answers are cached for 10 minutes and link checks for 5, so opening a ship and then approving it doesn't ask twice.
 
 Admins change the toggle and both limits on the admin page (Review tab), or with `PATCH /api/admin/review-settings`. Changes apply to approvals from then on; ships already past the first stage stay where they are.
 
@@ -92,6 +118,10 @@ Sidekick vouches for its own reviewers' permissions: an `isHq` approval counts a
 Not supported: rewarded hours overrides (refused with 400), and the shop and fulfilment actions (`INVALID_ACTION`; orders are fulfilled through Airtable).
 
 ## Decisions worth revisiting
+
+- **A repo has to be on GitHub to go to the Unified YSWS DB automatically**, because the DB asks for a GitHub username. Projects on GitLab or Codeberg wait for a person. Drop that line from `unified.Missing` if the DB takes them without one.
+- **Broken links and missing READMEs don't send ships to the fraud check**; they're for the reviewer. To make one a fraud signal, set `Fraud: true` on it in `api/checks.go`.
+- **The Telescreen link format** is a guess until someone sets `TELESCREEN_PROFILE_URL` to the real one.
 
 - **HQ reviewers skip HQ sign-off on unflagged ships.** That matches Sidekick's `isHq`. If every ship should get a second person, change the `perms.HQReview` case in `decide` to always go to `awaiting_hq`.
 - **Hackatime being down sends ships to the fraud check.** That's the safe choice, but an outage during a busy day fills the fraud queue.

@@ -112,28 +112,49 @@ func (q *Queries) ListOrdersToSync(ctx context.Context) ([]ListOrdersToSyncRow, 
 }
 
 const listSubmissionsToSubmitUnified = `-- name: ListSubmissionsToSubmitUnified :many
-select submissions.id, submissions.airtable_record_id
+select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note,
+    (select count(*) from submissions earlier
+        where earlier.project_id = submissions.project_id
+            and earlier.status = 'approved'
+            and earlier.id < submissions.id) as earlier_approvals,
+    coalesce(reviewer.name, '')::text as reviewer_name,
+    coalesce(fraud_reviewer.name, '')::text as fraud_reviewer_name,
+    coalesce(hq_reviewer.name, '')::text as hq_reviewer_name,
+    -- What the reviewer approved, before any fraud cut or HQ change.
+    (select ship_events.seconds from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'approval'
+        order by ship_events.id desc limit 1) as reviewer_seconds
 from submissions
 join projects on projects.id = submissions.project_id
 join users on users.id = projects.user_id
+left join users reviewer on reviewer.id = submissions.reviewer_id
+left join users fraud_reviewer on fraud_reviewer.id = submissions.fraud_reviewer_id
+left join users hq_reviewer on hq_reviewer.id = submissions.hq_reviewer_id
 where submissions.status = 'approved'
     and submissions.airtable_record_id is not null
     and submissions.unified_submitted_at is null
     and submissions.hq_reviewer_id is not null
     and users.ysws_eligible
 order by submissions.id
-limit 100
 `
 
 type ListSubmissionsToSubmitUnifiedRow struct {
-	ID               int64
-	AirtableRecordID *string
+	Submission        Submission
+	Project           Project
+	User              User
+	EarlierApprovals  int64
+	ReviewerName      string
+	FraudReviewerName string
+	HqReviewerName    string
+	ReviewerSeconds   *int32
 }
 
-// Rows already in Airtable, signed off by HQ, whose owner has become
-// YSWS-eligible since: time to tick "Automation - Submit to Unified YSWS".
-// Ships approved before HQ sign-off existed (no hq_reviewer_id) are left for
-// a person to tick, as before.
+// Rows already in Airtable, signed off by HQ, but not sent to the Unified
+// YSWS DB yet: their owner wasn't YSWS-eligible, or something the Unified YSWS
+// DB needs was missing (see unified.Missing, checked in Go). The columns are
+// ListSubmissionsToSync's, so the row can be sent again in full. Ships
+// approved before HQ sign-off existed (no hq_reviewer_id) are left for a
+// person to tick, as before.
 func (q *Queries) ListSubmissionsToSubmitUnified(ctx context.Context) ([]ListSubmissionsToSubmitUnifiedRow, error) {
 	rows, err := q.db.Query(ctx, listSubmissionsToSubmitUnified)
 	if err != nil {
@@ -143,7 +164,65 @@ func (q *Queries) ListSubmissionsToSubmitUnified(ctx context.Context) ([]ListSub
 	var items []ListSubmissionsToSubmitUnifiedRow
 	for rows.Next() {
 		var i ListSubmissionsToSubmitUnifiedRow
-		if err := rows.Scan(&i.ID, &i.AirtableRecordID); err != nil {
+		if err := rows.Scan(
+			&i.Submission.ID,
+			&i.Submission.ProjectID,
+			&i.Submission.Status,
+			&i.Submission.HackatimeProjects,
+			&i.Submission.HackatimeSeconds,
+			&i.Submission.NewSeconds,
+			&i.Submission.ApprovedSeconds,
+			&i.Submission.ReviewerID,
+			&i.Submission.ReviewedAt,
+			&i.Submission.Feedback,
+			&i.Submission.InternalNotes,
+			&i.Submission.SubmittedAt,
+			&i.Submission.AirtableRecordID,
+			&i.Submission.Checks,
+			&i.Submission.FraudReasons,
+			&i.Submission.FraudReviewerID,
+			&i.Submission.FraudReviewedAt,
+			&i.Submission.HqReviewerID,
+			&i.Submission.HqReviewedAt,
+			&i.Submission.ClaimedBy,
+			&i.Submission.ClaimExpiresAt,
+			&i.Submission.UnifiedSubmittedAt,
+			&i.Submission.OverrideReason,
+			&i.Project.ID,
+			&i.Project.UserID,
+			&i.Project.Name,
+			&i.Project.Description,
+			&i.Project.RepoUrl,
+			&i.Project.DemoUrl,
+			&i.Project.ScreenshotUrl,
+			&i.Project.CreatedAt,
+			&i.Project.UpdatedAt,
+			&i.User.ID,
+			&i.User.HcaID,
+			&i.User.SlackID,
+			&i.User.Email,
+			&i.User.Name,
+			&i.User.VerificationStatus,
+			&i.User.YswsEligible,
+			&i.User.Role,
+			&i.User.Stamps,
+			&i.User.CreatedAt,
+			&i.User.UpdatedAt,
+			&i.User.FirstName,
+			&i.User.LastName,
+			&i.User.Birthday,
+			&i.User.PhoneNumber,
+			&i.User.Address,
+			&i.User.CanReview,
+			&i.User.CanFraudReview,
+			&i.User.CanHqReview,
+			&i.User.ReviewerNote,
+			&i.EarlierApprovals,
+			&i.ReviewerName,
+			&i.FraudReviewerName,
+			&i.HqReviewerName,
+			&i.ReviewerSeconds,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

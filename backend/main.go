@@ -21,9 +21,13 @@ import (
 	"github.com/scherepi/crossroads-backend/api"
 	"github.com/scherepi/crossroads-backend/auth"
 	"github.com/scherepi/crossroads-backend/db"
+	"github.com/scherepi/crossroads-backend/devgithub"
 	"github.com/scherepi/crossroads-backend/devhackatime"
+	"github.com/scherepi/crossroads-backend/github"
 	"github.com/scherepi/crossroads-backend/hackatime"
 	"github.com/scherepi/crossroads-backend/hca"
+	"github.com/scherepi/crossroads-backend/linkcheck"
+	"github.com/scherepi/crossroads-backend/unified"
 	"github.com/scherepi/crossroads-backend/uploads"
 )
 
@@ -111,6 +115,22 @@ func main() {
 		log.Print("DEV_MODE is on, so /api/sidekick is off even though SIDEKICK_SECRET is set")
 		sidekickSecret = ""
 	}
+	// GitHub stats and link checks for reviewers. In dev mode GitHub is faked,
+	// and so are links on the example projects' made-up hosts.
+	githubConfig := github.Config{Token: os.Getenv("GITHUB_TOKEN")}
+	var links linkcheck.Checker = linkcheck.New()
+	// Searching the Unified YSWS DB for projects another program paid for.
+	// Read-only; dev mode never touches it.
+	var unifiedLookup unified.Lookup
+	if devMode {
+		githubConfig = github.Config{BaseURL: "http://localhost" + addr + "/dev/github"}
+		links = linkcheck.Dev{Real: links}
+		unifiedLookup = unified.Dev{}
+	} else if token := os.Getenv("UNIFIED_AIRTABLE_TOKEN"); token != "" {
+		unifiedLookup = unified.NewAirtable(token)
+	} else {
+		log.Print("UNIFIED_AIRTABLE_TOKEN isn't set, so reviews don't check the Unified YSWS DB for double-dipping")
+	}
 	apiRoutes := &api.API{
 		Pool:          pool,
 		Queries:       db.New(pool),
@@ -125,6 +145,11 @@ func main() {
 		// api/sidekick.go and planning/REVIEW_FLOW.md.
 		SidekickSecret: sidekickSecret,
 		PublicURL:      publicURL,
+		GitHub:         github.New(githubConfig),
+		Links:          links,
+		Unified:        unifiedLookup,
+		// For example https://telescreen.hackclub.com/.../{slack_id}
+		TelescreenProfileURL: os.Getenv("TELESCREEN_PROFILE_URL"),
 	}
 
 	// Price locks are refunded if the tickets sell out before they're used.
@@ -163,6 +188,7 @@ func main() {
 	r.Handle("/uploads/*", http.StripPrefix("/uploads", uploadStore.Files()))
 	if devMode {
 		r.Get("/dev/login", a.DevLogin)
+		r.Mount("/dev/github", (&devgithub.Fake{Created: hoursStart.AddDate(0, 0, -30), HoursStart: hoursStart}).Routes())
 		r.Mount("/dev/hackatime", devhackatime.New(cmp.Or(os.Getenv("DEV_HACKATIME_FILE"), "data/devhackatime.json")).Routes())
 		r.With(auth.RequireUser).Post("/dev/box", apiRoutes.DevGrantBox)
 	}
