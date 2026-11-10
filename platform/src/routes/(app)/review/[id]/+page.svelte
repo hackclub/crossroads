@@ -301,9 +301,9 @@
 						</div>
 						{#if action === 'approve'}
 							<label class="field">
-								<span>Hours <em>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}` : `up to ${hours(maxSeconds)}`}</em></span>
-								<input type="number" min="0" step="0.01" max={overriding ? undefined : maxSeconds / 3600} bind:value={approvedHours} style="max-width: 180px" />
-								<small>{stage === 'fraud' ? 'Lower it to cut hours. ' : ''}Time you cut is gone for good: it can't be shipped again.</small>
+								<span>Hours</span>
+								<input type="number" min="0" step="0.01" max={overriding ? undefined : maxSeconds / 3600} bind:value={approvedHours} />
+								<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}.` : `Up to ${hours(maxSeconds)}.`} {stage === 'fraud' ? 'Lower it to cut hours. ' : ''}Time you cut is gone for good: it can't be shipped again.</small>
 							</label>
 							{#if canOverride}
 								<label class="check small">
@@ -447,7 +447,7 @@
 					{/each}
 					{#if passing.length}
 						<details>
-							<summary class="small">{passing.length} passed</summary>
+							<summary class="small" class:ok={failing.length === 0}>{failing.length === 0 ? `All ${passing.length} passed` : `${passing.length} passed`}</summary>
 							<ul class="small">{#each passing as c}<li>{c.name}</li>{/each}</ul>
 						</details>
 					{/if}
