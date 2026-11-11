@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"slices"
 	"strings"
 	"time"
@@ -38,9 +39,10 @@ func (o *optional[T]) UnmarshalJSON(b []byte) error {
 
 type adminSpecialStampTypeJSON struct {
 	specialStampTypeJSON
-	SupplyCap    *int32 `json:"supply_cap"` // null is unlimited
-	IssuedCount  int32  `json:"issued_count"`
-	AppliedCount int64  `json:"applied_count"` // used on submissions
+	SupplyCap    *int32  `json:"supply_cap"` // null is unlimited
+	IssuedCount  int32   `json:"issued_count"`
+	AppliedCount int64   `json:"applied_count"` // used on submissions
+	ClaimCode    *string `json:"claim_code"`    // claimable at /claim/{code}; null if it isn't
 }
 
 // specialStampTypeFields is the body of POST and PATCH
@@ -52,6 +54,7 @@ type specialStampTypeFields struct {
 	Rarity      *db.SpecialStampRarity `json:"rarity"`
 	Effect      *db.SpecialStampEffect `json:"effect"`
 	SupplyCap   optional[int32]        `json:"supply_cap"` // null is unlimited
+	ClaimCode   optional[string]       `json:"claim_code"` // null or "" stops claiming
 }
 
 func (f specialStampTypeFields) apply(t *db.SpecialStampType) string {
@@ -73,6 +76,14 @@ func (f specialStampTypeFields) apply(t *db.SpecialStampType) string {
 	if f.SupplyCap.Set {
 		t.SupplyCap = f.SupplyCap.Value
 	}
+	if f.ClaimCode.Set {
+		t.ClaimCode = nil
+		if f.ClaimCode.Value != nil {
+			if code := strings.ToLower(strings.TrimSpace(*f.ClaimCode.Value)); code != "" {
+				t.ClaimCode = &code
+			}
+		}
+	}
 	switch {
 	case t.Name == "" || len(t.Name) > 100:
 		return "Give it a name under 100 characters."
@@ -84,6 +95,8 @@ func (f specialStampTypeFields) apply(t *db.SpecialStampType) string {
 		return fmt.Sprintf("effect has to be one of %v.", db.AllSpecialStampEffectValues())
 	case t.SupplyCap != nil && *t.SupplyCap < 0:
 		return "supply_cap can't be negative."
+	case t.ClaimCode != nil && (len(*t.ClaimCode) > 64 || strings.Trim(*t.ClaimCode, "abcdefghijklmnopqrstuvwxyz0123456789-") != ""):
+		return "claim_code can only have letters, numbers and dashes, up to 64."
 	}
 	return ""
 }
@@ -103,6 +116,7 @@ func (a *API) adminListSpecialStampTypes(w http.ResponseWriter, r *http.Request)
 			SupplyCap:    row.SupplyCap,
 			IssuedCount:  row.IssuedCount,
 			AppliedCount: row.AppliedCount,
+			ClaimCode:    row.ClaimCode,
 		})
 	}
 	respond.JSON(w, http.StatusOK, out)
@@ -119,8 +133,12 @@ func (a *API) adminCreateSpecialStampType(w http.ResponseWriter, r *http.Request
 		return
 	}
 	t, err := a.Queries.CreateSpecialStampType(r.Context(), db.CreateSpecialStampTypeParams{
-		Name: t.Name, Description: t.Description, ImageUrl: t.ImageUrl, Rarity: t.Rarity, Effect: t.Effect, SupplyCap: t.SupplyCap,
+		Name: t.Name, Description: t.Description, ImageUrl: t.ImageUrl, Rarity: t.Rarity, Effect: t.Effect, SupplyCap: t.SupplyCap, ClaimCode: t.ClaimCode,
 	})
+	if db.IsViolation(err, "special_stamp_types_claim_code_key") {
+		respond.Error(w, http.StatusConflict, "Another stamp type already has that claim code.")
+		return
+	}
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return
@@ -129,6 +147,7 @@ func (a *API) adminCreateSpecialStampType(w http.ResponseWriter, r *http.Request
 		specialStampTypeJSON: toSpecialStampTypeJSON(t),
 		SupplyCap:            t.SupplyCap,
 		IssuedCount:          t.IssuedCount,
+		ClaimCode:            t.ClaimCode,
 	})
 }
 
@@ -180,8 +199,12 @@ func (a *API) adminUpdateSpecialStampType(w http.ResponseWriter, r *http.Request
 		}
 	}
 	t, err = q.UpdateSpecialStampType(r.Context(), db.UpdateSpecialStampTypeParams{
-		ID: t.ID, Name: t.Name, Description: t.Description, ImageUrl: t.ImageUrl, Rarity: t.Rarity, Effect: t.Effect, SupplyCap: t.SupplyCap,
+		ID: t.ID, Name: t.Name, Description: t.Description, ImageUrl: t.ImageUrl, Rarity: t.Rarity, Effect: t.Effect, SupplyCap: t.SupplyCap, ClaimCode: t.ClaimCode,
 	})
+	if db.IsViolation(err, "special_stamp_types_claim_code_key") {
+		respond.Error(w, http.StatusConflict, "Another stamp type already has that claim code.")
+		return
+	}
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return
@@ -194,6 +217,7 @@ func (a *API) adminUpdateSpecialStampType(w http.ResponseWriter, r *http.Request
 		specialStampTypeJSON: toSpecialStampTypeJSON(t),
 		SupplyCap:            t.SupplyCap,
 		IssuedCount:          t.IssuedCount,
+		ClaimCode:            t.ClaimCode,
 	})
 }
 
@@ -745,4 +769,83 @@ func (a *API) adminUpdateReviewSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	respond.JSON(w, http.StatusOK, toReviewSettingsJSON(settings))
+}
+
+type roleInviteJSON struct {
+	ID            int64       `json:"id"`
+	Email         string      `json:"email"`
+	Role          db.UserRole `json:"role"`
+	InvitedByName *string     `json:"invited_by_name"` // null if that admin's account is gone
+	CreatedAt     time.Time   `json:"created_at"`
+}
+
+// adminListRoleInvites lists the roles waiting for people who haven't signed
+// in yet.
+func (a *API) adminListRoleInvites(w http.ResponseWriter, r *http.Request) {
+	invites, err := a.Queries.ListRoleInvites(r.Context())
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	out := []roleInviteJSON{}
+	for _, i := range invites {
+		out = append(out, roleInviteJSON{i.ID, i.Email, i.Role, i.InvitedByName, i.CreatedAt})
+	}
+	respond.JSON(w, http.StatusOK, out)
+}
+
+// adminInviteRole gives a role to whoever first signs in with an email:
+// {"email": "orpheus@hackclub.com", "role": "admin"}. The email is matched
+// against their Hack Club Auth email, ignoring case. Someone who has already
+// signed in gets their role changed in the people table instead.
+func (a *API) adminInviteRole(w http.ResponseWriter, r *http.Request) {
+	admin := auth.User(r.Context())
+	var body struct {
+		Email string      `json:"email"`
+		Role  db.UserRole `json:"role"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(body.Email))
+	if address, err := mail.ParseAddress(email); err != nil || address.Address != email || len(email) > 254 {
+		respond.Error(w, http.StatusUnprocessableEntity, "That doesn't look like an email address.")
+		return
+	}
+	if body.Role != db.UserRoleReviewer && body.Role != db.UserRoleAdmin {
+		respond.Error(w, http.StatusUnprocessableEntity, "role has to be reviewer or admin.")
+		return
+	}
+	switch user, err := a.Queries.GetUserByEmail(r.Context(), email); {
+	case err == nil:
+		respond.Error(w, http.StatusConflict, fmt.Sprintf(
+			"%s has already signed in, as %s (%s). Change their role in the table instead.", email, user.Name, user.Role))
+		return
+	case !errors.Is(err, pgx.ErrNoRows):
+		respond.ServerError(w, r, err)
+		return
+	}
+	invite, err := a.Queries.UpsertRoleInvite(r.Context(), db.UpsertRoleInviteParams{Email: email, Role: body.Role, InvitedBy: &admin.ID})
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	respond.JSON(w, http.StatusCreated, roleInviteJSON{invite.ID, invite.Email, invite.Role, &admin.Name, invite.CreatedAt})
+}
+
+func (a *API) adminDeleteRoleInvite(w http.ResponseWriter, r *http.Request) {
+	id, ok := idParam(w, r, "inviteID")
+	if !ok {
+		return
+	}
+	deleted, err := a.Queries.DeleteRoleInvite(r.Context(), id)
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	if deleted == 0 {
+		respond.Error(w, http.StatusNotFound, "That invite doesn't exist. They may have signed in already.")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

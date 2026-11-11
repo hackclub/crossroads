@@ -121,7 +121,7 @@ interface SpecialStampType {
 interface SpecialStamp {
   id: number;
   type: SpecialStampType;
-  box_id: number | null;        // null if an admin gave it
+  box_id: number | null;        // null if an admin gave it or it was claimed
   submission_id: number | null; // set once it's been used
   acquired_at: string;
 }
@@ -226,6 +226,7 @@ Reviewer and admin shapes are listed with their routes below.
 | GET | `/api/box-types` | signed in | Box types and their current odds |
 | GET | `/api/special-stamps` | signed in | Their special stamps |
 | POST | `/api/special-stamps/{id}/placement` | owner | Stick a special stamp on a project, or move it there |
+| POST | `/api/special-stamps/claims` | signed in | Claim a stamp with a claim link's code |
 | GET | `/api/shop/items` | signed in | What's in the shop |
 | POST | `/api/shop/items/{id}/orders` | signed in, verified | Buy something |
 | GET | `/api/orders` | signed in | Their orders |
@@ -251,9 +252,12 @@ Reviewer and admin shapes are listed with their routes below.
 | POST | `/api/admin/users/{id}/stamp-adjustments` | admin | Add or take away stamps |
 | POST | `/api/admin/users/{id}/boxes` | admin | Give someone a box |
 | POST | `/api/admin/users/{id}/special-stamps` | admin | Give someone a special stamp |
+| GET | `/api/admin/role-invites` | admin | Roles waiting for people who haven't signed in yet |
+| POST | `/api/admin/role-invites` | admin | Give a role to whoever first signs in with an email |
+| DELETE | `/api/admin/role-invites/{id}` | admin | Take back a role invite |
 | GET | `/api/admin/special-stamp-types` | admin | Stamp types with supply numbers |
 | POST | `/api/admin/special-stamp-types` | admin | Create a stamp type |
-| PATCH | `/api/admin/special-stamp-types/{id}` | admin | Edit a stamp type, including its supply cap |
+| PATCH | `/api/admin/special-stamp-types/{id}` | admin | Edit a stamp type, including its supply cap and claim code |
 | GET | `/api/admin/box-types` | admin | Box types with their full drop tables |
 | POST | `/api/admin/box-types` | admin | Create a box type |
 | PATCH | `/api/admin/box-types/{id}` | admin | Edit a box type |
@@ -265,6 +269,7 @@ Reviewer and admin shapes are listed with their routes below.
 | PATCH | `/api/admin/shop-items/{id}` | admin | Edit a shop item |
 | GET | `/api/admin/orders?status=` | admin | Orders to fulfill |
 | PATCH | `/api/admin/orders/{id}` | admin | Fulfill or cancel an order |
+| POST | `/slack/clicks` | the Slack bot | Record a click on a Slack announcement's button |
 
 ---
 
@@ -435,6 +440,14 @@ Rolls a special stamp from the box's type, among the stamp types that still have
 ### `GET /api/special-stamps`
 
 `200` → `SpecialStamp[]`, newest first. Ones they can use on a submission have `type.effect !== "none"` and `submission_id === null`.
+
+### `POST /api/special-stamps/claims`
+
+```json
+{ "code": "heard-it-first" }
+```
+
+Claims a stamp of the type with that claim code (the platform's `/claim/{code}` page does this as it opens). Each person gets one per type. → `201 { special_stamp: SpecialStamp, already_claimed: false }`, or `200` with `already_claimed: true` and the stamp they claimed before. `404` for a code no type has, `409` if the type's supply has run out.
 
 ## Shop
 
@@ -682,6 +695,24 @@ interface ReviewSettings {
 
 **`POST /api/admin/users/{id}/special-stamps`** with `{"special_stamp_type_id": 1}` → `201 SpecialStamp`. Comes out of the type's supply: `409` if it's run out. `404` for no such user, `422` for no such type.
 
+### Role invites
+
+For giving someone a role before they've ever signed in.
+
+```ts
+interface RoleInvite {
+  id: number; email: string; role: "reviewer" | "admin";
+  invited_by_name: string | null; // null if that admin's account is gone
+  created_at: string;
+}
+```
+
+**`GET /api/admin/role-invites`** → `200 RoleInvite[]`, newest first.
+
+**`POST /api/admin/role-invites`** with `{"email": "orpheus@hackclub.com", "role": "admin"}` → `201 RoleInvite`. The first time someone signs in whose Hack Club Auth email matches (ignoring case), they get the role and the invite is used up, so a later role change sticks. Inviting the same email again replaces its role. `422` for something that isn't a bare email address, or a role other than `reviewer` or `admin`. `409` if someone with that email has already signed in: change their role with `PATCH /api/admin/users/{id}` instead.
+
+**`DELETE /api/admin/role-invites/{id}`** → `204`. `404` if it doesn't exist, including once it's been used.
+
 ### Special stamp types
 
 ```ts
@@ -689,6 +720,7 @@ interface AdminSpecialStampType extends SpecialStampType {
   supply_cap: number | null; // null is unlimited
   issued_count: number;      // how many exist
   applied_count: number;     // how many have been used on submissions (list only; 0 elsewhere)
+  claim_code: string | null; // anyone signed in can claim one at /claim/{code}; null if not
 }
 ```
 
@@ -701,7 +733,7 @@ interface AdminSpecialStampType extends SpecialStampType {
   "rarity": "rare", "effect": "priority_review", "supply_cap": 25 }
 ```
 
-`name` and `rarity` are required. `effect` defaults to `"none"`. `supply_cap` is *nullable* (null or left out = unlimited). → `201 AdminSpecialStampType`. `422` for invalid fields.
+`name` and `rarity` are required. `effect` defaults to `"none"`. `supply_cap` is *nullable* (null or left out = unlimited). `claim_code` is lowercased, can only have letters, numbers and dashes, and has to be unique (`409` if another type has it); null or `""` means it can't be claimed. → `201 AdminSpecialStampType`. `422` for invalid fields.
 
 **`PATCH /api/admin/special-stamp-types/{id}`**: any of the same fields. → `200`. Lowering `supply_cap` below `issued_count` just stops further drops; nobody loses theirs. `409` if capping it would leave a box type with no unlimited stamp type, since that box could then come up empty. `404` for no such type.
 
@@ -837,3 +869,15 @@ interface Community {
 
 `seconds` is the `new_seconds` of every participant's submission made between `starts_at` and `ends_at`. A ship counts as soon as it's submitted, without waiting for review, and drops out if it's rejected; a reviewer cutting its hours doesn't change it. The goal and deadline are `communityGoal` in `backend/main.go`.
 
+
+## Slack clicks
+
+### `POST /slack/clicks`
+
+For the Slack bot (`slackbot/`), not the frontend. Not under `/api`, and the public ingress doesn't route to it; the bot calls the backend inside the cluster. Only mounted when `SLACK_CLICKS_SECRET` is set, and needs `Authorization: Bearer <SLACK_CLICKS_SECRET>` (`401` otherwise).
+
+```json
+{ "slack_id": "U123", "button": "open_platform", "channel_id": "C123", "message_ts": "1731340000.000100" }
+```
+
+`slack_id` and `button` (the button's `action_id`) are required. → `204`, and a row in `slack_clicks`.

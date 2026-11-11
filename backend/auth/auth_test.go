@@ -369,3 +369,36 @@ func TestSessionCookieIsHashedInDatabase(t *testing.T) {
 		t.Error("the database has the raw session token")
 	}
 }
+
+func TestSigningInClaimsARoleInvite(t *testing.T) {
+	identity := heidi()
+	app := newApp(t, &identity)
+	ctx := context.Background()
+	if _, err := app.pool.Exec(ctx, "insert into role_invites (email, role) values ('heidi@example.com', 'admin')"); err != nil {
+		t.Fatal(err)
+	}
+	// Their Hack Club Auth email's case doesn't have to match.
+	identity["primary_email"] = "Heidi@Example.com"
+	app.signIn(t, "/")
+
+	if _, me := app.me(t); me["role"] != "admin" {
+		t.Errorf("role is %v, want admin", me["role"])
+	}
+	if resp := app.do(t, "GET", "/api/admin"); resp.StatusCode != http.StatusOK {
+		t.Errorf("/api/admin is %s, want 200", resp.Status)
+	}
+	var invites int
+	app.pool.QueryRow(ctx, "select count(*) from role_invites").Scan(&invites)
+	if invites != 0 {
+		t.Errorf("%d invites left, want the used one gone", invites)
+	}
+
+	// The invite is used up: a later demotion sticks.
+	if _, err := app.pool.Exec(ctx, "update users set role = 'participant'"); err != nil {
+		t.Fatal(err)
+	}
+	app.signIn(t, "/")
+	if _, me := app.me(t); me["role"] != "participant" {
+		t.Errorf("role is %v after signing in again, want participant", me["role"])
+	}
+}

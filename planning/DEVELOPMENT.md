@@ -44,6 +44,7 @@ Postgres is on **5433**, not the usual 5432, so it doesn't collide with other pr
 | `AIRTABLE_BASE_ID` | with the token | The real base is `appuxTrbdZ2tjCo0X` ("YSWS - Crossroads"). |
 | `SIDEKICK_SECRET` | no | Turns on `POST /api/sidekick` for Sidekick, Hack Club's review platform; the same secret goes into Sidekick. See REVIEW_FLOW.md. Ignored in dev mode. |
 | `PUBLIC_URL` | no | The site's address, for upload links and the links Sidekick shows reviewers. Defaults to the sign-in redirect's site. |
+| `SLACK_CLICKS_SECRET` | no | Turns on `POST /slack/clicks`, where the Slack bot (`slackbot/`) records clicks on its announcements' buttons. The bot sends the same value. Any long random string (`openssl rand -hex 32`). |
 | `TEST_DATABASE_URL` | for tests | Any Postgres the tests can create schemas in. The compose one works. |
 
 `.env` is gitignored. Keep secrets out of `.env.example`.

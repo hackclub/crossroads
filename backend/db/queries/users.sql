@@ -38,3 +38,39 @@ returning *;
 -- name: SetUserPermissions :one
 update users set can_review = $2, can_fraud_review = $3, can_hq_review = $4 where id = $1
 returning *;
+
+-- name: GetUserByEmail :one
+select * from users where lower(email) = lower(sqlc.arg(email)::text)
+order by id
+limit 1;
+
+-- name: ListRoleInvites :many
+select role_invites.*, users.name as invited_by_name
+from role_invites
+left join users on users.id = role_invites.invited_by
+order by role_invites.created_at desc;
+
+-- name: UpsertRoleInvite :one
+-- Inviting an email again changes the role it'll get.
+insert into role_invites (email, role, invited_by)
+values (lower(sqlc.arg(email)::text), sqlc.arg(role), sqlc.arg(invited_by))
+on conflict (email) do update set
+    role = excluded.role,
+    invited_by = excluded.invited_by,
+    created_at = now()
+returning *;
+
+-- name: DeleteRoleInvite :execrows
+delete from role_invites where id = $1;
+
+-- name: ClaimRoleInvite :one
+-- Gives someone signing in the role an admin set for their email, and uses
+-- up the invite. No rows if there isn't one.
+with invite as (
+    delete from role_invites where email = lower(sqlc.arg(email)::text)
+    returning role
+)
+update users set role = invite.role
+from invite
+where users.id = sqlc.arg(id)
+returning users.*;

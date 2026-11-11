@@ -1,0 +1,12 @@
+{
+	"name": "crossroads-slackbot",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "bun bot.js",
+		"post": "bun post.js"
+	},
+	"dependencies": {
+		"@slack/socket-mode": "^3.2.0"
+	}
+}

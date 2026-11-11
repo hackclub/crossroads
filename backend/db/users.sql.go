@@ -10,6 +10,64 @@ import (
 	"time"
 )
 
+const claimRoleInvite = `-- name: ClaimRoleInvite :one
+with invite as (
+    delete from role_invites where email = lower($2::text)
+    returning role
+)
+update users set role = invite.role
+from invite
+where users.id = $1
+returning users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note
+`
+
+type ClaimRoleInviteParams struct {
+	ID    int64
+	Email string
+}
+
+// Gives someone signing in the role an admin set for their email, and uses
+// up the invite. No rows if there isn't one.
+func (q *Queries) ClaimRoleInvite(ctx context.Context, arg ClaimRoleInviteParams) (User, error) {
+	row := q.db.QueryRow(ctx, claimRoleInvite, arg.ID, arg.Email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.HcaID,
+		&i.SlackID,
+		&i.Email,
+		&i.Name,
+		&i.VerificationStatus,
+		&i.YswsEligible,
+		&i.Role,
+		&i.Stamps,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.FirstName,
+		&i.LastName,
+		&i.Birthday,
+		&i.PhoneNumber,
+		&i.Address,
+		&i.CanReview,
+		&i.CanFraudReview,
+		&i.CanHqReview,
+		&i.ReviewerNote,
+	)
+	return i, err
+}
+
+const deleteRoleInvite = `-- name: DeleteRoleInvite :execrows
+delete from role_invites where id = $1
+`
+
+func (q *Queries) DeleteRoleInvite(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRoleInvite, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getUser = `-- name: GetUser :one
 select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note from users where id = $1
 `
@@ -40,6 +98,83 @@ func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
 		&i.ReviewerNote,
 	)
 	return i, err
+}
+
+const getUserByEmail = `-- name: GetUserByEmail :one
+select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note from users where lower(email) = lower($1::text)
+order by id
+limit 1
+`
+
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.HcaID,
+		&i.SlackID,
+		&i.Email,
+		&i.Name,
+		&i.VerificationStatus,
+		&i.YswsEligible,
+		&i.Role,
+		&i.Stamps,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.FirstName,
+		&i.LastName,
+		&i.Birthday,
+		&i.PhoneNumber,
+		&i.Address,
+		&i.CanReview,
+		&i.CanFraudReview,
+		&i.CanHqReview,
+		&i.ReviewerNote,
+	)
+	return i, err
+}
+
+const listRoleInvites = `-- name: ListRoleInvites :many
+select role_invites.id, role_invites.email, role_invites.role, role_invites.invited_by, role_invites.created_at, users.name as invited_by_name
+from role_invites
+left join users on users.id = role_invites.invited_by
+order by role_invites.created_at desc
+`
+
+type ListRoleInvitesRow struct {
+	ID            int64
+	Email         string
+	Role          UserRole
+	InvitedBy     *int64
+	CreatedAt     time.Time
+	InvitedByName *string
+}
+
+func (q *Queries) ListRoleInvites(ctx context.Context) ([]ListRoleInvitesRow, error) {
+	rows, err := q.db.Query(ctx, listRoleInvites)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRoleInvitesRow
+	for rows.Next() {
+		var i ListRoleInvitesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Role,
+			&i.InvitedBy,
+			&i.CreatedAt,
+			&i.InvitedByName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const searchUsers = `-- name: SearchUsers :many
@@ -174,6 +309,36 @@ func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (User,
 		&i.CanFraudReview,
 		&i.CanHqReview,
 		&i.ReviewerNote,
+	)
+	return i, err
+}
+
+const upsertRoleInvite = `-- name: UpsertRoleInvite :one
+insert into role_invites (email, role, invited_by)
+values (lower($1::text), $2, $3)
+on conflict (email) do update set
+    role = excluded.role,
+    invited_by = excluded.invited_by,
+    created_at = now()
+returning id, email, role, invited_by, created_at
+`
+
+type UpsertRoleInviteParams struct {
+	Email     string
+	Role      UserRole
+	InvitedBy *int64
+}
+
+// Inviting an email again changes the role it'll get.
+func (q *Queries) UpsertRoleInvite(ctx context.Context, arg UpsertRoleInviteParams) (RoleInvite, error) {
+	row := q.db.QueryRow(ctx, upsertRoleInvite, arg.Email, arg.Role, arg.InvitedBy)
+	var i RoleInvite
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Role,
+		&i.InvitedBy,
+		&i.CreatedAt,
 	)
 	return i, err
 }

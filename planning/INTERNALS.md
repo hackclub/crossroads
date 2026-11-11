@@ -22,6 +22,7 @@ backend/
     templates.go      feedback templates
     sidekick.go       POST /api/sidekick, Sidekick's protocol, on top of stages.go
     boxes.go          boxes, odds, opening, special stamps
+    claims.go         claiming a stamp with a claim link's code
     admin.go          admin people, stamp types, box types, drop tables, milestones, grants
     shop.go           shop, orders, verification check, admin shop items, orders, stamp adjustments
     activity.go       the admin activity numbers
@@ -30,6 +31,7 @@ backend/
   airtable/         small Airtable REST client: create, update, list
   activity/         the background poll of each project's Hackatime time per day, and recording visits
   airtablesync/     the background copy into Airtable, and picking up fulfilled orders
+  slackclicks/      POST /slack/clicks: the Slack bot records clicks on its announcements' buttons
   respond/          JSON, error and 500 responses
   db/
     migrations/       the schema (goose)
@@ -61,6 +63,7 @@ Responses always use explicit JSON structs with `snake_case` tags. Never return 
 |---|---|
 | `users` | Everyone. `can_review`, `can_fraud_review` and `can_hq_review` are a reviewer's stages (admins have all of them whatever these say); `reviewer_note` is the reviewers-only note on a person. `hca_id` (unique) is their Hack Club Auth identity; the profile (Slack ID, names, email, birthday, phone, address as `db.Address` JSON, verification) is refreshed at every sign-in. `role` is `participant`, `reviewer` or `admin`. `stamps` is their balance, kept up to date by a trigger. |
 | `sessions` | `token_hash` (SHA-256 of the cookie value) and `expires_at`. |
+| `role_invites` | A role (`reviewer` or `admin`) waiting for whoever first signs in with `email` (stored lowercase). Signing in uses it up (`auth.callback`, query `ClaimRoleInvite`). |
 | `projects` | Name, description, repo, demo and screenshot links. |
 | `project_hackatime_projects` | Which Hackatime projects count toward which project. The primary key is `(user_id, hackatime_project)`, so each counts toward at most one of the person's projects. |
 | `submissions` | Each time a project is sent for review: `status` (its stage, see REVIEW_FLOW.md), a snapshot of `hackatime_projects`, `hackatime_seconds` (the project's total then), `new_seconds` (what it claims), `approved_seconds` (what it pays once signed off), `feedback`, `internal_notes`, the first reviewer, `checks` and `fraud_reasons`, the fraud and HQ reviewers, the claim (`claimed_by`, `claim_expires_at`), `airtable_record_id`, `unified_submitted_at`. |
@@ -167,6 +170,7 @@ The queues put submissions with a priority-review special stamp first, then olde
 - **Supply caps** count issued stamps, not used ones, so a stamp someone holds always works. Admin grants come out of supply too. Lowering a cap below what's issued just stops new drops.
 - **Every box type must keep at least one unlimited stamp type**, so a box can never come up empty. This is enforced when setting drops and when capping a type.
 - **New milestones** are granted straight away to everyone already past them (`GrantMilestoneToQualifiedUsers`).
+- **Claim links**: a stamp type with a `claim_code` can be claimed at `/claim/{code}` on the platform, for handing out a stamp with an announcement. Claims come out of supply like everything else. A claimed stamp has `claimed` set instead of a `box_id` or `granted_by` (the `special_stamps_source` check), and the partial unique index `special_stamps_one_claim_per_type` keeps it to one per person per type, even with simultaneous requests.
 - **Using a stamp** happens when submitting. It has to be theirs, unused, and have an effect. It's used up whatever the outcome.
 - **Adding an effect** (say, the stamp multiplier, deferred for budget reasons):
   - add the enum value in a new migration (`alter type special_stamp_effect add value '…'`)

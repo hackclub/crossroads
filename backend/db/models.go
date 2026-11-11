@@ -635,6 +635,14 @@ type ReviewSkip struct {
 	SkippedAt    time.Time
 }
 
+type RoleInvite struct {
+	ID        int64
+	Email     string
+	Role      UserRole
+	InvitedBy *int64
+	CreatedAt time.Time
+}
+
 type Session struct {
 	TokenHash []byte
 	UserID    int64
@@ -674,6 +682,15 @@ type ShopItem struct {
 	BatchStep    *int32
 }
 
+type SlackClick struct {
+	ID        int64
+	SlackID   string
+	Button    string
+	ChannelID *string
+	MessageTs *string
+	ClickedAt time.Time
+}
+
 type SpecialStamp struct {
 	ID                 int64
 	UserID             int64
@@ -687,6 +704,7 @@ type SpecialStamp struct {
 	PosY               *float32
 	Rotation           float32
 	PlacedAt           *time.Time
+	Claimed            bool
 }
 
 type SpecialStampType struct {
@@ -700,6 +718,7 @@ type SpecialStampType struct {
 	IssuedCount int32
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	ClaimCode   *string
 }
 
 type StampLedger struct {

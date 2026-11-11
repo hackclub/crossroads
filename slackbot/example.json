@@ -1,0 +1,31 @@
+{
+	"text": "Crossroads update: claim your Announcements stamp",
+	"blocks": [
+		{
+			"type": "header",
+			"text": { "type": "plain_text", "text": "Crossroads update" }
+		},
+		{
+			"type": "section",
+			"text": { "type": "mrkdwn", "text": "*Big news!* Write the announcement here. Everyone who reads it can grab an exclusive stamp." }
+		},
+		{
+			"type": "actions",
+			"elements": [
+				{
+					"type": "button",
+					"action_id": "open_platform",
+					"text": { "type": "plain_text", "text": "Open Crossroads" },
+					"url": "https://crossroads.hackclub.com/",
+					"style": "primary"
+				},
+				{
+					"type": "button",
+					"action_id": "claim_stamp",
+					"text": { "type": "plain_text", "text": "Claim your stamp" },
+					"url": "https://crossroads.hackclub.com/claim/CLAIM-CODE"
+				}
+			]
+		}
+	]
+}
