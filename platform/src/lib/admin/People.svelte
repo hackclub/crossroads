@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { api, get } from '../api.js';
 	import { session, refresh } from '../session.svelte.js';
+	import { date } from '../format.js';
 
 	let q = $state('');
 	let users = $state([]);
@@ -14,6 +15,9 @@
 	let stampTypeId = $state('');
 	// Role changes are drafted here and only saved with the Save button.
 	let roleDraft = $state({}); // user id → role
+	// Roles for people who haven't signed in yet, by email.
+	let invites = $state([]);
+	let invite = $state({ email: '', role: 'admin' });
 
 	async function search(e) {
 		e?.preventDefault();
@@ -23,8 +27,10 @@
 			msg = { tone: 'warn', text: err.message };
 		}
 	}
+	const loadInvites = async () => (invites = await get('/admin/role-invites'));
 	onMount(async () => {
 		search();
+		loadInvites();
 		[boxTypes, stampTypes] = await Promise.all([get('/admin/box-types'), get('/admin/special-stamp-types')]);
 	});
 
@@ -64,6 +70,30 @@
 	};
 	const giveBox = () => run(() => api('POST', `/admin/users/${selected.id}/boxes`, { box_type_id: Number(boxTypeId) }), () => `Gave ${selected.name} a box.`);
 	const giveStamp = () => run(() => api('POST', `/admin/users/${selected.id}/special-stamps`, { special_stamp_type_id: Number(stampTypeId) }), (s) => `Gave ${selected.name} a ${s.type.name}.`);
+
+	async function addInvite(e) {
+		e.preventDefault();
+		msg = null;
+		try {
+			const r = await api('POST', '/admin/role-invites', invite);
+			msg = { tone: 'good', text: `${r.email} will be ${r.role === 'admin' ? 'an admin' : 'a reviewer'} when they first sign in.` };
+			invite = { email: '', role: invite.role };
+			await loadInvites();
+		} catch (err) {
+			msg = { tone: 'warn', text: err.message };
+		}
+	}
+	async function removeInvite(i) {
+		if (!confirm(`Remove the ${i.role} invite for ${i.email}?`)) return;
+		msg = null;
+		try {
+			await api('DELETE', `/admin/role-invites/${i.id}`);
+			msg = { tone: 'good', text: `Removed the invite for ${i.email}.` };
+		} catch (err) {
+			msg = { tone: 'warn', text: err.message };
+		}
+		await loadInvites();
+	}
 </script>
 
 <div class="stack">
@@ -139,4 +169,32 @@
 			</div>
 		</section>
 	{/if}
+
+	<section class="card">
+		<div><h2>Not signed in yet</h2><p class="small muted">Give someone a role by their Hack Club Auth email. They get it the first time they sign in.</p></div>
+		<form class="row" onsubmit={addInvite}>
+			<input type="email" bind:value={invite.email} placeholder="orpheus@hackclub.com" required aria-label="Email" style="max-width: 320px" />
+			<select bind:value={invite.role} aria-label="Role" style="max-width: 160px">
+				<option>admin</option><option>reviewer</option>
+			</select>
+			<button class="btn">Add</button>
+		</form>
+		{#if invites.length}
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>Email</th><th>Role</th><th>Added by</th><th></th></tr></thead>
+					<tbody>
+						{#each invites as i}
+							<tr>
+								<td class="small">{i.email}</td>
+								<td>{i.role}</td>
+								<td class="small">{i.invited_by_name ?? '–'}, {date(i.created_at)}</td>
+								<td><button class="btn small ghost" onclick={() => removeInvite(i)}>Remove</button></td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{/if}
+	</section>
 </div>

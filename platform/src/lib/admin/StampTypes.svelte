@@ -5,7 +5,7 @@
 
 	let types = $state([]);
 	let msg = $state(null);
-	const blank = () => ({ name: '', description: '', image_url: '', rarity: 'common', effect: 'none', supply_cap: '' });
+	const blank = () => ({ name: '', description: '', image_url: '', rarity: 'common', effect: 'none', supply_cap: '', claim_code: '' });
 	let form = $state(blank());
 	let editing = $state(null);
 
@@ -21,7 +21,7 @@
 	async function save(e) {
 		e.preventDefault();
 		msg = null;
-		const body = { ...form, image_url: form.image_url || null, supply_cap: form.supply_cap === '' ? null : Number(form.supply_cap) };
+		const body = { ...form, image_url: form.image_url || null, supply_cap: form.supply_cap === '' ? null : Number(form.supply_cap), claim_code: form.claim_code || null };
 		try {
 			if (editing) await api('PATCH', `/admin/special-stamp-types/${editing}`, body);
 			else await api('POST', '/admin/special-stamp-types', body);
@@ -36,7 +36,7 @@
 
 	function edit(t) {
 		editing = t.id;
-		form = { name: t.name, description: t.description, image_url: t.image_url ?? '', rarity: t.rarity, effect: t.effect, supply_cap: t.supply_cap ?? '' };
+		form = { name: t.name, description: t.description, image_url: t.image_url ?? '', rarity: t.rarity, effect: t.effect, supply_cap: t.supply_cap ?? '', claim_code: t.claim_code ?? '' };
 	}
 </script>
 
@@ -44,16 +44,17 @@
 	{#if msg}<p class="callout {msg.tone} small">{msg.text}</p>{/if}
 	<div class="card table-wrap">
 		<table>
-			<thead><tr><th>Name</th><th>Rarity</th><th>Effect</th><th>Supply</th><th>Issued</th><th>Used</th><th></th></tr></thead>
+			<thead><tr><th>Name</th><th>Rarity</th><th>Effect</th><th>Supply</th><th>Issued</th><th>Used</th><th>Claim link</th><th></th></tr></thead>
 			<tbody>
 				{#each types as t}
 					<tr>
 						<td>{t.name}</td><td>{t.rarity}</td><td>{t.effect}</td>
 						<td>{t.supply_cap ?? '∞'}</td><td>{t.issued_count}</td><td>{t.applied_count}</td>
+						<td>{#if t.claim_code}<code>/claim/{t.claim_code}</code>{:else}<span class="muted">none</span>{/if}</td>
 						<td><button class="btn small ghost" onclick={() => edit(t)}>Edit</button></td>
 					</tr>
 				{:else}
-					<tr><td colspan="7" class="muted">None yet. Every box needs at least one unlimited type.</td></tr>
+					<tr><td colspan="8" class="muted">None yet. Every box needs at least one unlimited type.</td></tr>
 				{/each}
 			</tbody>
 		</table>
@@ -66,6 +67,7 @@
 			<label class="field"><span>Effect</span><select bind:value={form.effect}><option value="none">none (collectible)</option><option value="priority_review">priority_review (Express)</option><option value="stamp_multiplier">stamp_multiplier (+10% stamps, Golden Spike)</option></select></label>
 			<label class="field"><span>Supply cap <em>empty = unlimited</em></span><input type="number" min="0" bind:value={form.supply_cap} /></label>
 			<label class="field"><span>Image link <em>optional</em></span><input type="url" bind:value={form.image_url} /></label>
+			<label class="field"><span>Claim code <em>empty = can't be claimed; anyone with /claim/code gets one</em></span><input pattern="[A-Za-z0-9\-]+" maxlength="64" bind:value={form.claim_code} /></label>
 		</div>
 		<label class="field"><span>Description</span><textarea bind:value={form.description}></textarea></label>
 		<div class="row">

@@ -293,3 +293,46 @@ func TestAdminRoutesAndRoles(t *testing.T) {
 	e.mustCall(t, admin, http.StatusUnprocessableEntity, "PATCH", "/api/admin/users/"+itoa(admin.ID), map[string]any{"role": "participant"}, nil)
 	e.mustCall(t, admin, http.StatusUnprocessableEntity, "PATCH", "/api/admin/users/"+itoa(user.ID), map[string]any{"role": "overlord"}, nil)
 }
+
+func TestRoleInvites(t *testing.T) {
+	e := newEnv(t)
+	admin := e.newAdmin(t)
+
+	type invite struct {
+		ID            int64   `json:"id"`
+		Email         string  `json:"email"`
+		Role          string  `json:"role"`
+		InvitedByName *string `json:"invited_by_name"`
+	}
+	var created invite
+	e.mustCall(t, admin, http.StatusCreated, "POST", "/api/admin/role-invites", map[string]any{"email": " Orpheus@HackClub.com ", "role": "reviewer"}, &created)
+	if created.Email != "orpheus@hackclub.com" || created.Role != "reviewer" || created.InvitedByName == nil || *created.InvitedByName != admin.Name {
+		t.Errorf("created %+v", created)
+	}
+	// Inviting the same email again changes its role.
+	e.mustCall(t, admin, http.StatusCreated, "POST", "/api/admin/role-invites", map[string]any{"email": "orpheus@hackclub.com", "role": "admin"}, nil)
+	var invites []invite
+	e.mustCall(t, admin, http.StatusOK, "GET", "/api/admin/role-invites", nil, &invites)
+	if len(invites) != 1 || invites[0].ID != created.ID || invites[0].Role != "admin" {
+		t.Errorf("listed %+v, want one admin invite", invites)
+	}
+
+	for _, body := range []map[string]any{
+		{"email": "not an email", "role": "admin"},
+		{"email": "Orpheus <orpheus@hackclub.com>", "role": "admin"},
+		{"email": "heidi@example.com", "role": "participant"},
+		{"email": "heidi@example.com", "role": "overlord"},
+	} {
+		e.mustCall(t, admin, http.StatusUnprocessableEntity, "POST", "/api/admin/role-invites", body, nil)
+	}
+	// Someone who has already signed in gets their role changed directly.
+	e.mustCall(t, admin, http.StatusConflict, "POST", "/api/admin/role-invites", map[string]any{"email": "X@example.com", "role": "admin"}, nil)
+	e.mustCall(t, e.newUser(t, "U1"), http.StatusForbidden, "GET", "/api/admin/role-invites", nil, nil)
+
+	e.mustCall(t, admin, http.StatusNoContent, "DELETE", "/api/admin/role-invites/"+itoa(created.ID), nil, nil)
+	e.mustCall(t, admin, http.StatusNotFound, "DELETE", "/api/admin/role-invites/"+itoa(created.ID), nil, nil)
+	e.mustCall(t, admin, http.StatusOK, "GET", "/api/admin/role-invites", nil, &invites)
+	if len(invites) != 0 {
+		t.Errorf("%d invites left after deleting, want 0", len(invites))
+	}
+}

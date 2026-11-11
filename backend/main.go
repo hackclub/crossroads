@@ -28,6 +28,7 @@ import (
 	"github.com/scherepi/crossroads-backend/hackatime"
 	"github.com/scherepi/crossroads-backend/hca"
 	"github.com/scherepi/crossroads-backend/linkcheck"
+	"github.com/scherepi/crossroads-backend/slackclicks"
 	"github.com/scherepi/crossroads-backend/unified"
 	"github.com/scherepi/crossroads-backend/uploads"
 )
@@ -187,6 +188,11 @@ func main() {
 	r.Mount("/auth", a.Routes())
 	r.Mount("/api", apiRoutes.Routes())
 	r.Handle("/uploads/*", http.StripPrefix("/uploads", uploadStore.Files()))
+	// Clicks on the Slack bot's buttons (slackbot/). Off unless the secret it
+	// shares with the bot is set.
+	if secret := os.Getenv("SLACK_CLICKS_SECRET"); secret != "" {
+		r.Method("POST", "/slack/clicks", &slackclicks.Handler{Queries: db.New(pool), Secret: secret})
+	}
 	if devMode {
 		r.Get("/dev/login", a.DevLogin)
 		r.Mount("/dev/github", (&devgithub.Fake{Created: hoursStart.AddDate(0, 0, -30), HoursStart: hoursStart}).Routes())

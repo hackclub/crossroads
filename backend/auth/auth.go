@@ -112,6 +112,13 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Something went wrong signing in.", http.StatusInternalServerError)
 		return
 	}
+	// An admin may have given their email a role before they signed in.
+	_, err = a.Queries.ClaimRoleInvite(r.Context(), db.ClaimRoleInviteParams{Email: user.Email, ID: user.ID})
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		log.Printf("claiming role invite for user %d: %v", user.ID, err)
+		http.Error(w, "Something went wrong signing in.", http.StatusInternalServerError)
+		return
+	}
 
 	token, err := a.startSession(r.Context(), user.ID)
 	if err != nil {

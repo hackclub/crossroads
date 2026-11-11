@@ -208,7 +208,7 @@ func (q *Queries) GrantMilestoneToQualifiedUsers(ctx context.Context, arg GrantM
 }
 
 const listAvailableDrops = `-- name: ListAvailableDrops :many
-select box_drops.box_type_id, box_drops.weight, special_stamp_types.id, special_stamp_types.name, special_stamp_types.description, special_stamp_types.image_url, special_stamp_types.rarity, special_stamp_types.effect, special_stamp_types.supply_cap, special_stamp_types.issued_count, special_stamp_types.created_at, special_stamp_types.updated_at
+select box_drops.box_type_id, box_drops.weight, special_stamp_types.id, special_stamp_types.name, special_stamp_types.description, special_stamp_types.image_url, special_stamp_types.rarity, special_stamp_types.effect, special_stamp_types.supply_cap, special_stamp_types.issued_count, special_stamp_types.created_at, special_stamp_types.updated_at, special_stamp_types.claim_code
 from box_drops
 join special_stamp_types on special_stamp_types.id = box_drops.special_stamp_type_id
 where special_stamp_types.supply_cap is null or special_stamp_types.issued_count < special_stamp_types.supply_cap
@@ -244,6 +244,7 @@ func (q *Queries) ListAvailableDrops(ctx context.Context) ([]ListAvailableDropsR
 			&i.SpecialStampType.IssuedCount,
 			&i.SpecialStampType.CreatedAt,
 			&i.SpecialStampType.UpdatedAt,
+			&i.SpecialStampType.ClaimCode,
 		); err != nil {
 			return nil, err
 		}

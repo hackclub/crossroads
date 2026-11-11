@@ -63,7 +63,7 @@ func toSpecialStampTypeJSON(t db.SpecialStampType) specialStampTypeJSON {
 type specialStampJSON struct {
 	ID           int64                `json:"id"`
 	Type         specialStampTypeJSON `json:"type"`
-	BoxID        *int64               `json:"box_id"`        // null if an admin gave it
+	BoxID        *int64               `json:"box_id"`        // null if an admin gave it or it was claimed
 	SubmissionID *int64               `json:"submission_id"` // set once it's been used
 	AcquiredAt   time.Time            `json:"acquired_at"`
 	// Set once it's stuck on a project; it's in the stamp box until then.
