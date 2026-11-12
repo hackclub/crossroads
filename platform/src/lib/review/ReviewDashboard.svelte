@@ -11,7 +11,7 @@
 	let data = $state(null);
 	let error = $state('');
 	let board = $state('week'); // or 'all_time'
-	const SHOWN = 8;
+	const SHOWN = 3;
 
 	onMount(async () => {
 		try {
@@ -67,16 +67,18 @@
 		<div class="part">
 			<h2>You</h2>
 			<ul class="mine">
-				<li title="Decisions on ships: approving, rejecting, passing, signing off or sending back"><span>Reviews this week</span><strong>{week?.row.reviews ?? 0}</strong></li>
-				<li><span>Reviews all time</span><strong>{allTime?.row.reviews ?? 0}</strong></li>
-				<li title="Hours claimed by the ships you first-reviewed"><span>Hours all time</span><strong>{hours(allTime?.row.seconds_first_reviewed ?? 0)}</strong></li>
+				<li title="Decisions on ships: approving, rejecting, passing, signing off or sending back"><strong>{week?.row.reviews ?? 0}</strong><span>Reviews this week</span></li>
+				<li><strong>{allTime?.row.reviews ?? 0}</strong><span>Reviews all time</span></li>
+				<li title="Hours claimed by the ships you first-reviewed"><strong>{hours(allTime?.row.seconds_first_reviewed ?? 0)}</strong><span>Hours all time</span></li>
 			</ul>
 		</div>
 
 		<div class="part">
 			<div class="week-head">
 				<h2>This week</h2>
-				<span class="muted small">{weekLabel}{data ? ` · ${plural(weekTotal, 'review')}` : ''}</span>
+				{#if data}
+					<span class="muted small" title={weekLabel}>{plural(weekTotal, 'review')} · {data.pace.waiting ? `${data.pace.waiting} waiting, oldest ${wait(data.pace.oldest_wait_seconds)}` : 'none waiting'}</span>
+				{/if}
 			</div>
 			<!-- One series: reviews by everyone each day. Hover a day for its count. -->
 			<div class="chart" aria-hidden="true">
@@ -98,9 +100,6 @@
 				<caption>Reviews by everyone each day this week</caption>
 				<tbody>{#each days as d (d.day)}<tr><th scope="row">{dayLabel(d.day)}</th><td>{d.reviews}</td></tr>{/each}</tbody>
 			</table>
-			{#if data}
-				<p class="small muted waiting">{data.pace.waiting ? `${plural(data.pace.waiting, 'ship')} waiting · oldest ${wait(data.pace.oldest_wait_seconds)}` : 'Nothing waiting'}</p>
-			{/if}
 		</div>
 
 		<div class="part board">
@@ -141,7 +140,7 @@
 	.dash {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		margin-bottom: 20px;
+		margin-bottom: 16px;
 		background: var(--row-bg);
 		border-radius: var(--radius);
 		overflow: hidden;
@@ -156,31 +155,32 @@
 		.board { grid-column: 1 / -1; }
 	}
 	@media (min-width: 1100px) {
-		.dash { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 1fr); }
+		.dash { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 		.part + .part { border-top: 0; border-left: 1px solid var(--deep); }
 		.board { grid-column: auto; }
 	}
-	.part { display: flex; flex-direction: column; gap: 12px; padding: 18px 22px; min-width: 0; }
-	h2 { font-size: 30px; line-height: 1.1; }
+	.part { display: flex; flex-direction: column; gap: 8px; padding: 12px 18px 14px; min-width: 0; }
+	h2 { font-size: 24px; line-height: 1.1; }
 
-	/* You: three bars, a label and its number. */
-	.mine { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+	/* You: three numbers side by side, each over its label. */
+	/* Three across when they fit; fewer per row rather than squeezed. */
+	.mine { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 104px), 1fr)); gap: 6px; flex: 1; }
 	.mine li {
 		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 0 12px;
-		padding: 8px 14px;
+		flex-direction: column;
+		justify-content: center;
+		gap: 2px;
+		padding: 8px 10px;
 		border-radius: 10px;
 		background: var(--deep);
+		min-width: 0;
 	}
-	.mine span { font-size: 21px; color: var(--muted); }
-	.mine strong { font-size: 34px; font-weight: 400; line-height: 1; font-variant-numeric: tabular-nums; }
+	.mine strong { font-size: 28px; font-weight: 400; line-height: 1; font-variant-numeric: tabular-nums; }
+	.mine span { font-size: 16px; line-height: 1.15; color: var(--muted); text-wrap: balance; }
 
 	/* This week: a bar per day, anchored to the baseline, rounded at the top. */
 	.week-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-	.chart { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; flex: 1; min-height: 120px; }
+	.chart { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; flex: 1; min-height: 76px; }
 	.col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 	/* Room above the tallest bar for today's number. */
 	.plot {
@@ -190,7 +190,7 @@
 		flex-direction: column;
 		justify-content: flex-end;
 		align-items: center;
-		margin-top: 22px;
+		margin-top: 18px;
 		border-bottom: 1px solid var(--muted);
 	}
 	.bar { position: relative; width: min(70%, 34px); min-height: 3px; background: var(--info); border-radius: 4px 4px 0 0; }
@@ -201,7 +201,6 @@
 	.today .day { color: var(--text); font-weight: 700; }
 	.future .day { opacity: 0.45; }
 	.future .plot { border-bottom-style: dashed; border-bottom-color: var(--deep); }
-	.waiting { margin: 0; }
 	.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 	.board-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
@@ -215,9 +214,9 @@
 		grid-template-columns: 1.8em minmax(0, 1fr) auto auto;
 		align-items: baseline;
 		gap: 10px;
-		padding: 4px 8px;
+		padding: 2px 8px;
 		border-radius: 8px;
-		font-size: 22px;
+		font-size: 20px;
 	}
 	.leaders li.you { background: var(--deep); }
 	.leaders li.gap { margin-top: 6px; position: relative; }
