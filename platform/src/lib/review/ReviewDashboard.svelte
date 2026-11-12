@@ -85,7 +85,7 @@
 				<div><dt>Hours signed off</dt><dd>{data ? hours(data.pace.seconds_approved) : '–'}</dd></div>
 				<div>
 					<dt>Waiting now</dt>
-					<dd>{data?.pace.waiting ?? '–'}{#if data?.pace.oldest_wait_seconds != null} <span class="muted sub">oldest {wait(data.pace.oldest_wait_seconds)}</span>{/if}</dd>
+					<dd>{data?.pace.waiting ?? '–'}{#if data?.pace.oldest_wait_seconds != null}{' '}<span class="muted sub">oldest {wait(data.pace.oldest_wait_seconds)}</span>{/if}</dd>
 				</div>
 				<div class="wide"><dt>Median wait for a first review, last 7 days</dt><dd>{wait(data?.pace.median_wait_seconds)}</dd></div>
 			</dl>
@@ -155,7 +155,7 @@
 	.facts .wide { grid-column: 1 / -1; }
 	.facts dt { font-size: 18px; color: var(--muted); }
 	.facts dd { margin: 0; font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; }
-	.facts .sub { font-size: 18px; margin-left: 8px; }
+	.facts .sub { font-size: 18px; margin-left: 4px; }
 	.you .facts { flex-direction: row; gap: 24px; margin-top: auto; }
 
 	.board-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
