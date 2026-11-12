@@ -34,7 +34,8 @@
 	const rate = $derived(session.me.stamps_per_hour);
 	const grants = $derived((items ?? []).filter((i) => i.kind === 'grant'));
 	const goods = $derived((items ?? []).filter((i) => i.kind !== 'grant'));
-	const dollars = (cents) => '$' + (cents / 100).toFixed(cents % 100 ? 2 : 0);
+	const dollars = (cents) =>
+		'$' + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: 2 });
 
 	// What n pieces of a grant cost: the stamps for the approved hours they're
 	// worth, rounded up, as the backend charges (api/shop.go grantPrice).
@@ -295,6 +296,9 @@
 	.desc { margin: 0; font-size: 20px; color: var(--muted); }
 	.item .card-foot { grid-column: 1 / -1; }
 	.empty { margin: 0; }
+	.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+	/* The one thing to do here, in brass. */
+	.grant-buy .btn.primary, .item .btn.primary, dialog .btn.primary { background: var(--brass, #d9a441); color: #1a1208; }
 
 	.closed { display: grid; place-items: center; gap: 6px; min-height: 40vh; text-align: center; }
 	.closed p { margin: 0; }
