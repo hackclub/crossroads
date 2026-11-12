@@ -10,7 +10,8 @@ values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 on conflict (hca_id) do update set
     slack_id = excluded.slack_id,
     email = excluded.email,
-    name = excluded.name,
+    -- A name they chose themselves stays; otherwise Hack Club Auth's wins.
+    name = case when users.name_customized then users.name else excluded.name end,
     first_name = excluded.first_name,
     last_name = excluded.last_name,
     birthday = excluded.birthday,
@@ -33,6 +34,11 @@ limit 50;
 
 -- name: SetUserRole :one
 update users set role = $2 where id = $1
+returning *;
+
+-- name: SetUserName :one
+-- A name someone chose, or (customized false) the one from Hack Club Auth again.
+update users set name = $2, name_customized = $3 where id = $1
 returning *;
 
 -- name: SetEmporiumAccess :one

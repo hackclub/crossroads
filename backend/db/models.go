@@ -793,4 +793,5 @@ type User struct {
 	EmporiumAccessAt   *time.Time
 	EmporiumNote       *string
 	EmporiumGrantedBy  *int64
+	NameCustomized     bool
 }

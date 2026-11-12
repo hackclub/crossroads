@@ -461,6 +461,10 @@ Claims a stamp of the type with that claim code (the platform's `/claim/{code}` 
 
 **Price locks.** The item with `kind: "price_lock"` fixes their ticket at the price of the batch on sale when they buy it, for whenever they buy the ticket. It's on top of the ticket's price, it doesn't hold a ticket, and it's one per person. If the tickets sell out before they buy one, the lock is cancelled and its stamps refunded automatically.
 
+### `PATCH /api/me`
+
+`{"name": "Max"}` changes the name the site shows (people click their name in the top bar). It's trimmed, inner runs of spaces become one, and it has to be 1 to 50 characters with nothing invisible in it. Signing in then leaves it alone; `{"name": null}` goes back to the name on their Hack Club account. `/api/me`'s `name_customized` says which it is. Their legal `first_name` and `last_name` don't change: the Unified YSWS DB and Airtable orders use those. Answers like `GET /api/me`.
+
 ### The Smugglers' Emporium
 
 A second shop, hidden from everyone but reviewers, admins, and people an admin let in for a project worth rewarding (`emporium` on `/api/me` says who). `GET /api/emporium/items` lists it the way `GET /api/shop/items` lists the shop, and answers 404 to anyone else; its items aren't in the shop's list, and buying one without access answers 404 as if it didn't exist. The launch sale doesn't apply in the Emporium.

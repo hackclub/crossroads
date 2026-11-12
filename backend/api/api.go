@@ -61,6 +61,7 @@ func (a *API) Routes() chi.Router {
 func (a *API) signedInRoutes(r chi.Router) {
 	r.Use(auth.RequireUser)
 	r.Get("/me", a.me)
+	r.Patch("/me", a.updateMe)
 	r.Get("/hackatime/projects", a.listHackatimeProjects)
 	r.Get("/community", a.community)
 	if a.Uploads != nil {

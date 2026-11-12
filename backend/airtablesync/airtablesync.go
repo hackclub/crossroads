@@ -5,6 +5,7 @@
 package airtablesync
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -284,13 +285,14 @@ func (s *Syncer) markSynced(ctx context.Context, row db.ListOrdersToSyncRow, rec
 func orderFields(row db.ListOrdersToSyncRow) airtable.Fields {
 	order, item, user := row.Order, row.ShopItem, row.User
 	f := airtable.Fields{
-		"Order":       fmt.Sprintf("#%d %s", order.ID, item.Name),
-		"Order ID":    order.ID,
-		"Item":        item.Name,
-		"Kind":        string(item.Kind),
-		"Price":       order.Price,
-		"Status":      string(order.Status),
-		"Name":        user.Name,
+		"Order":    fmt.Sprintf("#%d %s", order.ID, item.Name),
+		"Order ID": order.ID,
+		"Item":     item.Name,
+		"Kind":     string(item.Kind),
+		"Price":    order.Price,
+		"Status":   string(order.Status),
+		// Their legal name: the one on the site can be one they chose.
+		"Name":        cmp.Or(strings.TrimSpace(user.FirstName+" "+user.LastName), user.Name),
 		"Email":       user.Email,
 		"Slack ID":    user.SlackID,
 		"Admin Notes": order.Notes,
