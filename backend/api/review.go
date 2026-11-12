@@ -270,7 +270,7 @@ func (a *API) releaseClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := a.Queries.ReleaseClaim(r.Context(), db.ReleaseClaimParams{
-		ID: id, UserID: &reviewer.ID, Anyone: reviewer.Role == db.UserRoleAdmin,
+		ID: id, UserID: &reviewer.ID, Anyone: reviewer.Role.IsAdmin(),
 	}); err != nil {
 		respond.ServerError(w, r, err)
 		return

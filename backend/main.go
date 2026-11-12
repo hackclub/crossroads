@@ -20,6 +20,7 @@ import (
 	"github.com/scherepi/crossroads-backend/airtable"
 	"github.com/scherepi/crossroads-backend/airtablesync"
 	"github.com/scherepi/crossroads-backend/api"
+	"github.com/scherepi/crossroads-backend/audit"
 	"github.com/scherepi/crossroads-backend/auth"
 	"github.com/scherepi/crossroads-backend/db"
 	"github.com/scherepi/crossroads-backend/devgithub"
@@ -44,6 +45,15 @@ var communityGoal = api.CommunityGoal{
 	Ends:    time.Date(2026, time.November, 18, 23, 59, 0, 0, time.FixedZone("EST", -5*3600)),
 }
 
+// Superadmins are admins who can also read the audit log. It's exactly these
+// Slack IDs, set at startup and every sign-in, and nothing in the app can
+// change it: adding someone takes a commit here.
+var superadmins = []string{
+	"U083W5CCFDG", // Joaquin
+	"U078ZJHUKFW", // Max
+	"U08RVF1BAN4", // Barnav
+}
+
 // The launch sale: from launch on November 6 until the community goal closes,
 // 11:59 PM Eastern on November 18. It first ran for a week, to Nov 13.
 var saleEnd = communityGoal.Ends
@@ -66,6 +76,9 @@ func main() {
 	if err := db.Migrate(ctx, pool); err != nil {
 		log.Fatalf("migrating: %v", err)
 	}
+	if err := db.New(pool).SyncSuperadmins(ctx, superadmins); err != nil {
+		log.Fatalf("setting superadmins: %v", err)
+	}
 
 	clientID, clientSecret, redirectURL := os.Getenv("HCA_CLIENT_ID"), os.Getenv("HCA_CLIENT_SECRET"), os.Getenv("HCA_REDIRECT_URL")
 	if clientID == "" || clientSecret == "" || redirectURL == "" {
@@ -76,6 +89,7 @@ func main() {
 		Queries:       db.New(pool),
 		HCA:           hcaClient,
 		SecureCookies: strings.HasPrefix(redirectURL, "https://"),
+		Superadmins:   superadmins,
 	}
 
 	// DEV_MODE=1 adds a sign-in that skips Hack Club Auth and a fake Hackatime,
@@ -120,7 +134,7 @@ func main() {
 	}
 	// GitHub stats and link checks for reviewers. In dev mode GitHub is faked,
 	// and so are links on the example projects' made-up hosts.
-	githubConfig := github.Config{Token: os.Getenv("GITHUB_TOKEN")}
+	githubConfig := github.Config{Token: os.Getenv("GITHUB_TOKEN"), ProxyKey: os.Getenv("GH_PROXY_API_KEY")}
 	var links linkcheck.Checker = linkcheck.New()
 	// Searching the Unified YSWS DB for projects another program paid for.
 	// Read-only; dev mode never touches it.
@@ -186,8 +200,14 @@ func main() {
 	// Which days each person uses the platform, for the admin activity page.
 	visits := &activity.Visits{Queries: db.New(pool)}
 	r.Use(middleware.Logger, middleware.Recoverer, a.LoadSession, visits.Record)
-	r.Mount("/auth", a.Routes())
-	r.Mount("/api", apiRoutes.Routes())
+	// Every write to /auth and /api goes in the audit log (package audit).
+	// The Slack bot's clicks have their own table, and /dev is only local.
+	requests := &audit.Requests{Queries: db.New(pool)}
+	r.Group(func(r chi.Router) {
+		r.Use(requests.Record)
+		r.Mount("/auth", a.Routes())
+		r.Mount("/api", apiRoutes.Routes())
+	})
 	r.Handle("/uploads/*", http.StripPrefix("/uploads", uploadStore.Files()))
 	// Clicks on the Slack bot's buttons (slackbot/). Off unless the secret it
 	// shares with the bot is set.

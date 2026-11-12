@@ -20,7 +20,7 @@ var devName = regexp.MustCompile(`^[a-z0-9-]{1,30}$`)
 // It's only mounted when DEV_MODE=1 (see main.go), and must never be reachable
 // in production: anyone could sign in as anyone.
 //
-// GET /dev/login?name=alice&role=participant|reviewer|admin&verified=1&next=/home
+// GET /dev/login?name=alice&role=participant|reviewer|admin|superadmin&verified=1&next=/home
 //
 // Reviewers can decide every review stage unless stages= lists some of
 // review, fraud and hq (stages=hq for an HQ-only reviewer).
@@ -30,7 +30,8 @@ var devName = regexp.MustCompile(`^[a-z0-9-]{1,30}$`)
 // verified=0. A role= is set every time, so the same name can switch roles.
 // Without one, they keep the role they have, or get one an admin set for
 // their email (name@dev.localhost) before they first signed in, as signing in
-// with Hack Club Auth does.
+// with Hack Club Auth does. (A restart turns dev superadmins back into
+// admins: see db.SyncSuperadmins.)
 func (a *Auth) DevLogin(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	name := strings.ToLower(strings.TrimSpace(q.Get("name")))
@@ -40,7 +41,7 @@ func (a *Auth) DevLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	role := db.UserRole(q.Get("role"))
 	if role != "" && !role.Valid() {
-		http.Error(w, "role has to be participant, reviewer or admin", http.StatusBadRequest)
+		http.Error(w, "role has to be participant, reviewer, admin or superadmin", http.StatusBadRequest)
 		return
 	}
 	verified := q.Get("verified") != "0"
@@ -93,6 +94,11 @@ func (a *Auth) DevLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "dev login failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	details := map[string]any{"dev": true}
+	if role != "" {
+		details["role"] = role
+	}
+	a.recordSignIn(r, user, details)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,

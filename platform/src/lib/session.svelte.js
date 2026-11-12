@@ -15,5 +15,7 @@ export async function refresh() {
 	return session.me;
 }
 
-export const isReviewer = () => session.me?.role === 'reviewer' || session.me?.role === 'admin';
-export const isAdmin = () => session.me?.role === 'admin';
+// Superadmins are admins who can also read the audit log.
+export const isSuperadmin = () => session.me?.role === 'superadmin';
+export const isAdmin = () => session.me?.role === 'admin' || isSuperadmin();
+export const isReviewer = () => session.me?.role === 'reviewer' || isAdmin();

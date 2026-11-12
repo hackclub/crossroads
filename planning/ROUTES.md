@@ -7,7 +7,7 @@ The code is the source of truth. Routes are registered in `backend/main.go`, `ba
 ## Conventions
 
 - **Sign-in.** Everything under `/api` needs a signed-in session (the `crossroads_session` cookie). Without one: `401 {"error": "Sign in first."}`.
-- **Roles.** People are `participant`, `reviewer` or `admin`. `/api/review/*` needs reviewer or admin, `/api/admin/*` needs admin. Otherwise: `403 {"error": "You don't have access to this."}`. Admins can do everything reviewers can.
+- **Roles.** People are `participant`, `reviewer`, `admin` or `superadmin`. `/api/review/*` needs reviewer or admin, `/api/admin/*` needs admin, `/api/superadmin/*` needs superadmin. Otherwise: `403 {"error": "You don't have access to this."}`. Admins can do everything reviewers can, and superadmins everything admins can. Superadmins are a fixed list of Slack IDs in `backend/main.go` (`superadmins`), set at startup and every sign-in; no route can grant or remove it.
 - **Bodies** are JSON. Unknown fields are rejected with `400`, so typos don't fail silently. An empty body counts as `{}`.
 - **Errors** are always `{"error": "..."}`, written to be shown to people as is. Server errors are `500 {"error": "Something went wrong on our end."}`; the details only go to the server log.
 - **IDs in paths** that aren't numbers give `404 {"error": "That doesn't exist."}`. So does anything that belongs to someone else: participants can't tell someone else's project from a missing one.
@@ -34,7 +34,7 @@ Status codes used across the API:
 TypeScript definitions of everything the API returns. Copy them into the frontend.
 
 ```ts
-type Role = "participant" | "reviewer" | "admin";
+type Role = "participant" | "reviewer" | "admin" | "superadmin";
 // What participants see. Reviewer routes show the real stage instead
 // (ReviewStatus, below): "final_check" is "fraud_check" or "awaiting_hq".
 type SubmissionStatus = "pending" | "final_check" | "approved" | "rejected";
@@ -269,6 +269,7 @@ Reviewer and admin shapes are listed with their routes below.
 | PATCH | `/api/admin/shop-items/{id}` | admin | Edit a shop item |
 | GET | `/api/admin/orders?status=` | admin | Orders to fulfill |
 | PATCH | `/api/admin/orders/{id}` | admin | Fulfill or cancel an order |
+| GET | `/api/superadmin/audit-log?kind=&user=&before=&limit=` | superadmin | Everything that's happened on the platform |
 | POST | `/slack/clicks` | the Slack bot | Record a click on a Slack announcement's button |
 
 ---
@@ -291,7 +292,7 @@ Redirects (`302`) to Hack Club Auth. `next` is where to land afterwards, and has
 
 Hack Club Auth sends people here with `?code=…&state=…`. The backend checks the state, trades the code for the person's identity, creates or updates their user, starts a 30-day session (the `crossroads_session` cookie, `HttpOnly`, `SameSite=Lax`) and redirects (`302`) to `next`.
 
-Name, email, Slack ID, birthday, phone, primary mailing address, verification status and YSWS eligibility are refreshed from Hack Club Auth on every sign-in.
+Name, email, Slack ID, birthday, phone, primary mailing address, verification status and YSWS eligibility are refreshed from Hack Club Auth on every sign-in. Signing in also makes the people in `superadmins` (`backend/main.go`) superadmins and any other superadmin an admin, and adds a `sign_in` to the audit log.
 
 | Status | When |
 |---|---|
@@ -706,7 +707,7 @@ interface AdminUser {
 
 **`GET /api/admin/users?q=heidi`** → `200 AdminUser[]`. Matches part of a name or email, or a whole Slack ID. Without `q`, the newest 50 people.
 
-**`PATCH /api/admin/users/{id}`** with any of `{"role": "reviewer", "can_review": true, "can_fraud_review": false, "can_hq_review": false}` → `200 AdminUser`. Fields left out don't change. `422` for an unknown role, an admin removing their own admin role, or review stages on a participant. `404` for no such user. Changes apply on the person's next request.
+**`PATCH /api/admin/users/{id}`** with any of `{"role": "reviewer", "can_review": true, "can_fraud_review": false, "can_hq_review": false}` → `200 AdminUser`. Fields left out don't change. `422` for an unknown role, making someone a superadmin or changing a superadmin's role (both are only set in `backend/main.go`), an admin removing their own admin role, or review stages on a participant. `404` for no such user. Changes apply on the person's next request.
 
 ### Reviewer stats (what reviewers are paid by)
 
@@ -749,7 +750,7 @@ interface RoleInvite {
 
 **`GET /api/admin/role-invites`** → `200 RoleInvite[]`, newest first.
 
-**`PUT /api/admin/roles-by-email`** with `{"email": "orpheus@hackclub.com", "role": "reviewer"}` (`participant`, `reviewer` or `admin`) sets the role of whoever has that Hack Club Auth email, ignoring case. If they've signed in, it changes now: `200 {"applied": "now", "user": AdminUser}`, and any role waiting for that email is dropped. If not, it waits: `201 {"applied": "on_sign_in", "invite": RoleInvite}`, and the first time they sign in they get it and the invite is used up, so a later change sticks. Setting the same email again replaces the role waiting; `participant` for someone who hasn't signed in drops it (`200 {"applied": "cleared"}`). Back to participant clears someone's review stages; a new reviewer starts on first reviews unless stages are set too (the same goes for `PATCH /api/admin/users/{id}`), and an admin ticks the fraud check and HQ sign-off. `422` for something that isn't a bare email address, an unknown role, or an admin's own email with a role below admin.
+**`PUT /api/admin/roles-by-email`** with `{"email": "orpheus@hackclub.com", "role": "reviewer"}` (`participant`, `reviewer` or `admin`) sets the role of whoever has that Hack Club Auth email, ignoring case. If they've signed in, it changes now: `200 {"applied": "now", "user": AdminUser}`, and any role waiting for that email is dropped. If not, it waits: `201 {"applied": "on_sign_in", "invite": RoleInvite}`, and the first time they sign in they get it and the invite is used up, so a later change sticks. Setting the same email again replaces the role waiting; `participant` for someone who hasn't signed in drops it (`200 {"applied": "cleared"}`). Back to participant clears someone's review stages; a new reviewer starts on first reviews unless stages are set too (the same goes for `PATCH /api/admin/users/{id}`), and an admin ticks the fraud check and HQ sign-off. `422` for something that isn't a bare email address, an unknown role, an admin's own email with a role below admin, `superadmin`, or a superadmin's email (superadmins are set in main.go).
 
 **`DELETE /api/admin/role-invites/{id}`** → `204`. `404` if it doesn't exist, including once it's been used.
 
@@ -909,6 +910,45 @@ interface Community {
 
 `seconds` is the `new_seconds` of every participant's submission made between `starts_at` and `ends_at`. A ship counts as soon as it's submitted, without waiting for review, and drops out if it's rejected; a reviewer cutting its hours doesn't change it. The goal and deadline are `communityGoal` in `backend/main.go`.
 
+
+## Audit log (`/api/superadmin`, superadmins only)
+
+**`GET /api/superadmin/audit-log`** → `200 AuditEvent[]`, newest first, 100 at a time.
+
+| Query | |
+|---|---|
+| `kind` | Keep only these. Repeat it or separate with commas. Each is a whole kind (`stamps.payout`) or a group, the part before the dot (`stamps`). Unknown ones are `422`, with the list. |
+| `user` | A user ID: keep what they did and what happened to them. |
+| `before` | An event ID: the next page is `before=` the last ID of this one. |
+| `limit` | 1 to 500. |
+
+```ts
+interface AuditEvent {
+  id: number;
+  kind: string;               // below
+  at: string;
+  actor_id: number | null;    // who did it; null for nobody signed in, the server, or (role.changed, order.*) not known
+  actor_name: string | null;
+  user_id: number | null;     // who it happened to
+  user_name: string | null;
+  details: object;            // by kind, below
+}
+```
+
+| Kind | When | `details` |
+|---|---|---|
+| `request` | Any request to `/api` or `/auth` but `GET`, `HEAD` and `OPTIONS`, whatever its status. `user_id` is the route's `{userID}`, if it has one. | `method`, `path`, `route` (`/api/admin/users/{userID}`), `params`, `status`, `ms`, `ip`, `user_agent`, and `body` if it's JSON up to 64 KB (otherwise `body_bytes` and `content_type`). Headers aren't kept. |
+| `sign_in` | Signing in, through Hack Club Auth or dev mode | `first_time`, `ip`, `user_agent`; `dev` for dev sign-ins, and `role` if one was given |
+| `special_stamp.issued` | A special stamp from a box (actor: the opener), an admin (actor: them) or a claim link | `special_stamp_id`, `special_stamp_type_id`, `special_stamp_type`, `rarity`, `source` (`box`, `admin`, `claim`), and for boxes `box_id`, `box_type_id`, `box_type`, `box_milestone` (null if an admin gave the box), `box_granted_by` |
+| `special_stamp.used` | Put on a submission | `special_stamp_id`, `special_stamp_type_id`, `special_stamp_type`, `effect`, `submission_id`, `project_id`, `project` |
+| `box.granted` | At a milestone (no actor) or from an admin | `box_id`, `box_type_id`, `box_type`, `source` (`milestone`, `admin`), `milestone_id`, `milestone` |
+| `stamps.payout`, `stamps.bonus` | Paid for an approved ship (actor: whoever signed it off) | `ledger_id`, `amount`, `balance` (after), `submission_id`, `project`, `approved_seconds` |
+| `stamps.purchase`, `stamps.refund` | An order, and its refund | `ledger_id`, `amount`, `balance`, `order_id`, `item` |
+| `stamps.adjustment` | An admin's adjustment | `ledger_id`, `amount`, `balance`, `note` |
+| `role.changed` | Any role change: an admin, a role invite, the superadmin list, dev sign-in | `from`, `to` |
+| `order.fulfilled`, `order.cancelled` | An admin, the Airtable sync or a price lock refund | `order_id`, `item`, `price`, `from`, `to` |
+
+Names in `details` are as they were then. The log can't be edited or deleted, even from SQL, without dropping its trigger.
 
 ## Slack clicks
 

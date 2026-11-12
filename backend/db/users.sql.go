@@ -445,6 +445,19 @@ func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (User,
 	return i, err
 }
 
+const syncSuperadmins = `-- name: SyncSuperadmins :exec
+update users
+set role = case when slack_id = any($1::text[]) then 'superadmin'::user_role else 'admin'::user_role end
+where coalesce(slack_id = any($1::text[]), false) <> (role = 'superadmin')
+`
+
+// Makes the people with these Slack IDs superadmins, and anyone else who was
+// one an admin. main.go has the list.
+func (q *Queries) SyncSuperadmins(ctx context.Context, slackIds []string) error {
+	_, err := q.db.Exec(ctx, syncSuperadmins, slackIds)
+	return err
+}
+
 const upsertRoleInvite = `-- name: UpsertRoleInvite :one
 insert into role_invites (email, role, invited_by)
 values (lower($1::text), $2, $3)
