@@ -22,7 +22,8 @@
 	let approvedHours = $state(0);
 	let feedback = $state('');
 	let notes = $state('');
-	let sendToFraud = $state(false);
+	// Ticked by default: a reviewer unticks it to skip the fraud check.
+	let sendToFraud = $state(true);
 	// Approving more hours than Hackatime tracked, with a reason.
 	let overrideReason = $state('');
 	// As on Ari: the technical features that account for the hours, and why
@@ -89,7 +90,7 @@
 		result = null;
 		action = 'approve';
 		feedback = notes = '';
-		sendToFraud = false;
+		sendToFraud = true;
 		overrideReason = technicalFeatures = deflationReason = '';
 		tab = 'checks';
 		load();
