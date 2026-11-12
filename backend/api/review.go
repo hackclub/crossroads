@@ -310,6 +310,10 @@ type reviewUserJSON struct {
 	VerificationStatus string  `json:"verification_status"`
 	YSWSEligible       bool    `json:"ysws_eligible"`
 	ReviewerNote       *string `json:"reviewer_note"`
+	// Whether they're in the Smugglers' Emporium, and why, so an admin can
+	// let them in for a project worth it.
+	InEmporium   bool    `json:"in_emporium"`
+	EmporiumNote *string `json:"emporium_note"`
 }
 
 type sharedLinkProjectJSON struct {
@@ -475,6 +479,7 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		User: reviewUserJSON{
 			ID: row.User.ID, Name: row.User.Name, Email: row.User.Email, SlackID: row.User.SlackID,
 			VerificationStatus: row.User.VerificationStatus, YSWSEligible: row.User.YswsEligible, ReviewerNote: row.User.ReviewerNote,
+			InEmporium: row.User.InEmporium(), EmporiumNote: row.User.EmporiumNote,
 		},
 		Events:               events,
 		Checks:               report.Checks,

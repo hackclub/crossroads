@@ -29,7 +29,7 @@
 				{#each orders as o}
 					<tr>
 						<td class="muted">#{o.id}</td>
-						<td>{o.item.name}{#if o.locked_price}<span class="small muted"> at {o.locked_price} stamps</span>{/if}</td>
+						<td>{o.item.name}{#if o.locked_price}<span class="small muted"> at {o.locked_price} stamps</span>{/if}{#if o.grant_cents}<span class="small muted"> · ${(o.grant_cents / 100).toFixed(o.grant_cents % 100 ? 2 : 0)}</span>{/if}</td>
 						<td>{o.price}</td>
 						<td>{date(o.created_at)}</td>
 						<td><span class="badge {o.status === 'fulfilled' ? 'good' : o.status === 'cancelled' ? '' : 'info'}">{statusLabel(o)}</span></td>

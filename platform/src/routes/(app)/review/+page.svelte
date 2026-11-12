@@ -7,6 +7,7 @@
 	import { session } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
 	import { STAGES, canDecideStage, reasonLabel, time } from '#lib/review.js';
+	import ReviewDashboard from '#lib/review/ReviewDashboard.svelte';
 
 	const stage = $derived(STAGES[page.url.searchParams.get('stage')] ? page.url.searchParams.get('stage') : 'review');
 	const canDecide = $derived(canDecideStage(session.me, stage));
@@ -56,6 +57,8 @@
 		{/if}
 	</div>
 </div>
+
+<ReviewDashboard />
 
 <div class="tabs" role="tablist">
 	{#each Object.entries(STAGES) as [key, s]}

@@ -46,8 +46,83 @@ type cached struct {
 	expires time.Time
 }
 
+// ErrNotPublic is a link at an address only this server could reach: a
+// loopback, private, link-local or cloud-metadata address. Those are refused
+// at dial time, after DNS, so a public name that resolves to one, or a
+// redirect to one, is refused too. The links come from participants, and a
+// server-side fetch of them must never reach anything inside the network.
+var ErrNotPublic = errors.New("the address isn't public")
+
 func New() *HTTP {
-	return &HTTP{client: &http.Client{Timeout: 10 * time.Second}, cache: map[string]cached{}}
+	transport := &http.Transport{
+		// No proxy: one would fetch on our behalf without the address check.
+		Proxy:                 nil,
+		DialContext:           dialPublic,
+		ForceAttemptHTTP2:     true,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 8 * time.Second,
+	}
+	client := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: transport,
+		// Every hop dials through the check above; this just keeps a redirect
+		// loop short and refuses hops to anything but http(s).
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return errors.New("too many redirects")
+			}
+			if problem := Invalid(req.URL.String()); problem != "" {
+				return ErrNotPublic
+			}
+			return nil
+		},
+	}
+	return &HTTP{client: client, cache: map[string]cached{}}
+}
+
+// dialPublic resolves addr and connects only if every address it resolves
+// to is public. It dials the address it checked, not a fresh lookup of the
+// name, so a DNS answer can't change between the check and the dial.
+func dialPublic(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	for _, ip := range ips {
+		if !publicIP(ip.IP) {
+			return nil, ErrNotPublic
+		}
+	}
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	var last error = ErrNotPublic
+	for _, ip := range ips {
+		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.IP.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		last = err
+	}
+	return nil, last
+}
+
+// publicIP says whether an address is one anyone on the internet could reach,
+// as opposed to this server's own network.
+func publicIP(ip net.IP) bool {
+	if ip == nil || ip.IsUnspecified() || ip.IsLoopback() || ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast() || ip.IsMulticast() {
+		return false
+	}
+	if v4 := ip.To4(); v4 != nil {
+		// Carrier-grade NAT (100.64.0.0/10) and "this network" (0.0.0.0/8).
+		if (v4[0] == 100 && v4[1]&0xc0 == 64) || v4[0] == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // Browsers get pages some sites refuse to scripts.
@@ -86,6 +161,9 @@ func (c *HTTP) check(ctx context.Context, link string) Result {
 			var dns *net.DNSError
 			if errors.As(err, &dns) && dns.IsNotFound {
 				return Result{State: Broken, Detail: "its domain doesn't exist (" + dns.Name + ")"}
+			}
+			if errors.Is(err, ErrNotPublic) {
+				return Result{State: Broken, Detail: "points at a private or internal address, which nobody else can open"}
 			}
 			last = Result{State: Unknown, Detail: "couldn't load it: " + shortError(err)}
 			continue
@@ -134,8 +212,10 @@ func Invalid(link string) string {
 	if !strings.Contains(u.Hostname(), ".") && u.Hostname() != "localhost" {
 		return fmt.Sprintf("%q has no real domain", link)
 	}
-	if u.Hostname() == "localhost" || strings.HasPrefix(u.Hostname(), "127.") || strings.HasPrefix(u.Hostname(), "192.168.") {
-		return fmt.Sprintf("%q only works on their own computer", link)
+	// Only the obvious cases, for the message; what a name resolves to is
+	// checked when it's dialled (see New).
+	if ip := net.ParseIP(u.Hostname()); u.Hostname() == "localhost" || (ip != nil && !publicIP(ip)) {
+		return fmt.Sprintf("%q only works on their own computer or network", link)
 	}
 	return ""
 }
@@ -179,6 +259,8 @@ func (d Dev) Check(ctx context.Context, link string) Result {
 		return Result{State: Broken, Status: 404, Detail: "returns 404 Not Found (dev mode: the link has \"broken\" in it)"}
 	case fake:
 		return Result{State: OK, Status: 200, Detail: "returns 200 OK (dev mode: made-up links open)"}
+	case d.Real == nil:
+		return Result{State: Unknown, Detail: "isn't checked in dev mode"}
 	}
 	return d.Real.Check(ctx, link)
 }

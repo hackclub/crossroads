@@ -45,7 +45,7 @@
 	const hoursFor = (n) => Math.ceil(n / rate);
 
 	// The launch sale: everything but the ticket and its lock is some percent
-	// off for the first week. Prices go back up when it ends, so the page
+	// off until November 18. Prices go back up when it ends, so the page
 	// reloads them then rather than showing prices it wouldn't charge.
 	const sale = $derived(others.find((i) => i.sale)?.sale);
 	$effect(() => {

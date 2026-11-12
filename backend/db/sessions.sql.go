@@ -44,7 +44,7 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
 }
 
 const getSessionUser = `-- name: GetSessionUser :one
-select users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note from sessions
+select users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized from sessions
 join users on users.id = sessions.user_id
 where sessions.token_hash = $1 and sessions.expires_at > now()
 `
@@ -73,6 +73,10 @@ func (q *Queries) GetSessionUser(ctx context.Context, tokenHash []byte) (User, e
 		&i.CanFraudReview,
 		&i.CanHqReview,
 		&i.ReviewerNote,
+		&i.EmporiumAccessAt,
+		&i.EmporiumNote,
+		&i.EmporiumGrantedBy,
+		&i.NameCustomized,
 	)
 	return i, err
 }

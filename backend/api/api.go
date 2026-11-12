@@ -61,6 +61,7 @@ func (a *API) Routes() chi.Router {
 func (a *API) signedInRoutes(r chi.Router) {
 	r.Use(auth.RequireUser)
 	r.Get("/me", a.me)
+	r.Patch("/me", a.updateMe)
 	r.Get("/hackatime/projects", a.listHackatimeProjects)
 	r.Get("/community", a.community)
 	if a.Uploads != nil {
@@ -83,11 +84,13 @@ func (a *API) signedInRoutes(r chi.Router) {
 	r.Post("/special-stamps/claims", a.claimSpecialStamp)
 	r.Post("/special-stamps/{stampID}/placement", a.placeStamp)
 	r.Get("/shop/items", a.listShopItems)
+	r.Get("/emporium/items", a.listEmporiumItems)
 	r.Post("/shop/items/{itemID}/orders", a.buy)
 	r.Get("/orders", a.listOrders)
 	r.Route("/review", func(r chi.Router) {
 		r.Use(auth.RequireRole(db.UserRoleReviewer, db.UserRoleAdmin))
 		r.Get("/queue", a.reviewQueue)
+		r.Get("/stats", a.reviewStats)
 		r.Post("/next", a.claimNext)
 		r.Route("/submissions/{submissionID}", func(r chi.Router) {
 			r.Get("/", a.getSubmissionForReview)
@@ -109,6 +112,8 @@ func (a *API) signedInRoutes(r chi.Router) {
 		r.Get("/users", a.adminListUsers)
 		r.Patch("/users/{userID}", a.adminUpdateUser)
 		r.Get("/review-settings", a.adminGetReviewSettings)
+		r.Get("/reviewer-stats", a.adminReviewerStats)
+		r.Get("/reviews", a.adminReviewLog)
 		r.Patch("/review-settings", a.adminUpdateReviewSettings)
 		r.Post("/users/{userID}/boxes", a.adminGrantBox)
 		r.Post("/users/{userID}/special-stamps", a.adminGrantSpecialStamp)

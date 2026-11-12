@@ -246,7 +246,7 @@ Reviewer and admin shapes are listed with their routes below.
 | POST | `/api/sidekick` | Sidekick (shared secret) | Sidekick's protocol; see "Sidekick" below |
 | GET | `/api/admin/activity?days=&min_minutes=` | admin | Participants on the platform and working on projects, per day |
 | GET | `/api/admin/users?q=` | admin | Find people |
-| PATCH | `/api/admin/users/{id}` | admin | Change someone's role and review stages |
+| PATCH | `/api/admin/users/{id}` | admin | Change someone's role, review stages and Emporium access |
 | GET | `/api/admin/review-settings` | admin | Fraud check settings |
 | PATCH | `/api/admin/review-settings` | admin | Change them |
 | POST | `/api/admin/users/{id}/stamp-adjustments` | admin | Add or take away stamps |
@@ -457,9 +457,21 @@ Claims a stamp of the type with that claim code (the platform's `/claim/{code}` 
 
 **Ticket batches.** A ticket with `batches` sells in batches: the first `batch_size` cost the first price, and each batch after costs `batch_step` more. The next batch goes on sale when one sells out, and `stock` counts what's left across all of them. The ticket's `price` here is what the signed-in person would pay now: the batch on sale, or their `locked_price` if that's lower.
 
-**The launch sale.** Until midnight UTC on November 13, 2026 (`saleEnd` in `main.go`), everything except tickets and price locks is 10% off, rounded down but never below 1 stamp. Those items have a `sale`, and their `price` is the sale price, which is what buying charges. Prices go back to full when it ends, so a page showing sale prices should reload them at `ends_at`.
+**The launch sale.** Until 11:59 PM EST on November 18, 2026, when the community goal closes (`saleEnd` in `main.go`), everything except tickets and price locks is 10% off, rounded down but never below 1 stamp. Those items have a `sale`, and their `price` is the sale price, which is what buying charges. Prices go back to full when it ends, so a page showing sale prices should reload them at `ends_at`.
 
 **Price locks.** The item with `kind: "price_lock"` fixes their ticket at the price of the batch on sale when they buy it, for whenever they buy the ticket. It's on top of the ticket's price, it doesn't hold a ticket, and it's one per person. If the tickets sell out before they buy one, the lock is cancelled and its stamps refunded automatically.
+
+### `PATCH /api/me`
+
+`{"name": "Max"}` changes the name the site shows (people click their name in the top bar). It's trimmed, inner runs of spaces become one, and it has to be 1 to 50 characters with nothing invisible in it. Signing in then leaves it alone; `{"name": null}` goes back to the name on their Hack Club account. `/api/me`'s `name_customized` says which it is. Their legal `first_name` and `last_name` don't change: the Unified YSWS DB and Airtable orders use those. Answers like `GET /api/me`.
+
+### The Smugglers' Emporium
+
+A second shop, hidden from everyone but reviewers, admins, and people an admin let in for a project worth rewarding (`emporium` on `/api/me` says who). `GET /api/emporium/items` lists it the way `GET /api/shop/items` lists the shop, and answers 404 to anyone else; its items aren't in the shop's list, and buying one without access answers 404 as if it didn't exist. The launch sale doesn't apply in the Emporium.
+
+**Grants** (kind `grant`, Emporium only) are money for a project, sold in pieces: `grant_cents` a piece (default $5) at `grant_cents_per_hour` of approved time (default $6.50). A piece costs the stamps for the hours it's worth, rounded up, so with `STAMPS_PER_HOUR=30` a $5 piece is 24 stamps and $50 is 231. Buy them with `{"quantity": 10}` (1 to 200 pieces). `stock` counts pieces, so it caps the whole budget. The order's `grant_cents` is what it's worth; Airtable gets it in Stipend.
+
+Admins let someone in with `PATCH /api/admin/users/{id}` `{"emporium_access": true, "emporium_note": "for Tiny Compiler"}`, and out with `false`, from the People tab or a ship's review page.
 
 ### `POST /api/shop/items/{id}/orders`
 
@@ -548,6 +560,26 @@ interface Queue {
 ```
 
 Priority review first, then oldest first. `422` for an unknown stage.
+
+### `GET /api/review/stats`
+
+The dashboard at the top of the queue: this week's leaderboard and the all-time one, and how the queue is doing. A **review** is one decision on a ship, its timeline event: approving or rejecting at the first review, passing or rejecting at the fraud check, signing off or rejecting at HQ, or sending back. Comments, notes and edits aren't reviews, and Sidekick decisions count the same. The admin's pay view below counts the same way. Weeks run Monday 12:00 AM to Monday 12:00 AM Eastern.
+
+```ts
+{
+  week_start: string; week_end: string;
+  week: Leader[]; all_time: Leader[]; // most reviews first; names only
+  pace: {
+    reviewed: number;              // reviews this week, by everyone
+    shipped: number;               // ships submitted this week
+    seconds_approved: number;      // hours signed off this week
+    waiting: number;               // ships waiting for a first review now
+    oldest_wait_seconds: number | null;
+    median_wait_seconds: number | null; // for a first review, over the last 7 days
+  };
+}
+Leader = { id; name; reviews; first_reviews; fraud_checks; hq_decisions; seconds_first_reviewed; last_review_at }
+```
 
 ### `POST /api/review/next`
 
@@ -673,6 +705,12 @@ interface AdminUser {
 **`GET /api/admin/users?q=heidi`** → `200 AdminUser[]`. Matches part of a name or email, or a whole Slack ID. Without `q`, the newest 50 people.
 
 **`PATCH /api/admin/users/{id}`** with any of `{"role": "reviewer", "can_review": true, "can_fraud_review": false, "can_hq_review": false}` → `200 AdminUser`. Fields left out don't change. `422` for an unknown role, an admin removing their own admin role, or review stages on a participant. `404` for no such user. Changes apply on the person's next request.
+
+### Reviewer stats (what reviewers are paid by)
+
+`GET /api/admin/reviewer-stats?from=2026-11-09&to=2026-11-15` counts each person's reviews (as defined under `GET /api/review/stats`) for those days, both included, midnight to midnight Eastern. Without `from` and `to` it's this week. Each row has `name`, `email`, `slack_id`, `reviews` (the total), `first_reviews` with `first_approvals` and `first_rejections`, `fraud_checks`, `hq_decisions`, `later_sent_back` (first reviews whose approval was later sent back; they still count), `seconds_first_reviewed` and `last_review_at`. Ships can't be deleted and events never are, so a finished period's counts never change.
+
+`GET /api/admin/reviews?from=&to=[&reviewer=ID]` lists the reviews behind the counts, oldest first. Add `&format=csv` to either for a spreadsheet; cells a spreadsheet would read as a formula get a leading apostrophe.
 
 ### Review settings
 
@@ -861,9 +899,9 @@ The home page's "Repair Bridge": the in-person event only runs if participants t
 ```ts
 interface Community {
   seconds: number;      // shipped so far
-  goal_seconds: number; // what's needed (200 hours)
+  goal_seconds: number; // what's needed (500 hours)
   starts_at: string;    // launch: when Hackatime time starts counting
-  ends_at: string;      // the deadline, 11:59 PM EST on November 15
+  ends_at: string;      // the deadline, 11:59 PM EST on November 18
 }
 ```
 

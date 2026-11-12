@@ -18,7 +18,7 @@ with invite as (
 update users set role = invite.role
 from invite
 where users.id = $1
-returning users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note
+returning users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized
 `
 
 type ClaimRoleInviteParams struct {
@@ -52,6 +52,10 @@ func (q *Queries) ClaimRoleInvite(ctx context.Context, arg ClaimRoleInviteParams
 		&i.CanFraudReview,
 		&i.CanHqReview,
 		&i.ReviewerNote,
+		&i.EmporiumAccessAt,
+		&i.EmporiumNote,
+		&i.EmporiumGrantedBy,
+		&i.NameCustomized,
 	)
 	return i, err
 }
@@ -69,7 +73,7 @@ func (q *Queries) DeleteRoleInvite(ctx context.Context, id int64) (int64, error)
 }
 
 const getUser = `-- name: GetUser :one
-select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note from users where id = $1
+select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized from users where id = $1
 `
 
 func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
@@ -96,12 +100,16 @@ func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
 		&i.CanFraudReview,
 		&i.CanHqReview,
 		&i.ReviewerNote,
+		&i.EmporiumAccessAt,
+		&i.EmporiumNote,
+		&i.EmporiumGrantedBy,
+		&i.NameCustomized,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note from users where lower(email) = lower($1::text)
+select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized from users where lower(email) = lower($1::text)
 order by id
 limit 1
 `
@@ -130,6 +138,10 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.CanFraudReview,
 		&i.CanHqReview,
 		&i.ReviewerNote,
+		&i.EmporiumAccessAt,
+		&i.EmporiumNote,
+		&i.EmporiumGrantedBy,
+		&i.NameCustomized,
 	)
 	return i, err
 }
@@ -178,7 +190,7 @@ func (q *Queries) ListRoleInvites(ctx context.Context) ([]ListRoleInvitesRow, er
 }
 
 const searchUsers = `-- name: SearchUsers :many
-select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note from users
+select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized from users
 where $1::text = ''
     or name ilike '%' || $1::text || '%'
     or email ilike '%' || $1::text || '%'
@@ -219,6 +231,10 @@ func (q *Queries) SearchUsers(ctx context.Context, query string) ([]User, error)
 			&i.CanFraudReview,
 			&i.CanHqReview,
 			&i.ReviewerNote,
+			&i.EmporiumAccessAt,
+			&i.EmporiumNote,
+			&i.EmporiumGrantedBy,
+			&i.NameCustomized,
 		); err != nil {
 			return nil, err
 		}
@@ -230,9 +246,103 @@ func (q *Queries) SearchUsers(ctx context.Context, query string) ([]User, error)
 	return items, nil
 }
 
+const setEmporiumAccess = `-- name: SetEmporiumAccess :one
+update users set emporium_access_at = $2, emporium_note = $3, emporium_granted_by = $4 where id = $1
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized
+`
+
+type SetEmporiumAccessParams struct {
+	ID                int64
+	EmporiumAccessAt  *time.Time
+	EmporiumNote      *string
+	EmporiumGrantedBy *int64
+}
+
+// Lets someone into the Smugglers' Emporium, or (with a null time) out again.
+func (q *Queries) SetEmporiumAccess(ctx context.Context, arg SetEmporiumAccessParams) (User, error) {
+	row := q.db.QueryRow(ctx, setEmporiumAccess,
+		arg.ID,
+		arg.EmporiumAccessAt,
+		arg.EmporiumNote,
+		arg.EmporiumGrantedBy,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.HcaID,
+		&i.SlackID,
+		&i.Email,
+		&i.Name,
+		&i.VerificationStatus,
+		&i.YswsEligible,
+		&i.Role,
+		&i.Stamps,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.FirstName,
+		&i.LastName,
+		&i.Birthday,
+		&i.PhoneNumber,
+		&i.Address,
+		&i.CanReview,
+		&i.CanFraudReview,
+		&i.CanHqReview,
+		&i.ReviewerNote,
+		&i.EmporiumAccessAt,
+		&i.EmporiumNote,
+		&i.EmporiumGrantedBy,
+		&i.NameCustomized,
+	)
+	return i, err
+}
+
+const setUserName = `-- name: SetUserName :one
+update users set name = $2, name_customized = $3 where id = $1
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized
+`
+
+type SetUserNameParams struct {
+	ID             int64
+	Name           string
+	NameCustomized bool
+}
+
+// A name someone chose, or (customized false) the one from Hack Club Auth again.
+func (q *Queries) SetUserName(ctx context.Context, arg SetUserNameParams) (User, error) {
+	row := q.db.QueryRow(ctx, setUserName, arg.ID, arg.Name, arg.NameCustomized)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.HcaID,
+		&i.SlackID,
+		&i.Email,
+		&i.Name,
+		&i.VerificationStatus,
+		&i.YswsEligible,
+		&i.Role,
+		&i.Stamps,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.FirstName,
+		&i.LastName,
+		&i.Birthday,
+		&i.PhoneNumber,
+		&i.Address,
+		&i.CanReview,
+		&i.CanFraudReview,
+		&i.CanHqReview,
+		&i.ReviewerNote,
+		&i.EmporiumAccessAt,
+		&i.EmporiumNote,
+		&i.EmporiumGrantedBy,
+		&i.NameCustomized,
+	)
+	return i, err
+}
+
 const setUserPermissions = `-- name: SetUserPermissions :one
 update users set can_review = $2, can_fraud_review = $3, can_hq_review = $4 where id = $1
-returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized
 `
 
 type SetUserPermissionsParams struct {
@@ -271,13 +381,17 @@ func (q *Queries) SetUserPermissions(ctx context.Context, arg SetUserPermissions
 		&i.CanFraudReview,
 		&i.CanHqReview,
 		&i.ReviewerNote,
+		&i.EmporiumAccessAt,
+		&i.EmporiumNote,
+		&i.EmporiumGrantedBy,
+		&i.NameCustomized,
 	)
 	return i, err
 }
 
 const setUserRole = `-- name: SetUserRole :one
 update users set role = $2 where id = $1
-returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized
 `
 
 type SetUserRoleParams struct {
@@ -309,6 +423,10 @@ func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (User,
 		&i.CanFraudReview,
 		&i.CanHqReview,
 		&i.ReviewerNote,
+		&i.EmporiumAccessAt,
+		&i.EmporiumNote,
+		&i.EmporiumGrantedBy,
+		&i.NameCustomized,
 	)
 	return i, err
 }
@@ -352,7 +470,8 @@ values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 on conflict (hca_id) do update set
     slack_id = excluded.slack_id,
     email = excluded.email,
-    name = excluded.name,
+    -- A name they chose themselves stays; otherwise Hack Club Auth's wins.
+    name = case when users.name_customized then users.name else excluded.name end,
     first_name = excluded.first_name,
     last_name = excluded.last_name,
     birthday = excluded.birthday,
@@ -360,7 +479,7 @@ on conflict (hca_id) do update set
     address = excluded.address,
     verification_status = excluded.verification_status,
     ysws_eligible = excluded.ysws_eligible
-returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized
 `
 
 type UpsertUserFromHCAParams struct {
@@ -413,6 +532,10 @@ func (q *Queries) UpsertUserFromHCA(ctx context.Context, arg UpsertUserFromHCAPa
 		&i.CanFraudReview,
 		&i.CanHqReview,
 		&i.ReviewerNote,
+		&i.EmporiumAccessAt,
+		&i.EmporiumNote,
+		&i.EmporiumGrantedBy,
+		&i.NameCustomized,
 	)
 	return i, err
 }

@@ -173,7 +173,7 @@ func (a *Airtable) FindByLinks(ctx context.Context, links ...string) ([]Record, 
 			continue
 		}
 		wanted = append(wanted, n)
-		quoted := strings.ReplaceAll(n, `"`, `\"`)
+		quoted := formulaString(n)
 		for _, field := range []string{"Code URL", "Playable URL"} {
 			conditions = append(conditions, fmt.Sprintf(`FIND("%s", LOWER({%s}))`, quoted, field))
 		}
@@ -208,6 +208,24 @@ func (a *Airtable) FindByLinks(ctx context.Context, links ...string) ([]Record, 
 		records = append(records, r)
 	}
 	return records, nil
+}
+
+// formulaString makes a link safe inside an Airtable formula's string
+// literal: anything that isn't part of a link is dropped, and the two
+// characters Airtable gives meaning to are escaped.
+func formulaString(link string) string {
+	var b strings.Builder
+	for _, r := range link {
+		switch {
+		case r == '\\' || r == '"':
+			b.WriteRune('\\')
+			b.WriteRune(r)
+		case r < 0x20 || r == 0x7f:
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func text(v any) string {

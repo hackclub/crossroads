@@ -275,7 +275,7 @@ Settled with the organizer while building this (Nov 3 and 4, 2026):
 
 - **Postgres as the source of truth, synced one way to Airtable.** The shop needs transactions so nobody can spend the same stamps twice, and Airtable has none (and a limit of 5 requests a second).
 - **Rates and qualifying:** 30 stamps per approved hour. The ticket costs 60 hours' worth (1,800) in its first batch, then 5 hours more for each batch of 6 after that, up to 80 hours for the last of the 30. A price lock costs 5 hours' worth and is on top of the ticket, so it pays off only if the price would have gone up two batches or more (decided 2026-11-06). Qualifying means buying the ticket, so spending stamps on other things delays it.
-- **Launch sale:** for the shop's first week, until midnight UTC on Nov 13 2026, everything is 10% off except the ticket and price locks, so qualifying still takes 60 hours (decided 2026-11-06).
+- **Launch sale:** from launch until 11:59 PM Eastern on Nov 18 2026, when the community goal closes, everything is 10% off except the ticket and price locks, so qualifying still takes 60 hours (decided 2026-11-06 for the first week, to Nov 13; extended 2026-11-11).
 - **Hours count from midnight UTC on Oct 30 2026 (the day the RSVP page first went up; moved from Nov 3 on Nov 6), and only approved hours count,** totaled across all of a person's projects.
 - **Verification:** submitting doesn't need Hack Club Auth verification. Buying needs a verified identity that HCA says is YSWS-eligible.
 - **Milestones count approved hours, not raw Hackatime hours,** so they can't be farmed. The catch is that the first box only arrives after the first approval.

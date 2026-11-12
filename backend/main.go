@@ -37,15 +37,16 @@ import (
 // page first went up.
 var hoursStart = time.Date(2026, time.October, 30, 0, 0, 0, 0, time.UTC)
 
-// The home page's community goal: 200 hours together by 11:59 PM Eastern on
-// November 15 (EST, UTC-5).
+// The home page's community goal: 500 hours together by 11:59 PM Eastern on
+// November 18 (EST, UTC-5). It was 200 hours by November 15 until Nov 11.
 var communityGoal = api.CommunityGoal{
-	Seconds: 200 * 3600,
-	Ends:    time.Date(2026, time.November, 15, 23, 59, 0, 0, time.FixedZone("EST", -5*3600)),
+	Seconds: 500 * 3600,
+	Ends:    time.Date(2026, time.November, 18, 23, 59, 0, 0, time.FixedZone("EST", -5*3600)),
 }
 
-// The launch sale: the shop's first week, from launch on November 6.
-var saleEnd = time.Date(2026, time.November, 13, 0, 0, 0, 0, time.UTC)
+// The launch sale: from launch on November 6 until the community goal closes,
+// 11:59 PM Eastern on November 18. It first ran for a week, to Nov 13.
+var saleEnd = communityGoal.Ends
 
 func main() {
 	ctx := context.Background()

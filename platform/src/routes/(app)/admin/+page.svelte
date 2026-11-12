@@ -9,10 +9,12 @@
 	import Milestones from '#lib/admin/Milestones.svelte';
 	import Stats from '#lib/admin/Stats.svelte';
 	import ReviewSettings from '#lib/admin/ReviewSettings.svelte';
+	import ReviewerStats from '#lib/admin/ReviewerStats.svelte';
 
 	const tabs = {
 		people: ['People', People],
 		review: ['Review', ReviewSettings],
+		reviewers: ['Reviewer stats', ReviewerStats],
 		stats: ['Stats', Stats],
 		orders: ['Orders', Orders],
 		shop: ['Shop items', ShopItems],

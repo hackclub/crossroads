@@ -603,6 +603,11 @@ type adminUserJSON struct {
 	CanReview      bool `json:"can_review"`
 	CanFraudReview bool `json:"can_fraud_review"`
 	CanHQReview    bool `json:"can_hq_review"`
+	// Whether an admin let them into the Smugglers' Emporium, when and why.
+	// Reviewers and admins are in anyway (in_emporium).
+	EmporiumAccessAt *time.Time `json:"emporium_access_at"`
+	EmporiumNote     *string    `json:"emporium_note"`
+	InEmporium       bool       `json:"in_emporium"`
 }
 
 func toAdminUserJSON(u db.User) adminUserJSON {
@@ -618,6 +623,9 @@ func toAdminUserJSON(u db.User) adminUserJSON {
 		CanReview:          u.CanReview,
 		CanFraudReview:     u.CanFraudReview,
 		CanHQReview:        u.CanHqReview,
+		EmporiumAccessAt:   u.EmporiumAccessAt,
+		EmporiumNote:       u.EmporiumNote,
+		InEmporium:         u.InEmporium(),
 	}
 }
 
@@ -636,9 +644,10 @@ func (a *API) adminListUsers(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, out)
 }
 
-// adminUpdateUser changes someone's role: {"role": "reviewer"}.
-// adminUpdateUser changes someone's role and which review stages they can
-// decide. Fields left out aren't changed.
+// adminUpdateUser changes someone's role, which review stages they can
+// decide, and whether they're let into the Smugglers' Emporium:
+// {"emporium_access": true, "emporium_note": "for Tiny Compiler"}. Fields
+// left out aren't changed.
 func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	admin := auth.User(r.Context())
 	userID, ok := idParam(w, r, "userID")
@@ -650,9 +659,18 @@ func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		CanReview      *bool        `json:"can_review"`
 		CanFraudReview *bool        `json:"can_fraud_review"`
 		CanHQReview    *bool        `json:"can_hq_review"`
+		EmporiumAccess *bool        `json:"emporium_access"`
+		EmporiumNote   *string      `json:"emporium_note"` // why: the project that earned it
 	}
 	if !decode(w, r, &body) {
 		return
+	}
+	if body.EmporiumNote != nil {
+		*body.EmporiumNote = strings.TrimSpace(*body.EmporiumNote)
+		if len(*body.EmporiumNote) > 300 {
+			respond.Error(w, http.StatusUnprocessableEntity, "Keep the Emporium note under 300 characters.")
+			return
+		}
 	}
 	if body.Role != nil && !body.Role.Valid() {
 		respond.Error(w, http.StatusUnprocessableEntity, fmt.Sprintf("role has to be one of %v.", db.AllUserRoleValues()))
@@ -697,6 +715,26 @@ func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	user, err = q.SetUserPermissions(r.Context(), db.SetUserPermissionsParams{
 		ID: userID, CanReview: user.CanReview, CanFraudReview: user.CanFraudReview, CanHqReview: user.CanHqReview,
 	})
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	switch {
+	case body.EmporiumAccess != nil && !*body.EmporiumAccess:
+		user, err = q.SetEmporiumAccess(r.Context(), db.SetEmporiumAccessParams{ID: userID})
+	case body.EmporiumAccess != nil || body.EmporiumNote != nil && user.EmporiumAccessAt != nil:
+		// Letting someone in who's already in keeps when it first happened.
+		at, by, note := time.Now(), &admin.ID, nonEmpty(deref(body.EmporiumNote))
+		if user.EmporiumAccessAt != nil {
+			at, by = *user.EmporiumAccessAt, user.EmporiumGrantedBy
+			if body.EmporiumNote == nil {
+				note = user.EmporiumNote
+			}
+		}
+		user, err = q.SetEmporiumAccess(r.Context(), db.SetEmporiumAccessParams{
+			ID: userID, EmporiumAccessAt: &at, EmporiumNote: note, EmporiumGrantedBy: by,
+		})
+	}
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return
