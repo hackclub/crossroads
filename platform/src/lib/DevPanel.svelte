@@ -64,9 +64,10 @@
 </script>
 
 {#if dev}
-	<div class="devpanel">
-		<button class="link-btn" onclick={() => { open = !open; if (open) load(); }}>
-			{open ? '▾' : '▸'} Dev mode
+	<!-- Closed, it's a small tab in the corner so it doesn't sit on the page. -->
+	<div class="devpanel" class:closed={!open}>
+		<button class="link-btn" onclick={() => { open = !open; if (open) load(); }} title="Test tools: sign in as someone, fake Hackatime, boxes" aria-expanded={open}>
+			{open ? '▾ Dev mode' : 'Dev'}
 		</button>
 		{#if open}
 			<div class="stack-sm">

@@ -474,6 +474,11 @@ summary { padding: 12px 0; cursor: pointer; font-size: 28px; }
 	color: #eee;
 }
 .devpanel .small { font-size: 13px; }
+/* Closed: a small tab tucked into the bottom-left corner, quiet until you
+   point at it, so it doesn't cover what's on the page. */
+.devpanel.closed { left: 0; bottom: 0; padding: 2px 8px; border-radius: 0 6px 0 0; opacity: 0.55; transition: opacity 0.15s; }
+.devpanel.closed:hover, .devpanel.closed:focus-within { opacity: 1; }
+.devpanel.closed .link-btn { font-size: 11px; letter-spacing: 0.04em; }
 .devpanel input { width: auto; padding: 3px 6px; font-size: 13px; border-radius: 4px; background: #3a2f52; }
 .devpanel .btn { font-size: 13px; padding: 3px 10px; }
 
