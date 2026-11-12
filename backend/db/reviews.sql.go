@@ -309,7 +309,7 @@ func (q *Queries) GetReviewSettings(ctx context.Context) (ReviewSetting, error) 
 }
 
 const getSubmissionForReview = `-- name: GetSubmissionForReview :one
-select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note
+select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by
 from submissions
 join projects on projects.id = submissions.project_id
 join users on users.id = projects.user_id
@@ -380,12 +380,15 @@ func (q *Queries) GetSubmissionForReview(ctx context.Context, id int64) (GetSubm
 		&i.User.CanFraudReview,
 		&i.User.CanHqReview,
 		&i.User.ReviewerNote,
+		&i.User.EmporiumAccessAt,
+		&i.User.EmporiumNote,
+		&i.User.EmporiumGrantedBy,
 	)
 	return i, err
 }
 
 const getUserByActorID = `-- name: GetUserByActorID :one
-select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note from users where slack_id = $1::text or hca_id = $1::text
+select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by from users where slack_id = $1::text or hca_id = $1::text
 order by (hca_id = $1::text) desc
 limit 1
 `
@@ -416,6 +419,9 @@ func (q *Queries) GetUserByActorID(ctx context.Context, actorID string) (User, e
 		&i.CanFraudReview,
 		&i.CanHqReview,
 		&i.ReviewerNote,
+		&i.EmporiumAccessAt,
+		&i.EmporiumNote,
+		&i.EmporiumGrantedBy,
 	)
 	return i, err
 }
@@ -826,7 +832,7 @@ func (q *Queries) LockSubmission(ctx context.Context, id int64) (Submission, err
 }
 
 const lockUser = `-- name: LockUser :one
-select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note from users where id = $1 for update
+select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by from users where id = $1 for update
 `
 
 func (q *Queries) LockUser(ctx context.Context, id int64) (User, error) {
@@ -853,6 +859,9 @@ func (q *Queries) LockUser(ctx context.Context, id int64) (User, error) {
 		&i.CanFraudReview,
 		&i.CanHqReview,
 		&i.ReviewerNote,
+		&i.EmporiumAccessAt,
+		&i.EmporiumNote,
+		&i.EmporiumGrantedBy,
 	)
 	return i, err
 }
@@ -972,7 +981,7 @@ func (q *Queries) SaveSubmissionReview(ctx context.Context, arg SaveSubmissionRe
 
 const setReviewerNote = `-- name: SetReviewerNote :one
 update users set reviewer_note = $2 where id = $1
-returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by
 `
 
 type SetReviewerNoteParams struct {
@@ -1004,6 +1013,9 @@ func (q *Queries) SetReviewerNote(ctx context.Context, arg SetReviewerNoteParams
 		&i.CanFraudReview,
 		&i.CanHqReview,
 		&i.ReviewerNote,
+		&i.EmporiumAccessAt,
+		&i.EmporiumNote,
+		&i.EmporiumGrantedBy,
 	)
 	return i, err
 }

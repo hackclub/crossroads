@@ -24,7 +24,7 @@ func (q *Queries) FulfillOrderFromAirtable(ctx context.Context, airtableRecordID
 }
 
 const listOrdersToSync = `-- name: ListOrdersToSync :many
-select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, shop_items.batch_size, shop_items.batch_step, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note
+select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price, orders.quantity, orders.grant_cents, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, shop_items.batch_size, shop_items.batch_step, shop_items.emporium, shop_items.grant_cents, shop_items.grant_cents_per_hour, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by
 from orders
 join shop_items on shop_items.id = orders.shop_item_id
 join users on users.id = orders.user_id
@@ -65,6 +65,8 @@ func (q *Queries) ListOrdersToSync(ctx context.Context) ([]ListOrdersToSyncRow, 
 			&i.Order.AirtableRecordID,
 			&i.Order.AirtableSyncedAt,
 			&i.Order.LockedPrice,
+			&i.Order.Quantity,
+			&i.Order.GrantCents,
 			&i.ShopItem.ID,
 			&i.ShopItem.Kind,
 			&i.ShopItem.Name,
@@ -80,6 +82,9 @@ func (q *Queries) ListOrdersToSync(ctx context.Context) ([]ListOrdersToSyncRow, 
 			&i.ShopItem.Position,
 			&i.ShopItem.BatchSize,
 			&i.ShopItem.BatchStep,
+			&i.ShopItem.Emporium,
+			&i.ShopItem.GrantCents,
+			&i.ShopItem.GrantCentsPerHour,
 			&i.User.ID,
 			&i.User.HcaID,
 			&i.User.SlackID,
@@ -100,6 +105,9 @@ func (q *Queries) ListOrdersToSync(ctx context.Context) ([]ListOrdersToSyncRow, 
 			&i.User.CanFraudReview,
 			&i.User.CanHqReview,
 			&i.User.ReviewerNote,
+			&i.User.EmporiumAccessAt,
+			&i.User.EmporiumNote,
+			&i.User.EmporiumGrantedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -112,7 +120,7 @@ func (q *Queries) ListOrdersToSync(ctx context.Context) ([]ListOrdersToSyncRow, 
 }
 
 const listSubmissionsToSubmitUnified = `-- name: ListSubmissionsToSubmitUnified :many
-select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note,
+select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by,
     (select count(*) from submissions earlier
         where earlier.project_id = submissions.project_id
             and earlier.status = 'approved'
@@ -236,6 +244,9 @@ func (q *Queries) ListSubmissionsToSubmitUnified(ctx context.Context) ([]ListSub
 			&i.User.CanFraudReview,
 			&i.User.CanHqReview,
 			&i.User.ReviewerNote,
+			&i.User.EmporiumAccessAt,
+			&i.User.EmporiumNote,
+			&i.User.EmporiumGrantedBy,
 			&i.EarlierApprovals,
 			&i.ReviewerName,
 			&i.FraudReviewerName,
@@ -257,7 +268,7 @@ func (q *Queries) ListSubmissionsToSubmitUnified(ctx context.Context) ([]ListSub
 }
 
 const listSubmissionsToSync = `-- name: ListSubmissionsToSync :many
-select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note,
+select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by,
     (select count(*) from submissions earlier
         where earlier.project_id = submissions.project_id
             and earlier.status = 'approved'
@@ -373,6 +384,9 @@ func (q *Queries) ListSubmissionsToSync(ctx context.Context) ([]ListSubmissionsT
 			&i.User.CanFraudReview,
 			&i.User.CanHqReview,
 			&i.User.ReviewerNote,
+			&i.User.EmporiumAccessAt,
+			&i.User.EmporiumNote,
+			&i.User.EmporiumGrantedBy,
 			&i.EarlierApprovals,
 			&i.ReviewerName,
 			&i.FraudReviewerName,

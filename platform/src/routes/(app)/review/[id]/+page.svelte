@@ -7,7 +7,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, get } from '#lib/api.js';
-	import { session } from '#lib/session.svelte.js';
+	import { session, isAdmin } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
 	import { STAGES, canDecideStage, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, time, toSeconds, toHours, fromHours } from '#lib/review.js';
 	import GitHubPanel from '#lib/review/GitHubPanel.svelte';
@@ -246,6 +246,24 @@
 		}
 	}
 
+	// Admins can let the maker into the Smugglers' Emporium for a project
+	// worth rewarding; the note says which.
+	let emporiumBusy = $state(false);
+	async function letIntoEmporium() {
+		const note = `for ${d.project.name}`;
+		if (!confirm(`Let ${d.user.name} into the Smugglers' Emporium ${note}?`)) return;
+		emporiumBusy = true;
+		try {
+			const r = await api('PATCH', `/admin/users/${d.user.id}`, { emporium_access: true, emporium_note: note });
+			d.user.in_emporium = r.in_emporium;
+			d.user.emporium_note = r.emporium_note;
+		} catch (e) {
+			alert(e.message);
+		} finally {
+			emporiumBusy = false;
+		}
+	}
+
 	async function saveNote() {
 		noteError = '';
 		try {
@@ -349,6 +367,11 @@
 						<span class="muted">{d.user.slack_id ?? 'no Slack'} · {d.user.verification_status}{d.user.ysws_eligible ? ', YSWS-eligible' : ', not YSWS-eligible'}</span>
 						{#if stage === 'fraud' && d.telescreen_url}
 							<a href={d.telescreen_url} target="_blank" rel="noreferrer">Telescreen</a>
+						{/if}
+						{#if d.user.in_emporium}
+							<span class="badge warn tiny" title={d.user.emporium_note ?? ''}>In the Emporium</span>
+						{:else if isAdmin()}
+							<button class="link-btn" disabled={emporiumBusy} onclick={letIntoEmporium} title="Reward a cool project: they can shop in the Smugglers' Emporium">Let into the Emporium</button>
 						{/if}
 					</div>
 					{#if d.user.reviewer_note}<p class="note small" title={d.user.reviewer_note}>{d.user.reviewer_note}</p>{/if}

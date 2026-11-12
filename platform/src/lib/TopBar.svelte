@@ -39,6 +39,7 @@
 				<span>{firstName} · {session.me.stamps}<StampIcon label="stamps" /></span>
 				<span class="links">
 					<a href="/shop/orders">Orders</a>
+					{#if session.me.emporium}<a href="/emporium" title="The Smugglers' Emporium">Emporium</a>{/if}
 					{#if isReviewer()}<a href="/review">Review</a>{/if}
 					{#if isAdmin()}<a href="/admin">Admin</a>{/if}
 					<button class="link-btn" onclick={signOut}>Sign out</button>

@@ -83,6 +83,7 @@ func (a *API) signedInRoutes(r chi.Router) {
 	r.Post("/special-stamps/claims", a.claimSpecialStamp)
 	r.Post("/special-stamps/{stampID}/placement", a.placeStamp)
 	r.Get("/shop/items", a.listShopItems)
+	r.Get("/emporium/items", a.listEmporiumItems)
 	r.Post("/shop/items/{itemID}/orders", a.buy)
 	r.Get("/orders", a.listOrders)
 	r.Route("/review", func(r chi.Router) {

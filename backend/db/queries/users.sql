@@ -35,6 +35,11 @@ limit 50;
 update users set role = $2 where id = $1
 returning *;
 
+-- name: SetEmporiumAccess :one
+-- Lets someone into the Smugglers' Emporium, or (with a null time) out again.
+update users set emporium_access_at = $2, emporium_note = $3, emporium_granted_by = $4 where id = $1
+returning *;
+
 -- name: SetUserPermissions :one
 update users set can_review = $2, can_fraud_review = $3, can_hq_review = $4 where id = $1
 returning *;

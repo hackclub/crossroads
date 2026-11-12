@@ -1,5 +1,9 @@
 -- name: ListShopItems :many
-select * from shop_items where active order by position, price, id;
+-- The shop: what's on sale, without the Emporium's.
+select * from shop_items where active and not emporium order by position, price, id;
+
+-- name: ListEmporiumItems :many
+select * from shop_items where active and emporium order by position, price, id;
 
 -- name: ListAllShopItems :many
 select * from shop_items order by position, price, id;
@@ -11,23 +15,25 @@ select * from shop_items where id = $1;
 select * from shop_items where id = $1 for update;
 
 -- name: CreateShopItem :one
-insert into shop_items (kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, position, batch_size, batch_step)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+insert into shop_items (kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, position, batch_size, batch_step,
+    emporium, grant_cents, grant_cents_per_hour)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 returning *;
 
 -- name: UpdateShopItem :one
 update shop_items set
     kind = $2, name = $3, description = $4, image_url = $5, price = $6,
     stipend_cents = $7, stock = $8, max_per_user = $9, active = $10, position = $11,
-    batch_size = $12, batch_step = $13
+    batch_size = $12, batch_step = $13, emporium = $14, grant_cents = $15, grant_cents_per_hour = $16
 where id = $1
 returning *;
 
 -- name: TakeShopItemStock :exec
-update shop_items set stock = stock - 1 where id = $1 and stock is not null;
+-- quantity is 1 except for grants, whose stock counts pieces.
+update shop_items set stock = stock - sqlc.arg(quantity)::integer where id = sqlc.arg(id) and stock is not null;
 
 -- name: ReturnShopItemStock :exec
-update shop_items set stock = stock + 1 where id = $1 and stock is not null;
+update shop_items set stock = stock + sqlc.arg(quantity)::integer where id = sqlc.arg(id) and stock is not null;
 
 -- name: CountOrdersOfItem :one
 -- How many of an item someone has bought, not counting cancelled orders.
@@ -40,8 +46,8 @@ where user_id = $1 and status <> 'cancelled'
 group by shop_item_id;
 
 -- name: CreateOrder :one
-insert into orders (user_id, shop_item_id, price, shipping_address, status, locked_price)
-values ($1, $2, $3, $4, $5, $6)
+insert into orders (user_id, shop_item_id, price, shipping_address, status, locked_price, quantity, grant_cents)
+values ($1, $2, $3, $4, $5, $6, $7, $8)
 returning *;
 
 -- name: CountSold :one

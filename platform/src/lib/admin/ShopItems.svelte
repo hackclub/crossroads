@@ -3,10 +3,11 @@
 	import { onMount } from 'svelte';
 	import { api, get } from '../api.js';
 	import { money } from '../format.js';
+	import { session } from '../session.svelte.js';
 
 	let items = $state([]);
 	let msg = $state(null);
-	const blank = () => ({ kind: 'physical', name: '', description: '', image_url: '', price: 100, stipend_dollars: '', stock: '', max_per_user: '', position: 0, active: true, batch_size: '', batch_step: '' });
+	const blank = () => ({ kind: 'physical', name: '', description: '', image_url: '', price: 100, stipend_dollars: '', stock: '', max_per_user: '', position: 0, active: true, batch_size: '', batch_step: '', emporium: false, grant_dollars: 5, grant_rate: 6.5 });
 	// Tickets and price locks are one per person; the backend insists.
 	const onePerPerson = (kind) => kind === 'ticket' || kind === 'price_lock';
 	let form = $state(blank());
@@ -36,7 +37,11 @@
 			active: f.active,
 			position: Number(f.position) || 0,
 			batch_size: f.kind === 'ticket' ? num(f.batch_size) : null,
-			batch_step: f.kind === 'ticket' ? num(f.batch_step) : null
+			batch_step: f.kind === 'ticket' ? num(f.batch_step) : null,
+			// Grants are always in the Emporium, priced from their rate.
+			emporium: f.kind === 'grant' || (!onePerPerson(f.kind) && f.emporium),
+			grant_cents: f.kind === 'grant' ? Math.round(Number(f.grant_dollars) * 100) : null,
+			grant_cents_per_hour: f.kind === 'grant' ? Math.round(Number(f.grant_rate) * 100) : null
 		};
 	}
 
@@ -69,7 +74,9 @@
 			stock: i.stock ?? '',
 			max_per_user: i.max_per_user ?? '',
 			batch_size: i.batch_size ?? '',
-			batch_step: i.batch_step ?? ''
+			batch_step: i.batch_step ?? '',
+			grant_dollars: i.grant_cents == null ? 5 : i.grant_cents / 100,
+			grant_rate: i.grant_cents_per_hour == null ? 6.5 : i.grant_cents_per_hour / 100
 		};
 	}
 
@@ -91,8 +98,8 @@
 				{#each items as i}
 					<tr>
 						<td>{i.position}</td>
-						<td>{i.name}</td>
-						<td>{i.kind}{i.stipend_cents ? ` (${money(i.stipend_cents)})` : ''}</td>
+						<td>{i.name}{#if i.emporium} <span class="badge warn">Emporium</span>{/if}</td>
+						<td>{i.kind}{i.stipend_cents ? ` (${money(i.stipend_cents)})` : ''}{i.grant_cents ? ` (${money(i.grant_cents)} pieces at ${money(i.grant_cents_per_hour)}/h)` : ''}</td>
 						<td>{i.price}{i.batch_step ? ` (+${i.batch_step} a batch)` : ''}{#if i.batches}<br /><span class="small muted">{batchNote(i)}</span>{/if}</td>
 						<td>{i.stock ?? '∞'}</td>
 						<td>{i.max_per_user ?? '∞'}</td>
@@ -110,19 +117,24 @@
 		<h2>{editing ? `Edit ${form.name}` : 'New item'}</h2>
 		<div class="grid-halves">
 			<label class="field"><span>Kind</span>
-				<select bind:value={form.kind} disabled={!!editing}><option>ticket</option><option value="price_lock">price lock</option><option>physical</option><option>stipend</option></select>
+				<select bind:value={form.kind} disabled={!!editing}><option>ticket</option><option value="price_lock">price lock</option><option>physical</option><option>stipend</option><option>grant</option></select>
 			</label>
 			<label class="field"><span>Name</span><input required bind:value={form.name} /></label>
-			<label class="field"><span>Price (stamps) {#if form.kind === 'ticket'}<em>the first batch</em>{/if}</span><input type="number" min="0" required bind:value={form.price} /></label>
+			{#if form.kind === 'grant'}
+				<label class="field"><span>Each piece ($)</span><input type="number" min="0.01" step="0.01" required bind:value={form.grant_dollars} /></label>
+				<label class="field"><span>Per approved hour ($) <em>sets the price</em></span><input type="number" min="0.01" step="0.01" required bind:value={form.grant_rate} /></label>
+			{:else}
+				<label class="field"><span>Price (stamps) {#if form.kind === 'ticket'}<em>the first batch</em>{/if}</span><input type="number" min="0" required bind:value={form.price} /></label>
+			{/if}
 			{#if form.kind === 'stipend'}
 				<label class="field"><span>Stipend ($)</span><input type="number" min="0" step="0.01" required bind:value={form.stipend_dollars} /></label>
 			{/if}
-			<label class="field"><span>Stock <em>empty = unlimited</em></span><input type="number" min="0" bind:value={form.stock} /></label>
+			<label class="field"><span>Stock <em>{form.kind === 'grant' ? 'in pieces: the budget; empty = unlimited' : 'empty = unlimited'}</em></span><input type="number" min="0" bind:value={form.stock} /></label>
 			{#if form.kind === 'ticket'}
 				<label class="field"><span>Tickets per batch <em>empty = one price</em></span><input type="number" min="1" bind:value={form.batch_size} /></label>
 				<label class="field"><span>Each batch costs more by <em>stamps</em></span><input type="number" min="1" required={form.batch_size !== ''} bind:value={form.batch_step} /></label>
 			{/if}
-			{#if !onePerPerson(form.kind)}
+			{#if !onePerPerson(form.kind) && form.kind !== 'grant'}
 				<label class="field"><span>Max per person <em>empty = unlimited</em></span><input type="number" min="1" bind:value={form.max_per_user} /></label>
 			{/if}
 			<label class="field"><span>Order in shop <em>lower shows first</em></span><input type="number" step="1" bind:value={form.position} /></label>
@@ -134,6 +146,11 @@
 		</div>
 		<label class="field"><span>Description</span><textarea bind:value={form.description}></textarea></label>
 		<label class="check"><input type="checkbox" bind:checked={form.active} /> In the shop (active)</label>
+		{#if form.kind === 'grant'}
+			<p class="small muted">Grants are only sold in the Smugglers' Emporium. People choose how many pieces; at {session.me.stamps_per_hour} stamps an hour a piece costs {Math.ceil((Number(form.grant_dollars) * session.me.stamps_per_hour) / Number(form.grant_rate)) || '–'} stamps.</p>
+		{:else if !onePerPerson(form.kind)}
+			<label class="check"><input type="checkbox" bind:checked={form.emporium} /> In the Smugglers' Emporium instead of the shop</label>
+		{/if}
 		<div class="row">
 			<button class="btn primary">{editing ? 'Save' : 'Create item'}</button>
 			{#if editing}<button type="button" class="btn ghost" onclick={() => { editing = null; form = blank(); }}>Cancel</button>{/if}

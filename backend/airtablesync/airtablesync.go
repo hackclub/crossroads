@@ -299,6 +299,12 @@ func orderFields(row db.ListOrdersToSyncRow) airtable.Fields {
 	if item.StipendCents != nil {
 		f["Stipend"] = float64(*item.StipendCents) / 100
 	}
+	// A grant's worth goes in Stipend too: the table has no field of its own
+	// for it, and a new field name would make Airtable refuse the record.
+	if order.GrantCents != nil {
+		f["Stipend"] = float64(*order.GrantCents) / 100
+		f["Order"] = fmt.Sprintf("#%d %s ($%.2f)", order.ID, item.Name, float64(*order.GrantCents)/100)
+	}
 	var address db.Address
 	if json.Unmarshal(order.ShippingAddress, &address) == nil {
 		f["Name"] = address.Name

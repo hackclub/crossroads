@@ -246,7 +246,7 @@ Reviewer and admin shapes are listed with their routes below.
 | POST | `/api/sidekick` | Sidekick (shared secret) | Sidekick's protocol; see "Sidekick" below |
 | GET | `/api/admin/activity?days=&min_minutes=` | admin | Participants on the platform and working on projects, per day |
 | GET | `/api/admin/users?q=` | admin | Find people |
-| PATCH | `/api/admin/users/{id}` | admin | Change someone's role and review stages |
+| PATCH | `/api/admin/users/{id}` | admin | Change someone's role, review stages and Emporium access |
 | GET | `/api/admin/review-settings` | admin | Fraud check settings |
 | PATCH | `/api/admin/review-settings` | admin | Change them |
 | POST | `/api/admin/users/{id}/stamp-adjustments` | admin | Add or take away stamps |
@@ -460,6 +460,14 @@ Claims a stamp of the type with that claim code (the platform's `/claim/{code}` 
 **The launch sale.** Until 11:59 PM EST on November 18, 2026, when the community goal closes (`saleEnd` in `main.go`), everything except tickets and price locks is 10% off, rounded down but never below 1 stamp. Those items have a `sale`, and their `price` is the sale price, which is what buying charges. Prices go back to full when it ends, so a page showing sale prices should reload them at `ends_at`.
 
 **Price locks.** The item with `kind: "price_lock"` fixes their ticket at the price of the batch on sale when they buy it, for whenever they buy the ticket. It's on top of the ticket's price, it doesn't hold a ticket, and it's one per person. If the tickets sell out before they buy one, the lock is cancelled and its stamps refunded automatically.
+
+### The Smugglers' Emporium
+
+A second shop, hidden from everyone but reviewers, admins, and people an admin let in for a project worth rewarding (`emporium` on `/api/me` says who). `GET /api/emporium/items` lists it the way `GET /api/shop/items` lists the shop, and answers 404 to anyone else; its items aren't in the shop's list, and buying one without access answers 404 as if it didn't exist. The launch sale doesn't apply in the Emporium.
+
+**Grants** (kind `grant`, Emporium only) are money for a project, sold in pieces: `grant_cents` a piece (default $5) at `grant_cents_per_hour` of approved time (default $6.50). A piece costs the stamps for the hours it's worth, rounded up, so with `STAMPS_PER_HOUR=30` a $5 piece is 24 stamps and $50 is 231. Buy them with `{"quantity": 10}` (1 to 200 pieces). `stock` counts pieces, so it caps the whole budget. The order's `grant_cents` is what it's worth; Airtable gets it in Stipend.
+
+Admins let someone in with `PATCH /api/admin/users/{id}` `{"emporium_access": true, "emporium_note": "for Tiny Compiler"}`, and out with `false`, from the People tab or a ship's review page.
 
 ### `POST /api/shop/items/{id}/orders`
 

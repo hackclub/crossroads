@@ -64,6 +64,16 @@
 		const label = PERMS.find(([k]) => k === key)[1];
 		run(() => api('PATCH', `/admin/users/${u.id}`, { [key]: value }), (r) => `${r.name} ${value ? 'can now do' : 'can no longer do'} ${label.toLowerCase()}.`);
 	}
+	// The Smugglers' Emporium: reviewers and admins are in anyway; anyone
+	// else an admin lets in, saying why.
+	let emporiumNote = $state('');
+	function letIn(u) {
+		run(() => api('PATCH', `/admin/users/${u.id}`, { emporium_access: true, emporium_note: emporiumNote }), (r) => `${r.name} is in the Smugglers' Emporium.`).then(() => (emporiumNote = ''));
+	}
+	function letOut(u) {
+		if (!confirm(`Take ${u.name} out of the Smugglers' Emporium?`)) return;
+		run(() => api('PATCH', `/admin/users/${u.id}`, { emporium_access: false }), (r) => `${r.name} is out of the Smugglers' Emporium.`);
+	}
 	const doAdjust = (e) => {
 		e.preventDefault();
 		run(() => api('POST', `/admin/users/${selected.id}/stamp-adjustments`, { amount: Number(adjust.amount), note: adjust.note }), (r) => `${r.name} now has ${r.stamps} stamps.`).then(() => (adjust = { amount: 0, note: '' }));
@@ -110,7 +120,7 @@
 			<tbody>
 				{#each users as u}
 					<tr class:you={selected?.id === u.id}>
-						<td>{u.name}</td>
+						<td>{u.name}{#if u.emporium_access_at} <span class="badge warn tiny-badge" title="In the Smugglers' Emporium{u.emporium_note ? `: ${u.emporium_note}` : ''}">Emporium</span>{/if}</td>
 						<td class="small">{u.email}</td>
 						<td class="small">{u.slack_id ?? '–'}</td>
 						<td>{u.stamps}</td>
@@ -166,6 +176,20 @@
 					{#each stampTypes as t}<option value={t.id}>{t.name}</option>{/each}
 				</select>
 				<button class="btn" disabled={!stampTypeId} onclick={giveStamp}>Give stamp</button>
+			</div>
+			<div class="stack-sm">
+				<h3>Smugglers' Emporium</h3>
+				{#if selected.role !== 'participant'}
+					<p class="small muted">In, as {selected.role === 'admin' ? 'an admin' : 'a reviewer'}.</p>
+				{:else if selected.emporium_access_at}
+					<p class="small">In since {date(selected.emporium_access_at)}{selected.emporium_note ? `: ${selected.emporium_note}` : ''}.</p>
+					<div class="row"><button class="btn small ghost" onclick={() => letOut(selected)}>Take them out</button></div>
+				{:else}
+					<form class="row" onsubmit={(e) => { e.preventDefault(); letIn(selected); }}>
+						<input bind:value={emporiumNote} placeholder="Why: the project that earned it" maxlength="300" style="max-width: 360px" aria-label="Why they're let in" />
+						<button class="btn">Let them in</button>
+					</form>
+				{/if}
 			</div>
 		</section>
 	{/if}

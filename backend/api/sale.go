@@ -19,7 +19,8 @@ type saleJSON struct {
 
 // onSale says whether item is discounted at now.
 func (a *API) onSale(item db.ShopItem, now time.Time) bool {
-	return now.Before(a.SaleEnd) && item.Kind != db.ShopItemKindTicket && item.Kind != db.ShopItemKindPriceLock
+	// The Emporium isn't part of the launch sale.
+	return now.Before(a.SaleEnd) && !item.Emporium && item.Kind != db.ShopItemKindTicket && item.Kind != db.ShopItemKindPriceLock
 }
 
 // salePrice is price with the sale's discount, rounded down so it's never
