@@ -51,9 +51,9 @@
 	const hours = (s) => Math.floor(s / 3600);
 	const pct = $derived(goal ? Math.min(goal.seconds / goal.goal_seconds, 1) * 100 : 0);
 	const done = $derived(!!goal && goal.seconds >= goal.goal_seconds);
-	// "11:59 PM EST on November 15", in the deadline's own Eastern time.
+	// "11:59 PM EST on November 18", in the deadline's own Eastern time.
 	const deadline = $derived.by(() => {
-		if (!goal) return '11:59 PM EST on November 15';
+		if (!goal) return '11:59 PM EST on November 18';
 		const at = new Date(goal.ends_at);
 		const time = at.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
 		const day = at.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric' });
@@ -84,9 +84,9 @@
 				<h2 id="goal-title">{done ? 'Bridge repaired' : 'Repair Bridge'}</h2>
 				<p>
 					{#if done}
-						The community shipped {goal ? hours(goal.goal_seconds) : 200} hours together, so the in-person event is on.
+						The community shipped {goal ? hours(goal.goal_seconds) : 500} hours together, so the in-person event is on.
 					{:else}
-						The in-person event can only run if the community ships {goal ? hours(goal.goal_seconds) : 200} hours together, from launch
+						The in-person event can only run if the community ships {goal ? hours(goal.goal_seconds) : 500} hours together, from launch
 						to {deadline}.
 					{/if}
 				</p>
@@ -98,9 +98,9 @@
 						role="progressbar"
 						aria-label="Hours shipped by the community"
 						aria-valuemin="0"
-						aria-valuemax={goal ? hours(goal.goal_seconds) : 200}
+						aria-valuemax={goal ? hours(goal.goal_seconds) : 500}
 						aria-valuenow={goal ? hours(goal.seconds) : 0}
-						aria-valuetext="{goal ? hours(goal.seconds) : 0} of {goal ? hours(goal.goal_seconds) : 200} hours"
+						aria-valuetext="{goal ? hours(goal.seconds) : 0} of {goal ? hours(goal.goal_seconds) : 500} hours"
 					>
 						{#if pct > 0}<span class="fill"></span>{/if}
 					</div>

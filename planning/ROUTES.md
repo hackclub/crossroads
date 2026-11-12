@@ -457,7 +457,7 @@ Claims a stamp of the type with that claim code (the platform's `/claim/{code}` 
 
 **Ticket batches.** A ticket with `batches` sells in batches: the first `batch_size` cost the first price, and each batch after costs `batch_step` more. The next batch goes on sale when one sells out, and `stock` counts what's left across all of them. The ticket's `price` here is what the signed-in person would pay now: the batch on sale, or their `locked_price` if that's lower.
 
-**The launch sale.** Until midnight UTC on November 13, 2026 (`saleEnd` in `main.go`), everything except tickets and price locks is 10% off, rounded down but never below 1 stamp. Those items have a `sale`, and their `price` is the sale price, which is what buying charges. Prices go back to full when it ends, so a page showing sale prices should reload them at `ends_at`.
+**The launch sale.** Until 11:59 PM EST on November 18, 2026, when the community goal closes (`saleEnd` in `main.go`), everything except tickets and price locks is 10% off, rounded down but never below 1 stamp. Those items have a `sale`, and their `price` is the sale price, which is what buying charges. Prices go back to full when it ends, so a page showing sale prices should reload them at `ends_at`.
 
 **Price locks.** The item with `kind: "price_lock"` fixes their ticket at the price of the batch on sale when they buy it, for whenever they buy the ticket. It's on top of the ticket's price, it doesn't hold a ticket, and it's one per person. If the tickets sell out before they buy one, the lock is cancelled and its stamps refunded automatically.
 
@@ -861,9 +861,9 @@ The home page's "Repair Bridge": the in-person event only runs if participants t
 ```ts
 interface Community {
   seconds: number;      // shipped so far
-  goal_seconds: number; // what's needed (200 hours)
+  goal_seconds: number; // what's needed (500 hours)
   starts_at: string;    // launch: when Hackatime time starts counting
-  ends_at: string;      // the deadline, 11:59 PM EST on November 15
+  ends_at: string;      // the deadline, 11:59 PM EST on November 18
 }
 ```
 
