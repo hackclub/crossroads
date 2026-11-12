@@ -568,6 +568,8 @@ The dashboard at the top of the queue: this week's leaderboard and the all-time 
 ```ts
 {
   week_start: string; week_end: string;
+  today: string;                       // YYYY-MM-DD, Eastern
+  days: { day: string; reviews: number }[]; // this week, Monday first: reviews by everyone
   week: Leader[]; all_time: Leader[]; // most reviews first; names only
   pace: {
     reviewed: number;              // reviews this week, by everyone

@@ -30,6 +30,14 @@
 	const allTime = $derived(data ? rankIn(data.all_time) : null);
 	const rows = $derived(data ? data[board] : []);
 	const shown = $derived(rows.slice(0, SHOWN));
+
+	// The week as a bar per day, Monday first. Days still to come stay empty.
+	const days = $derived(data?.days ?? []);
+	const most = $derived(Math.max(1, ...days.map((d) => d.reviews)));
+	const weekTotal = $derived(days.reduce((n, d) => n + d.reviews, 0));
+	const dayName = (day, style) => new Date(day + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: style, timeZone: 'UTC' });
+	const dayLabel = (day) => new Date(day + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+	const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 	const mine = $derived(rows.findIndex((r) => r.id === me));
 
 	// "Nov 9 – 15", Monday to Sunday in Eastern time.
@@ -50,45 +58,46 @@
 		if (h < 48) return `${h}h`;
 		return `${Math.floor(h / 24)}d ${h % 24}h`;
 	}
-	// 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st.
-	function ordinal(n) {
-		const suffix = ['th', 'st', 'nd', 'rd'];
-		const v = n % 100;
-		return n + (suffix[(v - 20) % 10] || suffix[v] || suffix[0]);
-	}
 </script>
 
 {#if error}
 	<p class="callout warn small">Couldn't load the review stats: {error}</p>
 {:else}
 	<section class="dash" class:loading={!data} aria-label="Review stats">
-		<div class="part you">
+		<div class="part">
 			<h2>You</h2>
-			<div class="big">
-				<strong>{week?.row.reviews ?? 0}</strong>
-				<span>review{week?.row.reviews === 1 ? '' : 's'} this week</span>
-			</div>
-			<p class="small muted">
-				{#if week}{ordinal(week.place)} of {data.week.length} this week{:else if data}None yet this week{:else}&nbsp;{/if}
-			</p>
-			<dl class="facts">
-				<div><dt>All time</dt><dd>{allTime?.row.reviews ?? 0}</dd></div>
-				<div><dt>Hours first-reviewed</dt><dd>{hours(allTime?.row.seconds_first_reviewed ?? 0)}</dd></div>
-			</dl>
+			<ul class="mine">
+				<li title="Decisions on ships: approving, rejecting, passing, signing off or sending back"><span>Reviews this week</span><strong>{week?.row.reviews ?? 0}</strong></li>
+				<li><span>Reviews all time</span><strong>{allTime?.row.reviews ?? 0}</strong></li>
+				<li title="Hours claimed by the ships you first-reviewed"><span>Hours all time</span><strong>{hours(allTime?.row.seconds_first_reviewed ?? 0)}</strong></li>
+			</ul>
 		</div>
 
 		<div class="part">
-			<h2>This week <span class="muted when">{weekLabel}</span></h2>
-			<dl class="facts grid">
-				<div><dt>Reviews, everyone</dt><dd>{data?.pace.reviewed ?? '–'}</dd></div>
-				<div><dt>Ships in</dt><dd>{data?.pace.shipped ?? '–'}</dd></div>
-				<div><dt>Hours signed off</dt><dd>{data ? hours(data.pace.seconds_approved) : '–'}</dd></div>
-				<div>
-					<dt>Waiting now</dt>
-					<dd>{data?.pace.waiting ?? '–'}{#if data?.pace.oldest_wait_seconds != null}{' '}<span class="muted sub">oldest {wait(data.pace.oldest_wait_seconds)}</span>{/if}</dd>
-				</div>
-				<div class="wide"><dt>Median wait for a first review, last 7 days</dt><dd>{wait(data?.pace.median_wait_seconds)}</dd></div>
-			</dl>
+			<div class="week-head">
+				<h2>This week</h2>
+				<span class="muted small">{weekLabel}{data ? ` · ${plural(weekTotal, 'review')}` : ''}</span>
+			</div>
+			<!-- One series: reviews by everyone each day. Hover a day for its count. -->
+			<div class="chart" aria-hidden="true">
+				{#each days as d (d.day)}
+					{@const future = d.day > data.today}
+					<div class="col" class:future class:today={d.day === data.today} title={future ? dayLabel(d.day) : `${dayLabel(d.day)}: ${plural(d.reviews, 'review')}`}>
+						<div class="plot">
+							{#if d.day === data.today}<span class="value">{d.reviews}</span>{/if}
+							{#if d.reviews}<div class="bar" style:height="{(d.reviews / most) * 100}%"></div>{/if}
+						</div>
+						<span class="day">{dayName(d.day, 'narrow')}</span>
+					</div>
+				{/each}
+			</div>
+			<table class="visually-hidden">
+				<caption>Reviews by everyone each day this week</caption>
+				<tbody>{#each days as d (d.day)}<tr><th scope="row">{dayLabel(d.day)}</th><td>{d.reviews}</td></tr>{/each}</tbody>
+			</table>
+			{#if data}
+				<p class="small muted waiting">{data.pace.waiting ? `${plural(data.pace.waiting, 'ship')} waiting · oldest ${wait(data.pace.oldest_wait_seconds)}` : 'Nothing waiting'}</p>
+			{/if}
 		</div>
 
 		<div class="part board">
@@ -117,17 +126,17 @@
 					{/if}
 				</ol>
 			{:else if data}
-				<p class="small muted">No reviews {board === 'week' ? 'yet this week' : 'yet'}. The first one tops the board.</p>
+				<p class="small muted">No reviews {board === 'week' ? 'yet this week' : 'yet'}.</p>
 			{/if}
 		</div>
 	</section>
-	<p class="footnote muted">A review is one decision on a ship: approving, rejecting, passing the fraud check, signing off or sending back. Weeks run Monday to Sunday, Eastern time.</p>
 {/if}
 
 <style>
 	.dash {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
+		margin-bottom: 20px;
 		background: var(--row-bg);
 		border-radius: var(--radius);
 		overflow: hidden;
@@ -135,28 +144,51 @@
 	}
 	.loading { opacity: 0.55; }
 	@media (min-width: 900px) {
-		.dash { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(0, 1.1fr); }
+		.dash { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 1fr); }
 		.part + .part { border-left: 1px solid var(--deep); }
 	}
 	@media (max-width: 899px) {
 		.part + .part { border-top: 1px solid var(--deep); }
 	}
-	.part { display: flex; flex-direction: column; gap: 10px; padding: 18px 22px; min-width: 0; }
+	.part { display: flex; flex-direction: column; gap: 12px; padding: 18px 22px; min-width: 0; }
 	h2 { font-size: 30px; line-height: 1.1; }
-	.when { font-size: 20px; margin-left: 6px; }
 
-	.big { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-	.big strong { font-size: 64px; font-weight: 400; line-height: 0.9; font-variant-numeric: tabular-nums; }
-	.big span { font-size: 22px; color: var(--muted); }
-	.you > p { margin: 0; }
+	/* You: three bars, a label and its number. */
+	.mine { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+	.mine li {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 8px 14px;
+		border-radius: 10px;
+		background: var(--deep);
+	}
+	.mine span { font-size: 21px; color: var(--muted); }
+	.mine strong { font-size: 34px; font-weight: 400; line-height: 1; font-variant-numeric: tabular-nums; }
 
-	.facts { margin: 0; display: flex; flex-direction: column; gap: 6px; }
-	.facts.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
-	.facts .wide { grid-column: 1 / -1; }
-	.facts dt { font-size: 18px; color: var(--muted); }
-	.facts dd { margin: 0; font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; }
-	.facts .sub { font-size: 18px; margin-left: 4px; }
-	.you .facts { flex-direction: row; gap: 24px; margin-top: auto; }
+	/* This week: a bar per day, anchored to the baseline, rounded at the top. */
+	.week-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+	.chart { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; flex: 1; min-height: 120px; }
+	.col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+	.plot {
+		position: relative;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+		align-items: center;
+		border-bottom: 1px solid var(--muted);
+	}
+	.bar { width: min(70%, 34px); min-height: 3px; background: var(--info); border-radius: 4px 4px 0 0; }
+	.col:hover .bar { filter: brightness(1.15); }
+	.value { font-size: 18px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+	.day { text-align: center; font-size: 17px; color: var(--muted); }
+	.today .day { color: var(--text); font-weight: 700; }
+	.future .day { opacity: 0.45; }
+	.future .plot { border-bottom-style: dashed; border-bottom-color: var(--deep); }
+	.waiting { margin: 0; }
+	.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 	.board-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 	.toggle { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--deep); }
@@ -180,6 +212,4 @@
 	.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.count { font-variant-numeric: tabular-nums; }
 	.leaders li:nth-child(1) .place { color: var(--head); }
-
-	.footnote { margin: 6px 4px 20px; font-size: 17px; }
 </style>
