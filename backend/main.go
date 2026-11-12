@@ -134,7 +134,7 @@ func main() {
 	}
 	// GitHub stats and link checks for reviewers. In dev mode GitHub is faked,
 	// and so are links on the example projects' made-up hosts.
-	githubConfig := github.Config{Token: os.Getenv("GITHUB_TOKEN")}
+	githubConfig := github.Config{Token: os.Getenv("GITHUB_TOKEN"), ProxyKey: os.Getenv("GH_PROXY_API_KEY")}
 	var links linkcheck.Checker = linkcheck.New()
 	// Searching the Unified YSWS DB for projects another program paid for.
 	// Read-only; dev mode never touches it.
