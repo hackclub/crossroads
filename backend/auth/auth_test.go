@@ -61,6 +61,7 @@ type app struct {
 	url    string
 	client *http.Client
 	pool   *pgxpool.Pool
+	auth   *auth.Auth
 }
 
 func newApp(t *testing.T, identity *map[string]any) *app {
@@ -90,7 +91,7 @@ func newApp(t *testing.T, identity *map[string]any) *app {
 		// Stop at each redirect so the tests can look at it.
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	return &app{url: server.URL, client: client, pool: pool}
+	return &app{url: server.URL, client: client, pool: pool, auth: a}
 }
 
 func (a *app) do(t *testing.T, method, path string) *http.Response {
@@ -400,5 +401,40 @@ func TestSigningInClaimsARoleInvite(t *testing.T) {
 	app.signIn(t, "/")
 	if _, me := app.me(t); me["role"] != "participant" {
 		t.Errorf("role is %v after signing in again, want participant", me["role"])
+	}
+}
+
+func TestSigningInSetsSuperadminsAndIsRecorded(t *testing.T) {
+	identity := heidi()
+	app := newApp(t, &identity)
+	ctx := context.Background()
+	app.auth.Superadmins = []string{"U00001533"}
+	app.signIn(t, "/")
+	if _, me := app.me(t); me["role"] != "superadmin" || me["can_review"] != true {
+		t.Errorf("me is %v, want a superadmin with an admin's powers", me)
+	}
+	if resp := app.do(t, "GET", "/api/admin"); resp.StatusCode != http.StatusOK {
+		t.Errorf("/api/admin is %s, want 200", resp.Status)
+	}
+
+	// Taken off the list, they're an admin from their next sign-in.
+	app.auth.Superadmins = nil
+	app.signIn(t, "/")
+	if _, me := app.me(t); me["role"] != "admin" {
+		t.Errorf("role is %v off the list, want admin", me["role"])
+	}
+
+	var firstTimes []bool
+	rows, err := app.pool.Query(ctx, "select (details->>'first_time')::boolean from audit_log where kind = 'sign_in' order by id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var first bool
+		rows.Scan(&first)
+		firstTimes = append(firstTimes, first)
+	}
+	if len(firstTimes) != 2 || !firstTimes[0] || firstTimes[1] {
+		t.Errorf("sign_in first_time values are %v, want [true false]", firstTimes)
 	}
 }

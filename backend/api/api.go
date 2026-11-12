@@ -136,6 +136,10 @@ func (a *API) signedInRoutes(r chi.Router) {
 		r.Get("/orders", a.adminListOrders)
 		r.Patch("/orders/{orderID}", a.adminUpdateOrder)
 	})
+	r.Route("/superadmin", func(r chi.Router) {
+		r.Use(auth.RequireRole(db.UserRoleSuperadmin))
+		r.Get("/audit-log", a.superadminAuditLog)
+	})
 }
 
 // me is auth.Me plus the stamps paid per approved hour, so prices can be

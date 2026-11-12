@@ -17,7 +17,7 @@ var devName = regexp.MustCompile(`^[a-z0-9-]{1,30}$`)
 // It's only mounted when DEV_MODE=1 (see main.go), and must never be reachable
 // in production: anyone could sign in as anyone.
 //
-// GET /dev/login?name=alice&role=participant|reviewer|admin&verified=1&next=/home
+// GET /dev/login?name=alice&role=participant|reviewer|admin|superadmin&verified=1&next=/home
 //
 // Reviewers can decide every review stage unless stages= lists some of
 // review, fraud and hq (stages=hq for an HQ-only reviewer).
@@ -25,6 +25,7 @@ var devName = regexp.MustCompile(`^[a-z0-9-]{1,30}$`)
 // The user is created on first use with a fake Slack ID (so the dev Hackatime
 // fake can find them), a test address, and verified identity unless
 // verified=0. The role is set every time, so the same name can switch roles.
+// (A restart turns dev superadmins back into admins: see db.SyncSuperadmins.)
 func (a *Auth) DevLogin(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	name := strings.ToLower(strings.TrimSpace(q.Get("name")))
@@ -37,7 +38,7 @@ func (a *Auth) DevLogin(w http.ResponseWriter, r *http.Request) {
 		role = db.UserRoleParticipant
 	}
 	if !role.Valid() {
-		http.Error(w, "role has to be participant, reviewer or admin", http.StatusBadRequest)
+		http.Error(w, "role has to be participant, reviewer, admin or superadmin", http.StatusBadRequest)
 		return
 	}
 	verified := q.Get("verified") != "0"
@@ -85,6 +86,7 @@ func (a *Auth) DevLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "dev login failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	a.recordSignIn(r, user, map[string]any{"dev": true, "role": role})
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,

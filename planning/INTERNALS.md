@@ -26,10 +26,12 @@ backend/
     admin.go          admin people, stamp types, box types, drop tables, milestones, grants
     shop.go           shop, orders, verification check, admin shop items, orders, stamp adjustments
     activity.go       the admin activity numbers
+    audit.go          GET /api/superadmin/audit-log
   hca/              Hack Club Auth client: OAuth, GET /api/v1/me, the public verification check
   hackatime/        Hackatime client: user stats and heartbeat spans, filtered to some projects
   airtable/         small Airtable REST client: create, update, list
   activity/         the background poll of each project's Hackatime time per day, and recording visits
+  audit/            middleware that puts every write request in the audit log
   airtablesync/     the background copy into Airtable, and picking up fulfilled orders
   slackclicks/      POST /slack/clicks: the Slack bot records clicks on its announcements' buttons
   respond/          JSON, error and 500 responses
@@ -40,6 +42,7 @@ backend/
     migrate.go        embeds and runs migrations
     errors.go         IsViolation, IsNotEnoughStamps
     address.go        the shared mailing address type
+    roles.go          UserRole.IsAdmin: admins and superadmins
     dbtest/           a throwaway, migrated schema for each test
 ```
 
@@ -61,7 +64,7 @@ Responses always use explicit JSON structs with `snake_case` tags. Never return 
 
 | Table | What |
 |---|---|
-| `users` | Everyone. `can_review`, `can_fraud_review` and `can_hq_review` are a reviewer's stages (admins have all of them whatever these say); `reviewer_note` is the reviewers-only note on a person. `hca_id` (unique) is their Hack Club Auth identity; the profile (Slack ID, names, email, birthday, phone, address as `db.Address` JSON, verification) is refreshed at every sign-in. `role` is `participant`, `reviewer` or `admin`. `stamps` is their balance, kept up to date by a trigger. |
+| `users` | Everyone. `can_review`, `can_fraud_review` and `can_hq_review` are a reviewer's stages (admins have all of them whatever these say); `reviewer_note` is the reviewers-only note on a person. `hca_id` (unique) is their Hack Club Auth identity; the profile (Slack ID, names, email, birthday, phone, address as `db.Address` JSON, verification) is refreshed at every sign-in. `role` is `participant`, `reviewer`, `admin` or `superadmin` (an admin who can read the audit log; see "Audit log"). `stamps` is their balance, kept up to date by a trigger. |
 | `sessions` | `token_hash` (SHA-256 of the cookie value) and `expires_at`. |
 | `role_invites` | A role (`reviewer` or `admin`) waiting for whoever first signs in with `email` (stored lowercase). Signing in uses it up (`auth.callback`, query `ClaimRoleInvite`). |
 | `projects` | Name, description, repo, demo and screenshot links. |
@@ -80,6 +83,7 @@ Responses always use explicit JSON structs with `snake_case` tags. Never return 
 | `shop_items` | `kind` (`ticket`, `price_lock`, `physical`, `stipend`), `price`, optional `stock` and `max_per_user`, `stipend_cents`, `active`. Tickets can have `batch_size` and `batch_step`. |
 | `project_activity` | Each project's Hackatime `seconds` per UTC `day`, written by the activity poller. Only days with time have rows. |
 | `platform_activity` | `(user_id, day)` for each UTC day a person made a signed-in request, written by `activity.Visits`. |
+| `audit_log` | Everything that happens, for superadmins: `kind` (`group.event`, like `stamps.payout`), `at`, `actor_id` (who did it), `user_id` (who it happened to), `details` (JSON). Append-only. See "Audit log". |
 | `orders` | `price` as paid, `status` (`pending`, `fulfilled`, `cancelled`), `shipping_address`, admin `notes`, Airtable bookkeeping. |
 
 ### Where each rule is enforced
@@ -101,6 +105,9 @@ Rules live in the database wherever possible, so a bug in Go can't break them. S
 | A submission pays out once | unique index `stamp_ledger_one_payout_per_submission` |
 | An order is charged once and refunded at most once | unique index `stamp_ledger_one_entry_per_order_kind` |
 | The ledger is never edited | trigger `stamp_ledger_append_only` |
+| The audit log is never edited | trigger `audit_log_append_only` |
+| Stamps, special stamps, boxes, roles and order statuses are logged whatever code changed them | the `*_audit*` triggers in migration 24 |
+| Superadmins are exactly the list in `main.go` | `SyncSuperadmins` at startup and every sign-in; Go: `adminUpdateUser` and `adminInviteRole` refuse to grant or remove it |
 | `users.stamps` always equals the ledger's sum | trigger `stamp_ledger_apply` (function `apply_stamp_entry`) |
 | A purchase can't take a balance below zero | the same trigger raises `stamps_not_negative`; Go checks with `db.IsNotEnoughStamps` |
 | One box per milestone per person | unique `(user_id, milestone_id)` on `boxes` |
@@ -203,6 +210,19 @@ A lock doesn't hold a ticket. When the tickets sell out, `RefundPriceLocks` canc
 - Scopes are `email name slack_id verification_status basic_info address`. The last two need the app's `hq_official` trust level.
 - The session token comes from `crypto/rand`. The cookie holds the token and the database holds only its SHA-256, so a database leak can't be used to sign in. Sessions last 30 days, and a person's expired sessions are cleaned up when they sign in.
 - `next` redirects only go to paths on this site (`safeNext`).
+- After upserting, the callback claims any role invite, then runs `SyncSuperadmins`, so the superadmin list wins over an invite. It adds a `sign_in` to the audit log.
+
+## Audit log
+
+Superadmins (the Slack IDs in `superadmins`, `main.go`) can read everything that's happened at `GET /api/superadmin/audit-log`, the Audit log tab in Admin. Changing who's on the list takes a commit; `SyncSuperadmins` applies it when the server starts and whenever anyone signs in. A superadmin is an admin in every other way: `RequireRole` lets them through wherever admins are allowed, and Go code asks `user.Role.IsAdmin()` rather than comparing with `UserRoleAdmin`.
+
+Rows come from three places:
+
+- **`audit.Requests`** (middleware on `/auth` and `/api` in `main.go`) records every request but `GET`, `HEAD` and `OPTIONS`, after the handler, with its status: who was signed in, chi's route pattern and parameters, the JSON body (up to 64 KB; other bodies by size), IP and user agent. Headers aren't kept, so neither are Sidekick's and the Slack bot's secrets. `/slack/clicks` is left out (it's its own log) and so is `/dev`.
+- **`auth`** adds `sign_in` rows, since the sign-in callback is a `GET`.
+- **Triggers** (migration 24) add the rest when the rows change, so no code path can skip them: `special_stamp.issued` and `.used`, `box.granted`, `stamps.<ledger kind>`, `role.changed`, `order.<status>`. Each copies in the names it needs (stamp type, box type and how the box was got, item, project), so history doesn't change when things are renamed. A trigger only knows what's on the row: role changes and order statuses have no actor, and the request rows at the same moment say who.
+
+Kinds are `group.event`, and filtering on a group (`stamps`) keeps all its events. A new kind needs adding to `auditKinds` (`api/audit.go`) and the filter in `platform/src/lib/admin/AuditLog.svelte`. Recording a request or sign-in never fails the request; it's logged instead. The log isn't pruned.
 
 ## Airtable sync
 

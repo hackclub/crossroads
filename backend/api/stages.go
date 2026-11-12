@@ -64,7 +64,7 @@ type permissions struct {
 }
 
 func permissionsOf(u *db.User) permissions {
-	if u.Role == db.UserRoleAdmin {
+	if u.Role.IsAdmin() {
 		return permissions{true, true, true}
 	}
 	if u.Role != db.UserRoleReviewer {

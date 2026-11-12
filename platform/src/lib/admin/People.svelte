@@ -126,18 +126,22 @@
 						<td>{u.stamps}</td>
 						<td class="small">{u.verification_status}{u.ysws_eligible ? ' ✓' : ''}</td>
 						<td>
-							<div class="row" style="flex-wrap: nowrap; gap: 6px">
-								<select value={roleDraft[u.id] ?? u.role} onchange={(e) => (roleDraft[u.id] = e.currentTarget.value)} aria-label="Role for {u.name}" style="padding: 3px 6px">
-									<option>participant</option><option>reviewer</option><option>admin</option>
-								</select>
-								{#if roleDraft[u.id] && roleDraft[u.id] !== u.role}
-									<button class="btn small primary" onclick={() => setRole(u)}>Save</button>
-									<button class="btn small ghost" onclick={() => delete roleDraft[u.id]}>Undo</button>
-								{/if}
-							</div>
+							{#if u.role === 'superadmin'}
+								<span title="Superadmins are set in the code (backend/main.go)">superadmin</span>
+							{:else}
+								<div class="row" style="flex-wrap: nowrap; gap: 6px">
+									<select value={roleDraft[u.id] ?? u.role} onchange={(e) => (roleDraft[u.id] = e.currentTarget.value)} aria-label="Role for {u.name}" style="padding: 3px 6px">
+										<option>participant</option><option>reviewer</option><option>admin</option>
+									</select>
+									{#if roleDraft[u.id] && roleDraft[u.id] !== u.role}
+										<button class="btn small primary" onclick={() => setRole(u)}>Save</button>
+										<button class="btn small ghost" onclick={() => delete roleDraft[u.id]}>Undo</button>
+									{/if}
+								</div>
+							{/if}
 						</td>
 						<td class="small">
-							{#if u.role === 'admin'}
+							{#if u.role === 'admin' || u.role === 'superadmin'}
 								<span class="muted">All (admin)</span>
 							{:else if u.role === 'reviewer'}
 								<div class="stack-sm">
@@ -180,7 +184,7 @@
 			<div class="stack-sm">
 				<h3>Smugglers' Emporium</h3>
 				{#if selected.role !== 'participant'}
-					<p class="small muted">In, as {selected.role === 'admin' ? 'an admin' : 'a reviewer'}.</p>
+					<p class="small muted">In, as {selected.role === 'reviewer' ? 'a reviewer' : `an ${selected.role}`}.</p>
 				{:else if selected.emporium_access_at}
 					<p class="small">In since {date(selected.emporium_access_at)}{selected.emporium_note ? `: ${selected.emporium_note}` : ''}.</p>
 					<div class="row"><button class="btn small ghost" onclick={() => letOut(selected)}>Take them out</button></div>

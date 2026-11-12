@@ -647,7 +647,8 @@ func (a *API) adminListUsers(w http.ResponseWriter, r *http.Request) {
 // adminUpdateUser changes someone's role, which review stages they can
 // decide, and whether they're let into the Smugglers' Emporium:
 // {"emporium_access": true, "emporium_note": "for Tiny Compiler"}. Fields
-// left out aren't changed.
+// left out aren't changed. Nobody can make someone a superadmin or stop them
+// being one here: main.go lists them.
 func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	admin := auth.User(r.Context())
 	userID, ok := idParam(w, r, "userID")
@@ -676,7 +677,7 @@ func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusUnprocessableEntity, fmt.Sprintf("role has to be one of %v.", db.AllUserRoleValues()))
 		return
 	}
-	if userID == admin.ID && body.Role != nil && *body.Role != db.UserRoleAdmin {
+	if userID == admin.ID && body.Role != nil && !body.Role.IsAdmin() {
 		respond.Error(w, http.StatusUnprocessableEntity, "You can't take away your own admin access. Ask another admin.")
 		return
 	}
@@ -687,6 +688,10 @@ func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		respond.ServerError(w, r, err)
+		return
+	}
+	if body.Role != nil && (*body.Role == db.UserRoleSuperadmin) != (user.Role == db.UserRoleSuperadmin) {
+		respond.Error(w, http.StatusUnprocessableEntity, "Superadmins are set in the code (main.go), not here.")
 		return
 	}
 	if body.Role != nil {
