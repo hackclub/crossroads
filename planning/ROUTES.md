@@ -246,14 +246,14 @@ Reviewer and admin shapes are listed with their routes below.
 | POST | `/api/sidekick` | Sidekick (shared secret) | Sidekick's protocol; see "Sidekick" below |
 | GET | `/api/admin/activity?days=&min_minutes=` | admin | Participants on the platform and working on projects, per day |
 | GET | `/api/admin/users?q=` | admin | Find people |
-| PATCH | `/api/admin/users/{id}` | admin | Change someone's role and review stages |
+| PATCH | `/api/admin/users/{id}` | admin | Change someone's role, review stages and Emporium access |
 | GET | `/api/admin/review-settings` | admin | Fraud check settings |
 | PATCH | `/api/admin/review-settings` | admin | Change them |
 | POST | `/api/admin/users/{id}/stamp-adjustments` | admin | Add or take away stamps |
 | POST | `/api/admin/users/{id}/boxes` | admin | Give someone a box |
 | POST | `/api/admin/users/{id}/special-stamps` | admin | Give someone a special stamp |
 | GET | `/api/admin/role-invites` | admin | Roles waiting for people who haven't signed in yet |
-| POST | `/api/admin/role-invites` | admin | Give a role to whoever first signs in with an email |
+| PUT | `/api/admin/roles-by-email` | admin | Set someone's role by email, now or when they first sign in |
 | DELETE | `/api/admin/role-invites/{id}` | admin | Take back a role invite |
 | GET | `/api/admin/special-stamp-types` | admin | Stamp types with supply numbers |
 | POST | `/api/admin/special-stamp-types` | admin | Create a stamp type |
@@ -461,6 +461,18 @@ Claims a stamp of the type with that claim code (the platform's `/claim/{code}` 
 
 **Price locks.** The item with `kind: "price_lock"` fixes their ticket at the price of the batch on sale when they buy it, for whenever they buy the ticket. It's on top of the ticket's price, it doesn't hold a ticket, and it's one per person. If the tickets sell out before they buy one, the lock is cancelled and its stamps refunded automatically.
 
+### `PATCH /api/me`
+
+`{"name": "Max"}` changes the name the site shows (people click their name in the top bar). It's trimmed, inner runs of spaces become one, and it has to be 1 to 50 characters with nothing invisible in it. Signing in then leaves it alone; `{"name": null}` goes back to the name on their Hack Club account. `/api/me`'s `name_customized` says which it is. Their legal `first_name` and `last_name` don't change: the Unified YSWS DB and Airtable orders use those. Answers like `GET /api/me`.
+
+### The Smugglers' Emporium
+
+A second shop, hidden from everyone but reviewers, admins, and people an admin let in for a project worth rewarding (`emporium` on `/api/me` says who). `GET /api/emporium/items` lists it the way `GET /api/shop/items` lists the shop, and answers 404 to anyone else; its items aren't in the shop's list, and buying one without access answers 404 as if it didn't exist. The launch sale doesn't apply in the Emporium.
+
+**Grants** (kind `grant`, Emporium only) are money for a project, sold in pieces: `grant_cents` a piece (default $5) at `grant_cents_per_hour` of approved time (default $6.50). A piece costs the stamps for the hours it's worth, rounded up, so with `STAMPS_PER_HOUR=30` a $5 piece is 24 stamps and $50 is 231. Buy them with `{"quantity": 10}` (1 to 200 pieces). `stock` counts pieces, so it caps the whole budget. The order's `grant_cents` is what it's worth; Airtable gets it in Stipend.
+
+Admins let someone in with `PATCH /api/admin/users/{id}` `{"emporium_access": true, "emporium_note": "for Tiny Compiler"}`, and out with `false`, from the People tab or a ship's review page.
+
 ### `POST /api/shop/items/{id}/orders`
 
 Buys one. For physical items, the body can give a shipping address:
@@ -548,6 +560,28 @@ interface Queue {
 ```
 
 Priority review first, then oldest first. `422` for an unknown stage.
+
+### `GET /api/review/stats`
+
+The dashboard at the top of the queue: this week's leaderboard and the all-time one, and how the queue is doing. A **review** is one decision on a ship, its timeline event: approving or rejecting at the first review, passing or rejecting at the fraud check, signing off or rejecting at HQ, or sending back. Comments, notes and edits aren't reviews, and Sidekick decisions count the same. The admin's pay view below counts the same way. Weeks run Monday 12:00 AM to Monday 12:00 AM Eastern.
+
+```ts
+{
+  week_start: string; week_end: string;
+  today: string;                       // YYYY-MM-DD, Eastern
+  days: { day: string; reviews: number }[]; // this week, Monday first: reviews by everyone
+  week: Leader[]; all_time: Leader[]; // most reviews first; names only
+  pace: {
+    reviewed: number;              // reviews this week, by everyone
+    shipped: number;               // ships submitted this week
+    seconds_approved: number;      // hours signed off this week
+    waiting: number;               // ships waiting for a first review now
+    oldest_wait_seconds: number | null;
+    median_wait_seconds: number | null; // for a first review, over the last 7 days
+  };
+}
+Leader = { id; name; reviews; first_reviews; fraud_checks; hq_decisions; seconds_first_reviewed; last_review_at }
+```
 
 ### `POST /api/review/next`
 
@@ -674,6 +708,12 @@ interface AdminUser {
 
 **`PATCH /api/admin/users/{id}`** with any of `{"role": "reviewer", "can_review": true, "can_fraud_review": false, "can_hq_review": false}` → `200 AdminUser`. Fields left out don't change. `422` for an unknown role, an admin removing their own admin role, or review stages on a participant. `404` for no such user. Changes apply on the person's next request.
 
+### Reviewer stats (what reviewers are paid by)
+
+`GET /api/admin/reviewer-stats?from=2026-11-09&to=2026-11-15` counts each person's reviews (as defined under `GET /api/review/stats`) for those days, both included, midnight to midnight Eastern. Without `from` and `to` it's this week. Each row has `name`, `email`, `slack_id`, `reviews` (the total), `first_reviews` with `first_approvals` and `first_rejections`, `fraud_checks`, `hq_decisions`, `later_sent_back` (first reviews whose approval was later sent back; they still count), `seconds_first_reviewed` and `last_review_at`. Ships can't be deleted and events never are, so a finished period's counts never change.
+
+`GET /api/admin/reviews?from=&to=[&reviewer=ID]` lists the reviews behind the counts, oldest first. Add `&format=csv` to either for a spreadsheet; cells a spreadsheet would read as a formula get a leading apostrophe.
+
 ### Review settings
 
 **`GET /api/admin/review-settings`** → `200`, and **`PATCH`** with any of the fields → `200`:
@@ -709,7 +749,7 @@ interface RoleInvite {
 
 **`GET /api/admin/role-invites`** → `200 RoleInvite[]`, newest first.
 
-**`POST /api/admin/role-invites`** with `{"email": "orpheus@hackclub.com", "role": "admin"}` → `201 RoleInvite`. The first time someone signs in whose Hack Club Auth email matches (ignoring case), they get the role and the invite is used up, so a later role change sticks. Inviting the same email again replaces its role. `422` for something that isn't a bare email address, or a role other than `reviewer` or `admin`. `409` if someone with that email has already signed in: change their role with `PATCH /api/admin/users/{id}` instead.
+**`PUT /api/admin/roles-by-email`** with `{"email": "orpheus@hackclub.com", "role": "reviewer"}` (`participant`, `reviewer` or `admin`) sets the role of whoever has that Hack Club Auth email, ignoring case. If they've signed in, it changes now: `200 {"applied": "now", "user": AdminUser}`, and any role waiting for that email is dropped. If not, it waits: `201 {"applied": "on_sign_in", "invite": RoleInvite}`, and the first time they sign in they get it and the invite is used up, so a later change sticks. Setting the same email again replaces the role waiting; `participant` for someone who hasn't signed in drops it (`200 {"applied": "cleared"}`). Back to participant clears someone's review stages; a new reviewer starts on first reviews unless stages are set too (the same goes for `PATCH /api/admin/users/{id}`), and an admin ticks the fraud check and HQ sign-off. `422` for something that isn't a bare email address, an unknown role, or an admin's own email with a role below admin.
 
 **`DELETE /api/admin/role-invites/{id}`** → `204`. `404` if it doesn't exist, including once it's been used.
 

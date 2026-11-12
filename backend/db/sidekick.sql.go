@@ -10,7 +10,7 @@ import (
 )
 
 const getProjectWithOwner = `-- name: GetProjectWithOwner :one
-select projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note
+select projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized
 from projects
 join users on users.id = projects.user_id
 where projects.id = $1
@@ -54,6 +54,10 @@ func (q *Queries) GetProjectWithOwner(ctx context.Context, id int64) (GetProject
 		&i.User.CanFraudReview,
 		&i.User.CanHqReview,
 		&i.User.ReviewerNote,
+		&i.User.EmporiumAccessAt,
+		&i.User.EmporiumNote,
+		&i.User.EmporiumGrantedBy,
+		&i.User.NameCustomized,
 	)
 	return i, err
 }
@@ -91,7 +95,7 @@ func (q *Queries) ListHackatimeLinksForProjects(ctx context.Context, projectIds 
 
 const listProjectsForSidekick = `-- name: ListProjectsForSidekick :many
 
-select projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, count(*) over () as total
+select projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized, count(*) over () as total
 from projects
 join users on users.id = projects.user_id
 where exists (
@@ -167,6 +171,10 @@ func (q *Queries) ListProjectsForSidekick(ctx context.Context, arg ListProjectsF
 			&i.User.CanFraudReview,
 			&i.User.CanHqReview,
 			&i.User.ReviewerNote,
+			&i.User.EmporiumAccessAt,
+			&i.User.EmporiumNote,
+			&i.User.EmporiumGrantedBy,
+			&i.User.NameCustomized,
 			&i.Total,
 		); err != nil {
 			return nil, err
@@ -180,7 +188,7 @@ func (q *Queries) ListProjectsForSidekick(ctx context.Context, arg ListProjectsF
 }
 
 const listProjectsWithOwnerByUser = `-- name: ListProjectsWithOwnerByUser :many
-select projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note
+select projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized
 from projects
 join users on users.id = projects.user_id
 where projects.user_id = $1 and projects.id <> $2
@@ -237,6 +245,10 @@ func (q *Queries) ListProjectsWithOwnerByUser(ctx context.Context, arg ListProje
 			&i.User.CanFraudReview,
 			&i.User.CanHqReview,
 			&i.User.ReviewerNote,
+			&i.User.EmporiumAccessAt,
+			&i.User.EmporiumNote,
+			&i.User.EmporiumGrantedBy,
+			&i.User.NameCustomized,
 		); err != nil {
 			return nil, err
 		}

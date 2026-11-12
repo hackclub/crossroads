@@ -10,7 +10,8 @@ values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 on conflict (hca_id) do update set
     slack_id = excluded.slack_id,
     email = excluded.email,
-    name = excluded.name,
+    -- A name they chose themselves stays; otherwise Hack Club Auth's wins.
+    name = case when users.name_customized then users.name else excluded.name end,
     first_name = excluded.first_name,
     last_name = excluded.last_name,
     birthday = excluded.birthday,
@@ -33,6 +34,16 @@ limit 50;
 
 -- name: SetUserRole :one
 update users set role = $2 where id = $1
+returning *;
+
+-- name: SetUserName :one
+-- A name someone chose, or (customized false) the one from Hack Club Auth again.
+update users set name = $2, name_customized = $3 where id = $1
+returning *;
+
+-- name: SetEmporiumAccess :one
+-- Lets someone into the Smugglers' Emporium, or (with a null time) out again.
+update users set emporium_access_at = $2, emporium_note = $3, emporium_granted_by = $4 where id = $1
 returning *;
 
 -- name: SetUserPermissions :one
@@ -60,6 +71,9 @@ on conflict (email) do update set
     created_at = now()
 returning *;
 
+-- name: DeleteRoleInviteByEmail :execrows
+delete from role_invites where email = lower(sqlc.arg(email)::text);
+
 -- name: DeleteRoleInvite :execrows
 delete from role_invites where id = $1;
 
@@ -70,7 +84,9 @@ with invite as (
     delete from role_invites where email = lower(sqlc.arg(email)::text)
     returning role
 )
-update users set role = invite.role
+-- A new reviewer can do first reviews; an admin ticks the fraud check and
+-- HQ sign-off for whoever should have them.
+update users set role = invite.role, can_review = users.can_review or invite.role = 'reviewer'
 from invite
 where users.id = sqlc.arg(id)
 returning users.*;

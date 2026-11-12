@@ -7,7 +7,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, get } from '#lib/api.js';
-	import { session } from '#lib/session.svelte.js';
+	import { session, isAdmin } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
 	import { STAGES, canDecideStage, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, time, toSeconds, toHours, fromHours } from '#lib/review.js';
 	import GitHubPanel from '#lib/review/GitHubPanel.svelte';
@@ -246,6 +246,24 @@
 		}
 	}
 
+	// Admins can let the maker into the Smugglers' Emporium for a project
+	// worth rewarding; the note says which.
+	let emporiumBusy = $state(false);
+	async function letIntoEmporium() {
+		const note = `for ${d.project.name}`;
+		if (!confirm(`Let ${d.user.name} into the Smugglers' Emporium ${note}?`)) return;
+		emporiumBusy = true;
+		try {
+			const r = await api('PATCH', `/admin/users/${d.user.id}`, { emporium_access: true, emporium_note: note });
+			d.user.in_emporium = r.in_emporium;
+			d.user.emporium_note = r.emporium_note;
+		} catch (e) {
+			alert(e.message);
+		} finally {
+			emporiumBusy = false;
+		}
+	}
+
 	async function saveNote() {
 		noteError = '';
 		try {
@@ -350,6 +368,11 @@
 						{#if stage === 'fraud' && d.telescreen_url}
 							<a href={d.telescreen_url} target="_blank" rel="noreferrer">Telescreen</a>
 						{/if}
+						{#if d.user.in_emporium}
+							<span class="badge warn tiny" title={d.user.emporium_note ?? ''}>In the Emporium</span>
+						{:else if isAdmin()}
+							<button class="link-btn" disabled={emporiumBusy} onclick={letIntoEmporium} title="Reward a cool project: they can shop in the Smugglers' Emporium">Let into the Emporium</button>
+						{/if}
 					</div>
 					{#if d.user.reviewer_note}<p class="note small" title={d.user.reviewer_note}>{d.user.reviewer_note}</p>{/if}
 				</div>
@@ -396,14 +419,18 @@
 					<div class="tab-panel" role="tabpanel" id="panel-checks" aria-labelledby="tab-checks">
 						<section class="part two">
 							<div class="stack">
+								<!-- What didn't pass is at the top, in full; here is the rest, names only. -->
 								<div class="stack-sm">
-									<h2>Every check</h2>
-									<ul class="checks">
-										{#each d.checks as c (c.id)}
-											{@const state = c.status === 'pass' ? 'pass' : c.status === 'inconclusive' ? 'unknown' : c.severity === 'info' || c.severity === 'warn' ? 'warn' : 'fail'}
-											<li class="{state} flat">{@render icon(state)}<div><span>{c.name}</span>{#if c.summary}<p>{c.summary}</p>{/if}</div></li>
-										{/each}
-									</ul>
+									<h2>Passed <span class="muted h-count">{passing.length} of {d.checks.length}</span></h2>
+									{#if passing.length}
+										<ul class="passed">
+											{#each passing as c (c.id)}
+												<li title={c.summary || c.name}>{@render icon('pass')}<span>{c.name}</span></li>
+											{/each}
+										</ul>
+									{:else}
+										<p class="small muted">None yet.</p>
+									{/if}
 								</div>
 								<div class="stack-sm">
 									<h2>{d.user.name}</h2>
@@ -587,7 +614,6 @@
 									{#if stage === 'review'}
 										<label class="check small"><input type="checkbox" bind:checked={sendToFraud} /> Send it to the fraud check</label>
 									{/if}
-									<p class="small muted">{whatNext}</p>
 								{/if}
 							</div>
 							<div class="form-b">
@@ -619,6 +645,7 @@
 									</label>
 								{/if}
 								{#if formError}<p class="callout warn small">{formError}</p>{/if}
+								{#if action === 'approve'}<p class="small muted next">{whatNext}</p>{/if}
 								<button class="btn primary submit" disabled={busy}>
 									{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Reject' : 'Send back'}
 								</button>
@@ -752,14 +779,16 @@
 	.checks li { display: flex; gap: 8px; align-items: flex-start; padding: 5px 10px; border-radius: 8px; font-size: 17px; line-height: 1.3; }
 	.checks li .state { margin-top: 2px; }
 	.checks li p { margin: 1px 0 0; color: var(--muted); font-size: 16px; }
-	.flags .checks li p { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+	.passed { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15em), 1fr)); gap: 2px 18px; }
+	.passed li { display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; font-size: 16px; line-height: 1.3; }
+	.passed .state { color: var(--good); margin-top: 2px; }
+	.h-count { font-size: 17px; margin-left: 6px; }
 	.checks li.fail { background: var(--warn-bg); box-shadow: inset 0 0 0 1px var(--danger); }
 	.checks li.fail .state { color: var(--danger); }
 	.checks li.warn { background: var(--warn-bg); }
 	.checks li.warn .state { color: var(--warn); }
 	.checks li.unknown { background: var(--rv-sunk); box-shadow: inset 0 0 0 1px var(--head); }
 	.checks li.pass .state { color: var(--good); }
-	.checks li.flat { padding-block: 3px; }
 	.tag { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; font-size: 13px; background: var(--danger); color: var(--rv-on-danger); vertical-align: 2px; }
 
 	.evidence { display: flex; flex-direction: column; min-width: 0; }
@@ -795,6 +824,7 @@
 	.form-cols, .form-a, .form-b { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 	.actions { gap: 4px 16px; }
 	.submit { align-self: stretch; }
+	.next { margin: 0; }
 	.chain { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-radius: 10px; background: var(--rv-sunk); max-height: 150px; overflow-y: auto; scrollbar-width: thin; }
 	.chain p { margin: 0; }
 	.override { padding: 4px 8px; border: 1px solid var(--warn); background: var(--warn-bg); border-radius: 6px; }

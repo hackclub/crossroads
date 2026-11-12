@@ -46,26 +46,47 @@ type shopItemJSON struct {
 	// While it's on sale: price is the sale price, and this has the full
 	// one. Not filled in for admins, who see and set the full price.
 	Sale *saleJSON `json:"sale"`
+	// In the Smugglers' Emporium rather than the shop.
+	Emporium bool `json:"emporium"`
+	// Grants: what one piece is worth, and the rate per approved hour it's
+	// priced at. price is what one piece costs; buy as many as you like.
+	GrantCents        *int32 `json:"grant_cents"`
+	GrantCentsPerHour *int32 `json:"grant_cents_per_hour"`
 }
 
 func toShopItemJSON(item db.ShopItem, bought int64) shopItemJSON {
 	return shopItemJSON{
-		ID:           item.ID,
-		Kind:         item.Kind,
-		Name:         item.Name,
-		Description:  item.Description,
-		ImageURL:     item.ImageUrl,
-		Price:        item.Price,
-		StipendCents: item.StipendCents,
-		Stock:        item.Stock,
-		MaxPerUser:   item.MaxPerUser,
-		Active:       item.Active,
-		Position:     item.Position,
-		BatchSize:    item.BatchSize,
-		BatchStep:    item.BatchStep,
-		Bought:       bought,
+		ID:                item.ID,
+		Kind:              item.Kind,
+		Name:              item.Name,
+		Description:       item.Description,
+		ImageURL:          item.ImageUrl,
+		Price:             item.Price,
+		StipendCents:      item.StipendCents,
+		Stock:             item.Stock,
+		MaxPerUser:        item.MaxPerUser,
+		Active:            item.Active,
+		Position:          item.Position,
+		BatchSize:         item.BatchSize,
+		BatchStep:         item.BatchStep,
+		Bought:            bought,
+		Emporium:          item.Emporium,
+		GrantCents:        item.GrantCents,
+		GrantCentsPerHour: item.GrantCentsPerHour,
 	}
 }
+
+// grantPrice is what pieces of a grant cost: the stamps for the approved
+// hours they're worth at the grant's rate, rounded up so the rate is never
+// better than stated.
+func grantPrice(item db.ShopItem, pieces int32, stampsPerHour int) int32 {
+	cents := int64(pieces) * int64(*item.GrantCents) * int64(stampsPerHour)
+	perHour := int64(*item.GrantCentsPerHour)
+	return int32((cents + perHour - 1) / perHour)
+}
+
+// maxGrantPieces caps one grant order: $1,000 at $5 a piece.
+const maxGrantPieces = 200
 
 // soldByItem is how many of each shop item everyone has bought, not counting
 // cancelled orders.
@@ -111,6 +132,8 @@ type orderJSON struct {
 	Status          db.OrderStatus  `json:"status"`
 	ShippingAddress json.RawMessage `json:"shipping_address"`
 	LockedPrice     *int32          `json:"locked_price"` // price locks: the ticket price locked in
+	Quantity        int32           `json:"quantity"`     // pieces of a grant; 1 for anything else
+	GrantCents      *int32          `json:"grant_cents"`  // grants: what it's worth in all
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
 }
@@ -127,6 +150,8 @@ func toOrderJSON(order db.Order, item db.ShopItem) orderJSON {
 		Status:          order.Status,
 		ShippingAddress: address,
 		LockedPrice:     order.LockedPrice,
+		Quantity:        order.Quantity,
+		GrantCents:      order.GrantCents,
 		CreatedAt:       order.CreatedAt,
 		UpdatedAt:       order.UpdatedAt,
 	}
@@ -136,12 +161,32 @@ func toOrderJSON(order db.Order, item db.ShopItem) orderJSON {
 // person would pay now: for a ticket, the batch on sale, or the price they
 // locked in if that's lower; for anything on sale, the sale price.
 func (a *API) listShopItems(w http.ResponseWriter, r *http.Request) {
-	user := auth.User(r.Context())
 	items, err := a.Queries.ListShopItems(r.Context())
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return
 	}
+	a.respondItems(w, r, items)
+}
+
+// listEmporiumItems lists what's in the Smugglers' Emporium. To anyone not
+// let in, it isn't there.
+func (a *API) listEmporiumItems(w http.ResponseWriter, r *http.Request) {
+	if !auth.User(r.Context()).InEmporium() {
+		respond.Error(w, http.StatusNotFound, "There's nothing here.")
+		return
+	}
+	items, err := a.Queries.ListEmporiumItems(r.Context())
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	a.respondItems(w, r, items)
+}
+
+// respondItems lists items at what the signed-in person would pay now.
+func (a *API) respondItems(w http.ResponseWriter, r *http.Request, items []db.ShopItem) {
+	user := auth.User(r.Context())
 	counts, err := a.Queries.CountOrdersByItem(r.Context(), user.ID)
 	if err != nil {
 		respond.ServerError(w, r, err)
@@ -170,6 +215,9 @@ func (a *API) listShopItems(w http.ResponseWriter, r *http.Request) {
 		if a.onSale(item, now) {
 			j.Sale = &saleJSON{FullPrice: item.Price, Percent: salePercent, EndsAt: a.SaleEnd}
 			j.Price = salePrice(item.Price)
+		}
+		if item.Kind == db.ShopItemKindGrant {
+			j.Price = grantPrice(item, 1, a.StampsPerHour)
 		}
 		if item.Kind == db.ShopItemKindTicket {
 			if j.Batches = toBatchesJSON(item, sold[item.ID]); j.Batches != nil {
@@ -212,6 +260,7 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		ShippingAddress *db.Address `json:"shipping_address"`
+		Quantity        *int32      `json:"quantity"` // grants: how many pieces
 	}
 	if !decode(w, r, &body) {
 		return
@@ -237,12 +286,25 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item, err := q.LockShopItem(r.Context(), id)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !item.Active) {
+	// The Emporium's items don't exist to anyone not let in.
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (!item.Active || item.Emporium && !locked.InEmporium())) {
 		respond.Error(w, http.StatusNotFound, "That item isn't in the shop.")
 		return
 	}
 	if err != nil {
 		respond.ServerError(w, r, err)
+		return
+	}
+	quantity := int32(1)
+	switch {
+	case item.Kind == db.ShopItemKindGrant && body.Quantity != nil:
+		quantity = *body.Quantity
+		if quantity < 1 || quantity > maxGrantPieces {
+			respond.Error(w, http.StatusUnprocessableEntity, fmt.Sprintf("You can get between 1 and %d pieces of a grant at once.", maxGrantPieces))
+			return
+		}
+	case body.Quantity != nil && *body.Quantity != 1:
+		respond.Error(w, http.StatusUnprocessableEntity, "Only grants come in more than one piece.")
 		return
 	}
 
@@ -291,12 +353,20 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusConflict, "That's sold out.")
 		return
 	}
+	if item.Stock != nil && *item.Stock < quantity {
+		respond.Error(w, http.StatusConflict, fmt.Sprintf("Only %d pieces of this grant are left.", *item.Stock))
+		return
+	}
 
-	price, status, lockedPrice := item.Price, db.OrderStatusPending, (*int32)(nil)
+	price, status, lockedPrice, grantCents := item.Price, db.OrderStatusPending, (*int32)(nil), (*int32)(nil)
 	if a.onSale(item, time.Now()) {
 		price = salePrice(item.Price)
 	}
 	switch item.Kind {
+	case db.ShopItemKindGrant:
+		price = grantPrice(item, quantity, a.StampsPerHour)
+		worth := quantity * *item.GrantCents
+		grantCents = &worth
 	case db.ShopItemKindTicket:
 		sold, err := q.CountSold(r.Context(), item.ID)
 		if err != nil {
@@ -335,6 +405,8 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 		ShippingAddress: address,
 		Status:          status,
 		LockedPrice:     lockedPrice,
+		Quantity:        quantity,
+		GrantCents:      grantCents,
 	})
 	if err != nil {
 		respond.ServerError(w, r, err)
@@ -354,7 +426,7 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
-	if err := q.TakeShopItemStock(r.Context(), item.ID); err != nil {
+	if err := q.TakeShopItemStock(r.Context(), db.TakeShopItemStockParams{ID: item.ID, Quantity: quantity}); err != nil {
 		respond.ServerError(w, r, err)
 		return
 	}
@@ -433,9 +505,14 @@ type shopItemFields struct {
 	Position     *int32           `json:"position"`
 	BatchSize    optional[int32]  `json:"batch_size"`
 	BatchStep    optional[int32]  `json:"batch_step"`
+	Emporium     *bool            `json:"emporium"`
+	// Grants: what a piece is worth and the rate per approved hour, in
+	// cents. A grant's price follows from them, so price is ignored.
+	GrantCents        optional[int32] `json:"grant_cents"`
+	GrantCentsPerHour optional[int32] `json:"grant_cents_per_hour"`
 }
 
-func (f shopItemFields) apply(item *db.ShopItem) string {
+func (f shopItemFields) apply(item *db.ShopItem, stampsPerHour int) string {
 	if f.Kind != nil {
 		item.Kind = *f.Kind
 	}
@@ -472,7 +549,30 @@ func (f shopItemFields) apply(item *db.ShopItem) string {
 	if f.BatchStep.Set {
 		item.BatchStep = f.BatchStep.Value
 	}
+	if f.Emporium != nil {
+		item.Emporium = *f.Emporium
+	}
+	if f.GrantCents.Set {
+		item.GrantCents = f.GrantCents.Value
+	}
+	if f.GrantCentsPerHour.Set {
+		item.GrantCentsPerHour = f.GrantCentsPerHour.Value
+	}
+	isGrant := item.Kind == db.ShopItemKindGrant
+	if isGrant && item.GrantCents != nil && item.GrantCentsPerHour != nil && *item.GrantCents > 0 && *item.GrantCentsPerHour > 0 {
+		item.Price = grantPrice(*item, 1, stampsPerHour)
+	}
 	switch {
+	case isGrant != (item.GrantCents != nil && item.GrantCentsPerHour != nil):
+		return "Grants need grant_cents and grant_cents_per_hour, and nothing else can have them."
+	case isGrant && (*item.GrantCents <= 0 || *item.GrantCentsPerHour <= 0):
+		return "grant_cents and grant_cents_per_hour have to be above 0."
+	case isGrant && !item.Emporium:
+		return "Grants are only sold in the Smugglers' Emporium, so emporium has to be true."
+	case isGrant && item.MaxPerUser != nil:
+		return "Grants are sold in pieces, so they can't have max_per_user. Use stock, in pieces, to cap the budget."
+	case item.Emporium && (item.Kind == db.ShopItemKindTicket || item.Kind == db.ShopItemKindPriceLock):
+		return "Tickets and price locks belong in the shop, not the Emporium."
 	case !item.Kind.Valid():
 		return fmt.Sprintf("kind has to be one of %v.", db.AllShopItemKindValues())
 	case item.Name == "" || len(item.Name) > 100:
@@ -539,7 +639,12 @@ func (a *API) adminCreateShopItem(w http.ResponseWriter, r *http.Request) {
 		one := int32(1)
 		item.MaxPerUser = &one
 	}
-	if problem := fields.apply(&item); problem != "" {
+	// A grant defaults to $5 pieces at $6.50 an hour, in the Emporium.
+	if fields.Kind != nil && *fields.Kind == db.ShopItemKindGrant {
+		piece, rate := int32(500), int32(650)
+		item.GrantCents, item.GrantCentsPerHour, item.Emporium = &piece, &rate, true
+	}
+	if problem := fields.apply(&item, a.StampsPerHour); problem != "" {
 		respond.Error(w, http.StatusUnprocessableEntity, problem)
 		return
 	}
@@ -547,6 +652,7 @@ func (a *API) adminCreateShopItem(w http.ResponseWriter, r *http.Request) {
 		Kind: item.Kind, Name: item.Name, Description: item.Description, ImageUrl: item.ImageUrl, Price: item.Price,
 		StipendCents: item.StipendCents, Stock: item.Stock, MaxPerUser: item.MaxPerUser, Active: item.Active,
 		Position: item.Position, BatchSize: item.BatchSize, BatchStep: item.BatchStep,
+		Emporium: item.Emporium, GrantCents: item.GrantCents, GrantCentsPerHour: item.GrantCentsPerHour,
 	})
 	if err != nil {
 		respond.ServerError(w, r, err)
@@ -583,7 +689,7 @@ func (a *API) adminUpdateShopItem(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
-	if problem := fields.apply(&item); problem != "" {
+	if problem := fields.apply(&item, a.StampsPerHour); problem != "" {
 		respond.Error(w, http.StatusUnprocessableEntity, problem)
 		return
 	}
@@ -591,6 +697,7 @@ func (a *API) adminUpdateShopItem(w http.ResponseWriter, r *http.Request) {
 		ID: item.ID, Kind: item.Kind, Name: item.Name, Description: item.Description, ImageUrl: item.ImageUrl, Price: item.Price,
 		StipendCents: item.StipendCents, Stock: item.Stock, MaxPerUser: item.MaxPerUser, Active: item.Active,
 		Position: item.Position, BatchSize: item.BatchSize, BatchStep: item.BatchStep,
+		Emporium: item.Emporium, GrantCents: item.GrantCents, GrantCentsPerHour: item.GrantCentsPerHour,
 	})
 	if err != nil {
 		respond.ServerError(w, r, err)
@@ -696,7 +803,7 @@ func (a *API) adminUpdateOrder(w http.ResponseWriter, r *http.Request) {
 			respond.ServerError(w, r, err)
 			return
 		}
-		if err := q.ReturnShopItemStock(r.Context(), order.ShopItemID); err != nil {
+		if err := q.ReturnShopItemStock(r.Context(), db.ReturnShopItemStockParams{ID: order.ShopItemID, Quantity: order.Quantity}); err != nil {
 			respond.ServerError(w, r, err)
 			return
 		}

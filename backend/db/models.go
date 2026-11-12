@@ -154,6 +154,7 @@ const (
 	ShopItemKindPhysical  ShopItemKind = "physical"
 	ShopItemKindStipend   ShopItemKind = "stipend"
 	ShopItemKindPriceLock ShopItemKind = "price_lock"
+	ShopItemKindGrant     ShopItemKind = "grant"
 )
 
 func (e *ShopItemKind) Scan(src interface{}) error {
@@ -196,7 +197,8 @@ func (e ShopItemKind) Valid() bool {
 	case ShopItemKindTicket,
 		ShopItemKindPhysical,
 		ShopItemKindStipend,
-		ShopItemKindPriceLock:
+		ShopItemKindPriceLock,
+		ShopItemKindGrant:
 		return true
 	}
 	return false
@@ -208,6 +210,7 @@ func AllShopItemKindValues() []ShopItemKind {
 		ShopItemKindPhysical,
 		ShopItemKindStipend,
 		ShopItemKindPriceLock,
+		ShopItemKindGrant,
 	}
 }
 
@@ -589,6 +592,8 @@ type Order struct {
 	AirtableRecordID *string
 	AirtableSyncedAt *time.Time
 	LockedPrice      *int32
+	Quantity         int32
+	GrantCents       *int32
 }
 
 type PlatformActivity struct {
@@ -665,21 +670,24 @@ type ShipEvent struct {
 }
 
 type ShopItem struct {
-	ID           int64
-	Kind         ShopItemKind
-	Name         string
-	Description  string
-	ImageUrl     *string
-	Price        int32
-	StipendCents *int32
-	Stock        *int32
-	MaxPerUser   *int32
-	Active       bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	Position     int32
-	BatchSize    *int32
-	BatchStep    *int32
+	ID                int64
+	Kind              ShopItemKind
+	Name              string
+	Description       string
+	ImageUrl          *string
+	Price             int32
+	StipendCents      *int32
+	Stock             *int32
+	MaxPerUser        *int32
+	Active            bool
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	Position          int32
+	BatchSize         *int32
+	BatchStep         *int32
+	Emporium          bool
+	GrantCents        *int32
+	GrantCentsPerHour *int32
 }
 
 type SlackClick struct {
@@ -782,4 +790,8 @@ type User struct {
 	CanFraudReview     bool
 	CanHqReview        bool
 	ReviewerNote       *string
+	EmporiumAccessAt   *time.Time
+	EmporiumNote       *string
+	EmporiumGrantedBy  *int64
+	NameCustomized     bool
 }

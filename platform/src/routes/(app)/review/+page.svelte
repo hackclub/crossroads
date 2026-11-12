@@ -7,6 +7,7 @@
 	import { session } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
 	import { STAGES, canDecideStage, reasonLabel, time } from '#lib/review.js';
+	import ReviewDashboard from '#lib/review/ReviewDashboard.svelte';
 
 	const stage = $derived(STAGES[page.url.searchParams.get('stage')] ? page.url.searchParams.get('stage') : 'review');
 	const canDecide = $derived(canDecideStage(session.me, stage));
@@ -57,10 +58,12 @@
 	</div>
 </div>
 
+<ReviewDashboard />
+
 <div class="tabs" role="tablist">
 	{#each Object.entries(STAGES) as [key, s]}
 		<button role="tab" aria-selected={stage === key} class:active={stage === key} onclick={() => goto(`?stage=${key}`, { replace: true, reset: false })}>
-			{s.label}{#if data?.counts} ({data.counts[key]}){/if}
+			{s.label}{#if data?.counts}{' '}<span class="tab-count">{data.counts[key]}</span>{/if}
 		</button>
 	{/each}
 </div>
@@ -77,8 +80,8 @@
 			<table>
 				<thead>
 					<tr>
-						<th>Project</th><th>By</th><th>Claims</th>
-						{#if stage !== 'review'}<th>Approved</th><th>Reviewer</th>{/if}
+						<th>Project</th><th>By</th><th class="num">Claims</th>
+						{#if stage !== 'review'}<th class="num">Approved</th><th>Reviewer</th>{/if}
 						<th>Shipped</th><th>Who's on it</th><th></th>
 					</tr>
 				</thead>
@@ -97,16 +100,16 @@
 								</div>
 							</td>
 							<td>{q.user_name}{#if q.mine} <span class="badge">You</span>{/if}</td>
-							<td>{hours(q.new_seconds)}</td>
+							<td class="num">{hours(q.new_seconds)}</td>
 							{#if stage !== 'review'}
-								<td>{hours(q.approved_seconds)}</td>
+								<td class="num">{hours(q.approved_seconds)}</td>
 								<td class="small">{q.reviewer_name ?? '–'}</td>
 							{/if}
 							<td class="small">{date(q.submitted_at)}</td>
 							<td class="small">
 								{#if q.claim}
 									{q.claim.user_id === session.me.id ? 'You' : q.claim.name}, until {time(q.claim.expires_at)}
-								{:else}<span class="muted">Nobody</span>{/if}
+								{:else}<span class="muted" aria-label="Nobody">–</span>{/if}
 								{#if q.skipped_by_me}<br /><span class="muted">You skipped it</span>{/if}
 							</td>
 							<td><a class="btn small {q.mine ? 'ghost' : 'primary'}" href="/review/{q.id}">{q.mine ? 'View' : 'Open'}</a></td>
@@ -122,4 +125,6 @@
 
 <style>
 	.tiny { font-size: 17px; padding: 0 8px; }
+	.num { text-align: right; font-variant-numeric: tabular-nums; }
+	.tab-count { display: inline-block; min-width: 1.6em; padding: 0 8px; border-radius: 999px; background: rgb(0 0 0 / 0.3); font-size: 0.8em; text-align: center; font-variant-numeric: tabular-nums; }
 </style>

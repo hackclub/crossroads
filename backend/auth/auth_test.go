@@ -402,3 +402,19 @@ func TestSigningInClaimsARoleInvite(t *testing.T) {
 		t.Errorf("role is %v after signing in again, want participant", me["role"])
 	}
 }
+
+// A reviewer by email starts on first reviews, so they can review straight away.
+func TestSigningInAsAnInvitedReviewer(t *testing.T) {
+	identity := heidi()
+	app := newApp(t, &identity)
+	ctx := context.Background()
+	if _, err := app.pool.Exec(ctx, "insert into role_invites (email, role) values ('heidi@example.com', 'reviewer')"); err != nil {
+		t.Fatal(err)
+	}
+	app.signIn(t, "/")
+	_, me := app.me(t)
+	if me["role"] != "reviewer" || me["can_review"] != true || me["can_fraud_review"] != false || me["can_hq_review"] != false {
+		t.Errorf("signed in as %v, can review %v, fraud %v, hq %v; want a reviewer on first reviews only",
+			me["role"], me["can_review"], me["can_fraud_review"], me["can_hq_review"])
+	}
+}

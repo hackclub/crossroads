@@ -603,6 +603,11 @@ type adminUserJSON struct {
 	CanReview      bool `json:"can_review"`
 	CanFraudReview bool `json:"can_fraud_review"`
 	CanHQReview    bool `json:"can_hq_review"`
+	// Whether an admin let them into the Smugglers' Emporium, when and why.
+	// Reviewers and admins are in anyway (in_emporium).
+	EmporiumAccessAt *time.Time `json:"emporium_access_at"`
+	EmporiumNote     *string    `json:"emporium_note"`
+	InEmporium       bool       `json:"in_emporium"`
 }
 
 func toAdminUserJSON(u db.User) adminUserJSON {
@@ -618,6 +623,9 @@ func toAdminUserJSON(u db.User) adminUserJSON {
 		CanReview:          u.CanReview,
 		CanFraudReview:     u.CanFraudReview,
 		CanHQReview:        u.CanHqReview,
+		EmporiumAccessAt:   u.EmporiumAccessAt,
+		EmporiumNote:       u.EmporiumNote,
+		InEmporium:         u.InEmporium(),
 	}
 }
 
@@ -636,9 +644,10 @@ func (a *API) adminListUsers(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, out)
 }
 
-// adminUpdateUser changes someone's role: {"role": "reviewer"}.
-// adminUpdateUser changes someone's role and which review stages they can
-// decide. Fields left out aren't changed.
+// adminUpdateUser changes someone's role, which review stages they can
+// decide, and whether they're let into the Smugglers' Emporium:
+// {"emporium_access": true, "emporium_note": "for Tiny Compiler"}. Fields
+// left out aren't changed.
 func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	admin := auth.User(r.Context())
 	userID, ok := idParam(w, r, "userID")
@@ -650,9 +659,18 @@ func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		CanReview      *bool        `json:"can_review"`
 		CanFraudReview *bool        `json:"can_fraud_review"`
 		CanHQReview    *bool        `json:"can_hq_review"`
+		EmporiumAccess *bool        `json:"emporium_access"`
+		EmporiumNote   *string      `json:"emporium_note"` // why: the project that earned it
 	}
 	if !decode(w, r, &body) {
 		return
+	}
+	if body.EmporiumNote != nil {
+		*body.EmporiumNote = strings.TrimSpace(*body.EmporiumNote)
+		if len(*body.EmporiumNote) > 300 {
+			respond.Error(w, http.StatusUnprocessableEntity, "Keep the Emporium note under 300 characters.")
+			return
+		}
 	}
 	if body.Role != nil && !body.Role.Valid() {
 		respond.Error(w, http.StatusUnprocessableEntity, fmt.Sprintf("role has to be one of %v.", db.AllUserRoleValues()))
@@ -672,7 +690,7 @@ func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Role != nil {
-		user.Role = *body.Role
+		user = withRole(user, *body.Role, body.CanReview == nil && body.CanFraudReview == nil && body.CanHQReview == nil)
 	}
 	for field, value := range map[*bool]*bool{&user.CanReview: body.CanReview, &user.CanFraudReview: body.CanFraudReview, &user.CanHqReview: body.CanHQReview} {
 		if value != nil {
@@ -697,6 +715,26 @@ func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	user, err = q.SetUserPermissions(r.Context(), db.SetUserPermissionsParams{
 		ID: userID, CanReview: user.CanReview, CanFraudReview: user.CanFraudReview, CanHqReview: user.CanHqReview,
 	})
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	switch {
+	case body.EmporiumAccess != nil && !*body.EmporiumAccess:
+		user, err = q.SetEmporiumAccess(r.Context(), db.SetEmporiumAccessParams{ID: userID})
+	case body.EmporiumAccess != nil || body.EmporiumNote != nil && user.EmporiumAccessAt != nil:
+		// Letting someone in who's already in keeps when it first happened.
+		at, by, note := time.Now(), &admin.ID, nonEmpty(deref(body.EmporiumNote))
+		if user.EmporiumAccessAt != nil {
+			at, by = *user.EmporiumAccessAt, user.EmporiumGrantedBy
+			if body.EmporiumNote == nil {
+				note = user.EmporiumNote
+			}
+		}
+		user, err = q.SetEmporiumAccess(r.Context(), db.SetEmporiumAccessParams{
+			ID: userID, EmporiumAccessAt: &at, EmporiumNote: note, EmporiumGrantedBy: by,
+		})
+	}
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return
@@ -794,11 +832,30 @@ func (a *API) adminListRoleInvites(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, out)
 }
 
-// adminInviteRole gives a role to whoever first signs in with an email:
-// {"email": "orpheus@hackclub.com", "role": "admin"}. The email is matched
-// against their Hack Club Auth email, ignoring case. Someone who has already
-// signed in gets their role changed in the people table instead.
-func (a *API) adminInviteRole(w http.ResponseWriter, r *http.Request) {
+// withRole is user with a new role. Back to participant clears their review
+// stages; a new reviewer starts with first reviews unless the admin chose
+// stages themselves (defaultStages false), and an admin ticks the fraud check
+// and HQ sign-off for whoever should have them.
+func withRole(user db.User, role db.UserRole, defaultStages bool) db.User {
+	if role == user.Role {
+		return user
+	}
+	switch {
+	case role == db.UserRoleParticipant:
+		user.CanReview, user.CanFraudReview, user.CanHqReview = false, false, false
+	case role == db.UserRoleReviewer && defaultStages && !user.CanReview && !user.CanFraudReview && !user.CanHqReview:
+		user.CanReview = true
+	}
+	user.Role = role
+	return user
+}
+
+// adminSetRoleByEmail is PUT /admin/roles-by-email {"email": "orpheus@hackclub.com",
+// "role": "reviewer"}: gives whoever has that Hack Club Auth email (ignoring
+// case) a role. If they've signed in, it changes now; if not, they get it the
+// first time they sign in. "participant" for someone who hasn't signed in
+// drops whatever role was waiting for them.
+func (a *API) adminSetRoleByEmail(w http.ResponseWriter, r *http.Request) {
 	admin := auth.User(r.Context())
 	var body struct {
 		Email string      `json:"email"`
@@ -812,25 +869,80 @@ func (a *API) adminInviteRole(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusUnprocessableEntity, "That doesn't look like an email address.")
 		return
 	}
-	if body.Role != db.UserRoleReviewer && body.Role != db.UserRoleAdmin {
-		respond.Error(w, http.StatusUnprocessableEntity, "role has to be reviewer or admin.")
+	if !body.Role.Valid() {
+		respond.Error(w, http.StatusUnprocessableEntity, "role has to be participant, reviewer or admin.")
 		return
 	}
-	switch user, err := a.Queries.GetUserByEmail(r.Context(), email); {
-	case err == nil:
-		respond.Error(w, http.StatusConflict, fmt.Sprintf(
-			"%s has already signed in, as %s (%s). Change their role in the table instead.", email, user.Name, user.Role))
-		return
-	case !errors.Is(err, pgx.ErrNoRows):
-		respond.ServerError(w, r, err)
-		return
+	type resultJSON struct {
+		// now: their role changed; on_sign_in: it's waiting for them;
+		// cleared: they hadn't signed in, and no role is waiting any more.
+		Applied string          `json:"applied"`
+		User    *adminUserJSON  `json:"user,omitempty"`
+		Invite  *roleInviteJSON `json:"invite,omitempty"`
 	}
-	invite, err := a.Queries.UpsertRoleInvite(r.Context(), db.UpsertRoleInviteParams{Email: email, Role: body.Role, InvitedBy: &admin.ID})
+	tx, err := a.Pool.Begin(r.Context())
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return
 	}
-	respond.JSON(w, http.StatusCreated, roleInviteJSON{invite.ID, invite.Email, invite.Role, &admin.Name, invite.CreatedAt})
+	defer tx.Rollback(r.Context())
+	q := a.Queries.WithTx(tx)
+
+	user, err := q.GetUserByEmail(r.Context(), email)
+	switch {
+	case err == nil:
+		if user.ID == admin.ID && body.Role != db.UserRoleAdmin {
+			respond.Error(w, http.StatusUnprocessableEntity, "You can't take away your own admin access. Ask another admin.")
+			return
+		}
+		user = withRole(user, body.Role, true)
+		if _, err := q.SetUserRole(r.Context(), db.SetUserRoleParams{ID: user.ID, Role: user.Role}); err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		user, err = q.SetUserPermissions(r.Context(), db.SetUserPermissionsParams{
+			ID: user.ID, CanReview: user.CanReview, CanFraudReview: user.CanFraudReview, CanHqReview: user.CanHqReview,
+		})
+		if err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		// A role left waiting for this email would be out of date.
+		if _, err := q.DeleteRoleInviteByEmail(r.Context(), email); err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		if err := tx.Commit(r.Context()); err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		out := toAdminUserJSON(user)
+		respond.JSON(w, http.StatusOK, resultJSON{Applied: "now", User: &out})
+	case !errors.Is(err, pgx.ErrNoRows):
+		respond.ServerError(w, r, err)
+	case body.Role == db.UserRoleParticipant:
+		if _, err := q.DeleteRoleInviteByEmail(r.Context(), email); err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		if err := tx.Commit(r.Context()); err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		respond.JSON(w, http.StatusOK, resultJSON{Applied: "cleared"})
+	default:
+		invite, err := q.UpsertRoleInvite(r.Context(), db.UpsertRoleInviteParams{Email: email, Role: body.Role, InvitedBy: &admin.ID})
+		if err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		if err := tx.Commit(r.Context()); err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		respond.JSON(w, http.StatusCreated, resultJSON{Applied: "on_sign_in",
+			Invite: &roleInviteJSON{invite.ID, invite.Email, invite.Role, &admin.Name, invite.CreatedAt}})
+	}
 }
 
 func (a *API) adminDeleteRoleInvite(w http.ResponseWriter, r *http.Request) {
