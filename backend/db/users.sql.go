@@ -15,7 +15,7 @@ with invite as (
     delete from role_invites where email = lower($2::text)
     returning role
 )
-update users set role = invite.role
+update users set role = invite.role, can_review = users.can_review or invite.role = 'reviewer'
 from invite
 where users.id = $1
 returning users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized
@@ -28,6 +28,8 @@ type ClaimRoleInviteParams struct {
 
 // Gives someone signing in the role an admin set for their email, and uses
 // up the invite. No rows if there isn't one.
+// A new reviewer can do first reviews; an admin ticks the fraud check and
+// HQ sign-off for whoever should have them.
 func (q *Queries) ClaimRoleInvite(ctx context.Context, arg ClaimRoleInviteParams) (User, error) {
 	row := q.db.QueryRow(ctx, claimRoleInvite, arg.ID, arg.Email)
 	var i User
@@ -66,6 +68,18 @@ delete from role_invites where id = $1
 
 func (q *Queries) DeleteRoleInvite(ctx context.Context, id int64) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteRoleInvite, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteRoleInviteByEmail = `-- name: DeleteRoleInviteByEmail :execrows
+delete from role_invites where email = lower($1::text)
+`
+
+func (q *Queries) DeleteRoleInviteByEmail(ctx context.Context, email string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRoleInviteByEmail, email)
 	if err != nil {
 		return 0, err
 	}

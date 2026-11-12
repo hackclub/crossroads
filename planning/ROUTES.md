@@ -253,7 +253,7 @@ Reviewer and admin shapes are listed with their routes below.
 | POST | `/api/admin/users/{id}/boxes` | admin | Give someone a box |
 | POST | `/api/admin/users/{id}/special-stamps` | admin | Give someone a special stamp |
 | GET | `/api/admin/role-invites` | admin | Roles waiting for people who haven't signed in yet |
-| POST | `/api/admin/role-invites` | admin | Give a role to whoever first signs in with an email |
+| PUT | `/api/admin/roles-by-email` | admin | Set someone's role by email, now or when they first sign in |
 | DELETE | `/api/admin/role-invites/{id}` | admin | Take back a role invite |
 | GET | `/api/admin/special-stamp-types` | admin | Stamp types with supply numbers |
 | POST | `/api/admin/special-stamp-types` | admin | Create a stamp type |
@@ -749,7 +749,7 @@ interface RoleInvite {
 
 **`GET /api/admin/role-invites`** → `200 RoleInvite[]`, newest first.
 
-**`POST /api/admin/role-invites`** with `{"email": "orpheus@hackclub.com", "role": "admin"}` → `201 RoleInvite`. The first time someone signs in whose Hack Club Auth email matches (ignoring case), they get the role and the invite is used up, so a later role change sticks. Inviting the same email again replaces its role. `422` for something that isn't a bare email address, or a role other than `reviewer` or `admin`. `409` if someone with that email has already signed in: change their role with `PATCH /api/admin/users/{id}` instead.
+**`PUT /api/admin/roles-by-email`** with `{"email": "orpheus@hackclub.com", "role": "reviewer"}` (`participant`, `reviewer` or `admin`) sets the role of whoever has that Hack Club Auth email, ignoring case. If they've signed in, it changes now: `200 {"applied": "now", "user": AdminUser}`, and any role waiting for that email is dropped. If not, it waits: `201 {"applied": "on_sign_in", "invite": RoleInvite}`, and the first time they sign in they get it and the invite is used up, so a later change sticks. Setting the same email again replaces the role waiting; `participant` for someone who hasn't signed in drops it (`200 {"applied": "cleared"}`). Back to participant clears someone's review stages; a new reviewer starts on first reviews unless stages are set too (the same goes for `PATCH /api/admin/users/{id}`), and an admin ticks the fraud check and HQ sign-off. `422` for something that isn't a bare email address, an unknown role, or an admin's own email with a role below admin.
 
 **`DELETE /api/admin/role-invites/{id}`** → `204`. `404` if it doesn't exist, including once it's been used.
 

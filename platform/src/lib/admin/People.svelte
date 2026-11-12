@@ -17,7 +17,7 @@
 	let roleDraft = $state({}); // user id → role
 	// Roles for people who haven't signed in yet, by email.
 	let invites = $state([]);
-	let invite = $state({ email: '', role: 'admin' });
+	let invite = $state({ email: '', role: 'reviewer' });
 
 	async function search(e) {
 		e?.preventDefault();
@@ -81,14 +81,28 @@
 	const giveBox = () => run(() => api('POST', `/admin/users/${selected.id}/boxes`, { box_type_id: Number(boxTypeId) }), () => `Gave ${selected.name} a box.`);
 	const giveStamp = () => run(() => api('POST', `/admin/users/${selected.id}/special-stamps`, { special_stamp_type_id: Number(stampTypeId) }), (s) => `Gave ${selected.name} a ${s.type.name}.`);
 
-	async function addInvite(e) {
+	// A role by Hack Club Auth email: changes now if they've signed in, or
+	// waits for their first sign-in (PUT /admin/roles-by-email).
+	const ROLE_NAMES = { participant: 'a user', reviewer: 'a reviewer', admin: 'an admin' };
+	async function setByEmail(e) {
 		e.preventDefault();
 		msg = null;
+		const { email, role } = invite;
+		const self = email.trim().toLowerCase() === session.me.email.toLowerCase();
+		if (self && role !== 'admin' && !confirm('This is you: you will lose access to Admin. Continue?')) return;
 		try {
-			const r = await api('POST', '/admin/role-invites', invite);
-			msg = { tone: 'good', text: `${r.email} will be ${r.role === 'admin' ? 'an admin' : 'a reviewer'} when they first sign in.` };
+			const r = await api('PUT', '/admin/roles-by-email', invite);
+			msg = {
+				tone: 'good',
+				text:
+					r.applied === 'now'
+						? `${r.user.name} is now ${ROLE_NAMES[r.user.role]}.${r.user.role === 'reviewer' && !r.user.can_fraud_review && !r.user.can_hq_review ? ' They can do first reviews; tick other stages in the table.' : ''}`
+						: r.applied === 'on_sign_in'
+							? `${r.invite.email} will be ${ROLE_NAMES[r.invite.role]} when they first sign in.`
+							: `${email.trim()} hasn't signed in yet, and no role is waiting for them now.`
+			};
 			invite = { email: '', role: invite.role };
-			await loadInvites();
+			await Promise.all([loadInvites(), search()]);
 		} catch (err) {
 			msg = { tone: 'warn', text: err.message };
 		}
@@ -107,6 +121,17 @@
 </script>
 
 <div class="stack">
+	<section class="card">
+		<div><h2>Set a role by email</h2><p class="small muted">Their Hack Club Auth email. If they've signed in, it changes now; if not, they get it the first time they sign in.</p></div>
+		<form class="row" onsubmit={setByEmail}>
+			<input type="email" bind:value={invite.email} placeholder="orpheus@hackclub.com" required aria-label="Email" style="max-width: 320px" />
+			<select bind:value={invite.role} aria-label="Role" style="max-width: 160px">
+				<option value="participant">User</option><option value="reviewer">Reviewer</option><option value="admin">Admin</option>
+			</select>
+			<button class="btn primary">Set role</button>
+		</form>
+	</section>
+
 	<form class="row" onsubmit={search}>
 		<input type="search" bind:value={q} placeholder="Name, email or Slack ID" aria-label="Search people" style="max-width: 320px" />
 		<button class="btn">Search</button>
@@ -194,31 +219,25 @@
 		</section>
 	{/if}
 
-	<section class="card">
-		<div><h2>Not signed in yet</h2><p class="small muted">Give someone a role by their Hack Club Auth email. They get it the first time they sign in.</p></div>
-		<form class="row" onsubmit={addInvite}>
-			<input type="email" bind:value={invite.email} placeholder="orpheus@hackclub.com" required aria-label="Email" style="max-width: 320px" />
-			<select bind:value={invite.role} aria-label="Role" style="max-width: 160px">
-				<option>admin</option><option>reviewer</option>
-			</select>
-			<button class="btn">Add</button>
-		</form>
-		{#if invites.length}
-			<div class="table-wrap">
-				<table>
-					<thead><tr><th>Email</th><th>Role</th><th>Added by</th><th></th></tr></thead>
-					<tbody>
-						{#each invites as i}
-							<tr>
-								<td class="small">{i.email}</td>
-								<td>{i.role}</td>
-								<td class="small">{i.invited_by_name ?? '–'}, {date(i.created_at)}</td>
-								<td><button class="btn small ghost" onclick={() => removeInvite(i)}>Remove</button></td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-		{/if}
-	</section>
+	{#if invites.length}
+		<section class="card">
+			<div><h2>Waiting for sign-in</h2><p class="small muted">Roles set by email for people who haven't signed in yet. They get them the first time they do.</p></div>
+				<div class="table-wrap">
+					<table>
+						<thead><tr><th>Email</th><th>Role</th><th>Added by</th><th></th></tr></thead>
+						<tbody>
+							{#each invites as i}
+								<tr>
+									<td class="small">{i.email}</td>
+									<td>{i.role}</td>
+									<td class="small">{i.invited_by_name ?? '–'}, {date(i.created_at)}</td>
+									<td><button class="btn small ghost" onclick={() => removeInvite(i)}>Remove</button></td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+
+		</section>
+	{/if}
 </div>

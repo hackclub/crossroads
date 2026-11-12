@@ -32,7 +32,7 @@ The sign-in page shows a **Dev sign-in** box when the backend is in dev mode. Ty
 
 To start with an admin setup and a dozen test users in every state already there, load the fake data (DEVELOPMENT.md, "Fake data").
 
-You can also sign in from a link: `http://localhost:5173/dev/login?name=alice&role=participant&next=/home`. Add `verified=0` to try the shop's "verify first" path; it will fail with a "couldn't reach Hack Club Auth" error unless real credentials are set, because checkout asks Hack Club Auth again.
+You can also sign in from a link: `http://localhost:5173/dev/login?name=alice&role=participant&next=/home`. Without `role=`, the user keeps their role, or gets one an admin set for `alice@dev.localhost` before they first signed in, the way signing in with Hack Club Auth does. Add `verified=0` to try the shop's "verify first" path; it will fail with a "couldn't reach Hack Club Auth" error unless real credentials are set, because checkout asks Hack Club Auth again.
 
 ### The dev panel
 
