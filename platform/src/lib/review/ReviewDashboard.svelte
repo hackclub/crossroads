@@ -84,8 +84,11 @@
 					{@const future = d.day > data.today}
 					<div class="col" class:future class:today={d.day === data.today} title={future ? dayLabel(d.day) : `${dayLabel(d.day)}: ${plural(d.reviews, 'review')}`}>
 						<div class="plot">
-							{#if d.day === data.today}<span class="value">{d.reviews}</span>{/if}
-							{#if d.reviews}<div class="bar" style:height="{(d.reviews / most) * 100}%"></div>{/if}
+							{#if d.reviews}
+								<div class="bar" style:height="{(d.reviews / most) * 100}%">
+									{#if d.day === data.today}<span class="value">{d.reviews}</span>{/if}
+								</div>
+							{/if}
 						</div>
 						<span class="day">{dayName(d.day, 'narrow')}</span>
 					</div>
@@ -113,14 +116,16 @@
 					{#each shown as r, i (r.id)}
 						<li class:you={r.id === me}>
 							<span class="place">{i + 1}</span>
-							<span class="name">{r.name}{#if r.id === me} <span class="badge">You</span>{/if}</span>
+							<span class="name" title={r.name}>{r.name}</span>
+							<span class="tag">{#if r.id === me}<span class="badge">You</span>{/if}</span>
 							<span class="count">{r.reviews}</span>
 						</li>
 					{/each}
 					{#if mine >= SHOWN}
 						<li class="you gap">
 							<span class="place">{mine + 1}</span>
-							<span class="name">{rows[mine].name} <span class="badge">You</span></span>
+							<span class="name" title={rows[mine].name}>{rows[mine].name}</span>
+							<span class="tag"><span class="badge">You</span></span>
 							<span class="count">{rows[mine].reviews}</span>
 						</li>
 					{/if}
@@ -143,12 +148,17 @@
 		transition: opacity 0.2s;
 	}
 	.loading { opacity: 0.55; }
-	@media (min-width: 900px) {
-		.dash { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 1fr); }
-		.part + .part { border-left: 1px solid var(--deep); }
+	.part + .part { border-top: 1px solid var(--deep); }
+	/* Two columns with the leaderboard under them, then three when there's room. */
+	@media (min-width: 700px) {
+		.dash { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+		.part:nth-child(2) { border-top: 0; border-left: 1px solid var(--deep); }
+		.board { grid-column: 1 / -1; }
 	}
-	@media (max-width: 899px) {
-		.part + .part { border-top: 1px solid var(--deep); }
+	@media (min-width: 1100px) {
+		.dash { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 1fr); }
+		.part + .part { border-top: 0; border-left: 1px solid var(--deep); }
+		.board { grid-column: auto; }
 	}
 	.part { display: flex; flex-direction: column; gap: 12px; padding: 18px 22px; min-width: 0; }
 	h2 { font-size: 30px; line-height: 1.1; }
@@ -157,9 +167,10 @@
 	.mine { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 	.mine li {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: baseline;
 		justify-content: space-between;
-		gap: 12px;
+		gap: 0 12px;
 		padding: 8px 14px;
 		border-radius: 10px;
 		background: var(--deep);
@@ -171,6 +182,7 @@
 	.week-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 	.chart { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; flex: 1; min-height: 120px; }
 	.col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+	/* Room above the tallest bar for today's number. */
 	.plot {
 		position: relative;
 		flex: 1;
@@ -178,9 +190,11 @@
 		flex-direction: column;
 		justify-content: flex-end;
 		align-items: center;
+		margin-top: 22px;
 		border-bottom: 1px solid var(--muted);
 	}
-	.bar { width: min(70%, 34px); min-height: 3px; background: var(--info); border-radius: 4px 4px 0 0; }
+	.bar { position: relative; width: min(70%, 34px); min-height: 3px; background: var(--info); border-radius: 4px 4px 0 0; }
+	.value { position: absolute; bottom: 100%; left: 50%; translate: -50% -2px; white-space: nowrap; }
 	.col:hover .bar { filter: brightness(1.15); }
 	.value { font-size: 18px; line-height: 1.2; font-variant-numeric: tabular-nums; }
 	.day { text-align: center; font-size: 17px; color: var(--muted); }
@@ -198,7 +212,7 @@
 	.leaders { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 	.leaders li {
 		display: grid;
-		grid-template-columns: 1.8em minmax(0, 1fr) auto;
+		grid-template-columns: 1.8em minmax(0, 1fr) auto auto;
 		align-items: baseline;
 		gap: 10px;
 		padding: 4px 8px;
@@ -209,7 +223,9 @@
 	.leaders li.gap { margin-top: 6px; position: relative; }
 	.leaders li.gap::before { content: '⋯'; position: absolute; top: -18px; left: 12px; color: var(--muted); font-size: 16px; }
 	.place { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
-	.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.tag .badge { font-size: 16px; padding: 0 8px; }
+	.count { min-width: 2ch; text-align: right; }
 	.count { font-variant-numeric: tabular-nums; }
 	.leaders li:nth-child(1) .place { color: var(--head); }
 </style>
