@@ -555,6 +555,7 @@
 				{#if result}
 					<div class="callout good small" role="status">
 						<strong>Saved. It's now: {STATUS_LABELS[d.submission.status] ?? d.submission.status}.</strong>
+						<strong><a href="https://crossroads.hackclub.com/review">Back to queue</a></strong>
 						{#if result.stamps_paid || result.boxes_granted.length}
 							<span>Paid {result.stamps_paid} stamps{result.boxes_granted.length ? ` and gave ${result.boxes_granted.length} box(es)` : ''}.</span>
 						{/if}
