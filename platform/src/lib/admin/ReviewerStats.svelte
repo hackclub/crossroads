@@ -60,9 +60,15 @@
 		[from, to] = PRESETS.find(([k]) => k === key)[2]();
 		load();
 	}
-	function custom() {
+	// A start after the end moves the end to it, and the other way round.
+	function custom(changed) {
 		preset = null;
-		if (from && to) load();
+		if (!from || !to) return;
+		if (from > to) {
+			if (changed === 'from') to = from;
+			else from = to;
+		}
+		load();
 	}
 
 	async function toggle(r) {
@@ -94,8 +100,8 @@
 			{/each}
 		</div>
 		<div class="range">
-			<label>From <input type="date" bind:value={from} max={to} onchange={custom} /></label>
-			<label>to <input type="date" bind:value={to} min={from} onchange={custom} /></label>
+			<label>From <input type="date" bind:value={from} onchange={() => custom('from')} /></label>
+			<label>to <input type="date" bind:value={to} onchange={() => custom('to')} /></label>
 		</div>
 	</div>
 

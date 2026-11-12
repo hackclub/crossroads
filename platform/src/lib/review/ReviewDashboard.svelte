@@ -155,7 +155,7 @@
 	.facts .wide { grid-column: 1 / -1; }
 	.facts dt { font-size: 18px; color: var(--muted); }
 	.facts dd { margin: 0; font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; }
-	.facts .sub { font-size: 18px; }
+	.facts .sub { font-size: 18px; margin-left: 8px; }
 	.you .facts { flex-direction: row; gap: 24px; margin-top: auto; }
 
 	.board-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
