@@ -3,6 +3,7 @@
 	import { api, get } from '#lib/api.js';
 	import { date, effectShort } from '#lib/format.js';
 	import { rail } from '#lib/rail.svelte.js';
+	import BoxOpening from '#lib/BoxOpening.svelte';
 
 	let boxes = $state([]);
 	let types = $state([]);
@@ -10,6 +11,10 @@
 	let error = $state('');
 	let dropped = $state(null);
 	let opening = $state(null);
+	// The box being opened in the dialog, and what came out of it.
+	let shown = $state(null);
+	let reveal = $state(null);
+	let dialog;
 
 	async function load() {
 		try {
@@ -28,16 +33,25 @@
 	async function open(box) {
 		error = '';
 		opening = box.id;
+		shown = box;
+		reveal = null;
+		if (!dialog.open) dialog.showModal();
+		// Let the shut box rock for a moment, however fast the server is.
+		const wait = new Promise((r) => setTimeout(r, 900));
 		try {
-			dropped = await api('POST', `/boxes/${box.id}/open`);
+			const got = await api('POST', `/boxes/${box.id}/open`);
+			await wait;
+			dropped = reveal = got;
 			rail.stampsVersion++; // the stamp car in the train shows the new stamp
 			await load();
 		} catch (e) {
 			error = e.message;
+			dialog.close();
 		} finally {
 			opening = null;
 		}
 	}
+	const next = $derived(unopened[0]);
 </script>
 
 <div class="stack-lg">
@@ -58,6 +72,27 @@
 			</div>
 		</section>
 	{/if}
+
+	<dialog class="opening" bind:this={dialog} aria-labelledby="opening-title" onclose={() => (shown = reveal = null)}>
+		{#if shown}
+			<h2 id="opening-title">{typeName(shown.box_type_id)}</h2>
+			<BoxOpening stamp={reveal} label={typeName(shown.box_type_id)} />
+			<div class="got" class:in={reveal} role="status">
+				{#if reveal}
+					<p class="won">You got <strong>{reveal.type.name}</strong></p>
+					<p>{reveal.type.rarity} · {reveal.type.description || 'A collectible stamp.'}</p>
+					<p class="small muted">It's in your stamp box. Drag it onto a project from the project's page.</p>
+				{/if}
+			</div>
+			<!-- The buttons come in with the stamp's name, once it's out. -->
+			<div class="row actions" class:in={reveal}>
+				{#if reveal}
+					{#if next}<button class="btn" onclick={() => open(next)}>Open the next box ({unopened.length})</button>{/if}
+					<button class="btn primary" onclick={() => dialog.close()}>Done</button>
+				{/if}
+			</div>
+		{/if}
+	</dialog>
 
 	<section class="stack">
 		<h2>Unopened ({unopened.length})</h2>
@@ -106,5 +141,26 @@
 	.drop-stamp { height: 120px; width: auto; flex: none; rotate: -3deg; filter: drop-shadow(0 2px 6px rgb(0 0 0 / 0.5)); }
 	.named { display: inline-flex; align-items: center; gap: 10px; }
 	.thumb { height: 40px; width: auto; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.5)); }
+	.opening {
+		width: min(460px, calc(100vw - 32px));
+		padding: 24px 28px;
+		color: var(--text);
+		background: var(--row-bg);
+		border: 0;
+		border-radius: var(--radius);
+		box-shadow: 0 24px 60px rgb(0 0 0 / 0.6);
+		font-family: 'Crimson Pro', Georgia, serif;
+		text-align: center;
+		overflow: hidden;
+	}
+	.opening::backdrop { background: rgb(0 0 0 / 0.75); }
+	.opening h2 { font-size: 32px; min-height: 1.2em; }
+	.got { min-height: 6.4em; }
+	.got p { margin: 0 0 4px; }
+	.got .won { font-size: 26px; }
+	.got.in, .actions.in { animation: got-in 500ms ease-out 1900ms both; }
+	@keyframes got-in { from { opacity: 0; translate: 0 6px; } }
+	.opening .actions { justify-content: center; min-height: 44px; }
+	@media (prefers-reduced-motion: reduce) { .got.in, .actions.in { animation: none; } }
 	.thumb-blank { width: 34px; height: 40px; border: 1px dashed var(--head); border-radius: 3px; }
 </style>
