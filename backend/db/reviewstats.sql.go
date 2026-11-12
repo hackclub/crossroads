@@ -220,3 +220,46 @@ func (q *Queries) ReviewerStats(ctx context.Context, arg ReviewerStatsParams) ([
 	}
 	return items, nil
 }
+
+const reviewsPerDay = `-- name: ReviewsPerDay :many
+select
+    to_char(d.created_at at time zone 'America/New_York', 'YYYY-MM-DD')::text as day,
+    count(*)::bigint as reviews
+from ship_events d
+where d.kind in ('approval', 'rejection', 'fraud_pass', 'final_approval', 'sent_back')
+    and d.created_at >= $1 and d.created_at < $2
+group by 1
+order by 1
+`
+
+type ReviewsPerDayParams struct {
+	Starts time.Time
+	Ends   time.Time
+}
+
+type ReviewsPerDayRow struct {
+	Day     string
+	Reviews int64
+}
+
+// Reviews by everyone on each Eastern day in [starts, ends), for the
+// dashboard's chart. Days without any aren't listed.
+func (q *Queries) ReviewsPerDay(ctx context.Context, arg ReviewsPerDayParams) ([]ReviewsPerDayRow, error) {
+	rows, err := q.db.Query(ctx, reviewsPerDay, arg.Starts, arg.Ends)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReviewsPerDayRow
+	for rows.Next() {
+		var i ReviewsPerDayRow
+		if err := rows.Scan(&i.Day, &i.Reviews); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

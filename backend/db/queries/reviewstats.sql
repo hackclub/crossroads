@@ -34,6 +34,18 @@ where d.kind in ('approval', 'rejection', 'fraud_pass', 'final_approval', 'sent_
 group by users.id
 order by reviews desc, users.name, users.id;
 
+-- name: ReviewsPerDay :many
+-- Reviews by everyone on each Eastern day in [starts, ends), for the
+-- dashboard's chart. Days without any aren't listed.
+select
+    to_char(d.created_at at time zone 'America/New_York', 'YYYY-MM-DD')::text as day,
+    count(*)::bigint as reviews
+from ship_events d
+where d.kind in ('approval', 'rejection', 'fraud_pass', 'final_approval', 'sent_back')
+    and d.created_at >= sqlc.arg(starts) and d.created_at < sqlc.arg(ends)
+group by 1
+order by 1;
+
 -- name: ListReviews :many
 -- Every review in [starts, ends), oldest first, optionally by one person:
 -- the line items behind ReviewerStats.

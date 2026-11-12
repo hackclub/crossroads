@@ -119,7 +119,7 @@ func (a *API) signedInRoutes(r chi.Router) {
 		r.Post("/users/{userID}/special-stamps", a.adminGrantSpecialStamp)
 		r.Post("/users/{userID}/stamp-adjustments", a.adminAdjustStamps)
 		r.Get("/role-invites", a.adminListRoleInvites)
-		r.Post("/role-invites", a.adminInviteRole)
+		r.Put("/roles-by-email", a.adminSetRoleByEmail)
 		r.Delete("/role-invites/{inviteID}", a.adminDeleteRoleInvite)
 		r.Get("/special-stamp-types", a.adminListSpecialStampTypes)
 		r.Post("/special-stamp-types", a.adminCreateSpecialStampType)

@@ -83,6 +83,25 @@ func (a *API) reviewStats(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
+	perDay, err := a.Queries.ReviewsPerDay(r.Context(), db.ReviewsPerDayParams{Starts: weekStart, Ends: weekEnd})
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	// Every day of the week, Monday first, with none for days without any.
+	type dayJSON struct {
+		Day     string `json:"day"` // YYYY-MM-DD, Eastern
+		Reviews int64  `json:"reviews"`
+	}
+	counts := map[string]int64{}
+	for _, row := range perDay {
+		counts[row.Day] = row.Reviews
+	}
+	days := []dayJSON{}
+	for i := 0; i < 7; i++ {
+		day := weekStart.AddDate(0, 0, i).Format(time.DateOnly)
+		days = append(days, dayJSON{day, counts[day]})
+	}
 	var reviewedThisWeek int64
 	for _, row := range week {
 		reviewedThisWeek += row.Reviews
@@ -105,10 +124,12 @@ func (a *API) reviewStats(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, struct {
 		WeekStart time.Time    `json:"week_start"`
 		WeekEnd   time.Time    `json:"week_end"`
+		Today     string       `json:"today"` // YYYY-MM-DD, Eastern
+		Days      []dayJSON    `json:"days"`  // reviews by everyone each day this week
 		Week      []leaderJSON `json:"week"`
 		AllTime   []leaderJSON `json:"all_time"`
 		Pace      paceJSON     `json:"pace"`
-	}{weekStart, weekEnd, leadersFrom(week), leadersFrom(allTime), p})
+	}{weekStart, weekEnd, now.In(reviewZone).Format(time.DateOnly), days, leadersFrom(week), leadersFrom(allTime), p})
 }
 
 // reviewPeriod reads ?from=YYYY-MM-DD&to=YYYY-MM-DD, both days included, in

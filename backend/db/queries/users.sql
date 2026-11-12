@@ -71,6 +71,9 @@ on conflict (email) do update set
     created_at = now()
 returning *;
 
+-- name: DeleteRoleInviteByEmail :execrows
+delete from role_invites where email = lower(sqlc.arg(email)::text);
+
 -- name: DeleteRoleInvite :execrows
 delete from role_invites where id = $1;
 
@@ -81,7 +84,9 @@ with invite as (
     delete from role_invites where email = lower(sqlc.arg(email)::text)
     returning role
 )
-update users set role = invite.role
+-- A new reviewer can do first reviews; an admin ticks the fraud check and
+-- HQ sign-off for whoever should have them.
+update users set role = invite.role, can_review = users.can_review or invite.role = 'reviewer'
 from invite
 where users.id = sqlc.arg(id)
 returning users.*;

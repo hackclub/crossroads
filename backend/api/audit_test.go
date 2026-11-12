@@ -174,7 +174,22 @@ func TestAdminsCantGrantOrRemoveSuperadmin(t *testing.T) {
 	e.mustCall(t, admin, http.StatusUnprocessableEntity, "PATCH", "/api/admin/users/"+itoa(user.ID), map[string]any{"role": "superadmin"}, nil)
 	e.mustCall(t, admin, http.StatusUnprocessableEntity, "PATCH", "/api/admin/users/"+itoa(superadmin.ID), map[string]any{"role": "admin"}, nil)
 	e.mustCall(t, superadmin, http.StatusUnprocessableEntity, "PATCH", "/api/admin/users/"+itoa(user.ID), map[string]any{"role": "superadmin"}, nil)
-	e.mustCall(t, admin, http.StatusUnprocessableEntity, "POST", "/api/admin/role-invites", map[string]any{"email": "new@example.com", "role": "superadmin"}, nil)
+	// Nor by email, whether they've signed in or not.
+	if _, err := e.pool.Exec(context.Background(), "update users set email = 'super@example.com' where id = $1", superadmin.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(context.Background(), "update users set email = 'u1@example.com' where id = $1", user.ID); err != nil {
+		t.Fatal(err)
+	}
+	for email, role := range map[string]string{"new@example.com": "superadmin", "u1@example.com": "superadmin", "super@example.com": "admin"} {
+		e.mustCall(t, admin, http.StatusUnprocessableEntity, "PUT", "/api/admin/roles-by-email", map[string]any{"email": email, "role": role}, nil)
+	}
+	e.mustCall(t, superadmin, http.StatusUnprocessableEntity, "PUT", "/api/admin/roles-by-email", map[string]any{"email": "super@example.com", "role": "participant"}, nil)
+	var invites int
+	e.pool.QueryRow(context.Background(), "select count(*) from role_invites").Scan(&invites)
+	if invites != 0 {
+		t.Errorf("%d role invites, want none", invites)
+	}
 	// Other changes to a superadmin are fine, and so is saving the role they have.
 	var got struct {
 		Role      string `json:"role"`

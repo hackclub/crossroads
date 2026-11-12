@@ -253,7 +253,7 @@ Reviewer and admin shapes are listed with their routes below.
 | POST | `/api/admin/users/{id}/boxes` | admin | Give someone a box |
 | POST | `/api/admin/users/{id}/special-stamps` | admin | Give someone a special stamp |
 | GET | `/api/admin/role-invites` | admin | Roles waiting for people who haven't signed in yet |
-| POST | `/api/admin/role-invites` | admin | Give a role to whoever first signs in with an email |
+| PUT | `/api/admin/roles-by-email` | admin | Set someone's role by email, now or when they first sign in |
 | DELETE | `/api/admin/role-invites/{id}` | admin | Take back a role invite |
 | GET | `/api/admin/special-stamp-types` | admin | Stamp types with supply numbers |
 | POST | `/api/admin/special-stamp-types` | admin | Create a stamp type |
@@ -569,6 +569,8 @@ The dashboard at the top of the queue: this week's leaderboard and the all-time 
 ```ts
 {
   week_start: string; week_end: string;
+  today: string;                       // YYYY-MM-DD, Eastern
+  days: { day: string; reviews: number }[]; // this week, Monday first: reviews by everyone
   week: Leader[]; all_time: Leader[]; // most reviews first; names only
   pace: {
     reviewed: number;              // reviews this week, by everyone
@@ -748,7 +750,7 @@ interface RoleInvite {
 
 **`GET /api/admin/role-invites`** → `200 RoleInvite[]`, newest first.
 
-**`POST /api/admin/role-invites`** with `{"email": "orpheus@hackclub.com", "role": "admin"}` → `201 RoleInvite`. The first time someone signs in whose Hack Club Auth email matches (ignoring case), they get the role and the invite is used up, so a later role change sticks. Inviting the same email again replaces its role. `422` for something that isn't a bare email address, or a role other than `reviewer` or `admin`. `409` if someone with that email has already signed in: change their role with `PATCH /api/admin/users/{id}` instead.
+**`PUT /api/admin/roles-by-email`** with `{"email": "orpheus@hackclub.com", "role": "reviewer"}` (`participant`, `reviewer` or `admin`) sets the role of whoever has that Hack Club Auth email, ignoring case. If they've signed in, it changes now: `200 {"applied": "now", "user": AdminUser}`, and any role waiting for that email is dropped. If not, it waits: `201 {"applied": "on_sign_in", "invite": RoleInvite}`, and the first time they sign in they get it and the invite is used up, so a later change sticks. Setting the same email again replaces the role waiting; `participant` for someone who hasn't signed in drops it (`200 {"applied": "cleared"}`). Back to participant clears someone's review stages; a new reviewer starts on first reviews unless stages are set too (the same goes for `PATCH /api/admin/users/{id}`), and an admin ticks the fraud check and HQ sign-off. `422` for something that isn't a bare email address, an unknown role, an admin's own email with a role below admin, `superadmin`, or a superadmin's email (superadmins are set in main.go).
 
 **`DELETE /api/admin/role-invites/{id}`** → `204`. `404` if it doesn't exist, including once it's been used.
 
@@ -936,7 +938,7 @@ interface AuditEvent {
 | Kind | When | `details` |
 |---|---|---|
 | `request` | Any request to `/api` or `/auth` but `GET`, `HEAD` and `OPTIONS`, whatever its status. `user_id` is the route's `{userID}`, if it has one. | `method`, `path`, `route` (`/api/admin/users/{userID}`), `params`, `status`, `ms`, `ip`, `user_agent`, and `body` if it's JSON up to 64 KB (otherwise `body_bytes` and `content_type`). Headers aren't kept. |
-| `sign_in` | Signing in, through Hack Club Auth or dev mode | `first_time`, `ip`, `user_agent`; `dev` and `role` for dev sign-ins |
+| `sign_in` | Signing in, through Hack Club Auth or dev mode | `first_time`, `ip`, `user_agent`; `dev` for dev sign-ins, and `role` if one was given |
 | `special_stamp.issued` | A special stamp from a box (actor: the opener), an admin (actor: them) or a claim link | `special_stamp_id`, `special_stamp_type_id`, `special_stamp_type`, `rarity`, `source` (`box`, `admin`, `claim`), and for boxes `box_id`, `box_type_id`, `box_type`, `box_milestone` (null if an admin gave the box), `box_granted_by` |
 | `special_stamp.used` | Put on a submission | `special_stamp_id`, `special_stamp_type_id`, `special_stamp_type`, `effect`, `submission_id`, `project_id`, `project` |
 | `box.granted` | At a milestone (no actor) or from an admin | `box_id`, `box_type_id`, `box_type`, `source` (`milestone`, `admin`), `milestone_id`, `milestone` |

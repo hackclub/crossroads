@@ -3,12 +3,15 @@ package auth
 import (
 	"cmp"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"regexp"
 	"strings"
 
 	"github.com/scherepi/crossroads-backend/db"
+
+	"github.com/jackc/pgx/v5"
 )
 
 var devName = regexp.MustCompile(`^[a-z0-9-]{1,30}$`)
@@ -24,8 +27,11 @@ var devName = regexp.MustCompile(`^[a-z0-9-]{1,30}$`)
 //
 // The user is created on first use with a fake Slack ID (so the dev Hackatime
 // fake can find them), a test address, and verified identity unless
-// verified=0. The role is set every time, so the same name can switch roles.
-// (A restart turns dev superadmins back into admins: see db.SyncSuperadmins.)
+// verified=0. A role= is set every time, so the same name can switch roles.
+// Without one, they keep the role they have, or get one an admin set for
+// their email (name@dev.localhost) before they first signed in, as signing in
+// with Hack Club Auth does. (A restart turns dev superadmins back into
+// admins: see db.SyncSuperadmins.)
 func (a *Auth) DevLogin(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	name := strings.ToLower(strings.TrimSpace(q.Get("name")))
@@ -34,10 +40,7 @@ func (a *Auth) DevLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	role := db.UserRole(q.Get("role"))
-	if role == "" {
-		role = db.UserRoleParticipant
-	}
-	if !role.Valid() {
+	if role != "" && !role.Valid() {
 		http.Error(w, "role has to be participant, reviewer, admin or superadmin", http.StatusBadRequest)
 		return
 	}
@@ -64,10 +67,15 @@ func (a *Auth) DevLogin(w http.ResponseWriter, r *http.Request) {
 		VerificationStatus: status,
 		YswsEligible:       verified,
 	})
-	if err == nil {
+	if err == nil && role == "" {
+		if _, err = a.Queries.ClaimRoleInvite(r.Context(), db.ClaimRoleInviteParams{Email: user.Email, ID: user.ID}); errors.Is(err, pgx.ErrNoRows) {
+			err = nil
+		}
+	}
+	if err == nil && role != "" {
 		_, err = a.Queries.SetUserRole(r.Context(), db.SetUserRoleParams{ID: user.ID, Role: role})
 	}
-	if err == nil {
+	if err == nil && role != "" {
 		stages := cmp.Or(q.Get("stages"), "review,fraud,hq")
 		reviewer := role == db.UserRoleReviewer
 		_, err = a.Queries.SetUserPermissions(r.Context(), db.SetUserPermissionsParams{
@@ -86,7 +94,11 @@ func (a *Auth) DevLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "dev login failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.recordSignIn(r, user, map[string]any{"dev": true, "role": role})
+	details := map[string]any{"dev": true}
+	if role != "" {
+		details["role"] = role
+	}
+	a.recordSignIn(r, user, details)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,

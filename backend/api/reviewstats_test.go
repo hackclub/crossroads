@@ -143,6 +143,11 @@ func TestReviewerStats(t *testing.T) {
 
 	// Reviewers see the leaderboard with names only; only admins see the pay view.
 	var stats struct {
+		Today string `json:"today"`
+		Days  []struct {
+			Day     string `json:"day"`
+			Reviews int64  `json:"reviews"`
+		} `json:"days"`
 		Week []struct {
 			Name    string `json:"name"`
 			Reviews int64  `json:"reviews"`
@@ -162,6 +167,18 @@ func TestReviewerStats(t *testing.T) {
 	e.mustCall(t, fern, http.StatusOK, "GET", "/api/review/stats", nil, &stats)
 	if len(stats.Week) != 3 || stats.Week[0].Name != "Rita" || stats.Week[0].Reviews != 3 || stats.Pace.Reviewed != 6 {
 		t.Errorf("leaderboard: %+v, pace %+v", stats.Week, stats.Pace)
+	}
+	// Seven days, Monday first, and today has all six.
+	if len(stats.Days) != 7 || stats.Today != today {
+		t.Fatalf("days: %+v, today %q", stats.Days, stats.Today)
+	}
+	if monday, _ := time.Parse(time.DateOnly, stats.Days[0].Day); monday.Weekday() != time.Monday {
+		t.Errorf("the week starts on %s", stats.Days[0].Day)
+	}
+	for _, d := range stats.Days {
+		if want := map[bool]int64{true: 6, false: 0}[d.Day == today]; d.Reviews != want {
+			t.Errorf("%s: %d reviews, want %d", d.Day, d.Reviews, want)
+		}
 	}
 	if status := e.call(t, fern, "GET", "/api/admin/reviewer-stats", nil, nil); status != http.StatusForbidden {
 		t.Errorf("a reviewer got the pay view: %d", status)
