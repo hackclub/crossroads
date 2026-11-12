@@ -21,7 +21,7 @@
 	async function save(e) {
 		e.preventDefault();
 		msg = null;
-		const body = { ...form, image_url: form.image_url || null, supply_cap: form.supply_cap === '' ? null : Number(form.supply_cap), claim_code: form.claim_code || null };
+		const body = { ...form, image_url: form.image_url || null, supply_cap: form.supply_cap === '' || form.supply_cap == null ? null : Number(form.supply_cap), claim_code: form.claim_code || null };
 		try {
 			if (editing) await api('PATCH', `/admin/special-stamp-types/${editing}`, body);
 			else await api('POST', '/admin/special-stamp-types', body);

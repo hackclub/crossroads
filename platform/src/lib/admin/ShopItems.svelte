@@ -120,7 +120,7 @@
 			<label class="field"><span>Stock <em>empty = unlimited</em></span><input type="number" min="0" bind:value={form.stock} /></label>
 			{#if form.kind === 'ticket'}
 				<label class="field"><span>Tickets per batch <em>empty = one price</em></span><input type="number" min="1" bind:value={form.batch_size} /></label>
-				<label class="field"><span>Each batch costs more by <em>stamps</em></span><input type="number" min="1" required={form.batch_size !== ''} bind:value={form.batch_step} /></label>
+				<label class="field"><span>Each batch costs more by <em>stamps</em></span><input type="number" min="1" required={num(form.batch_size) != null} bind:value={form.batch_step} /></label>
 			{/if}
 			{#if !onePerPerson(form.kind)}
 				<label class="field"><span>Max per person <em>empty = unlimited</em></span><input type="number" min="1" bind:value={form.max_per_user} /></label>
