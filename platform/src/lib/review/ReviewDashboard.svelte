@@ -96,10 +96,14 @@
 					</div>
 				{/each}
 			</div>
-			<table class="visually-hidden">
-				<caption>Reviews by everyone each day this week</caption>
-				<tbody>{#each days as d (d.day)}<tr><th scope="row">{dayLabel(d.day)}</th><td>{d.reviews}</td></tr>{/each}</tbody>
-			</table>
+			<!-- Hidden in a wrapper, not on the table: Firefox draws a table's
+			     caption outside the table's own box, where it would show. -->
+			<div class="visually-hidden">
+				<table>
+					<caption>Reviews by everyone each day this week</caption>
+					<tbody>{#each days as d (d.day)}<tr><th scope="row">{dayLabel(d.day)}</th><td>{d.reviews}</td></tr>{/each}</tbody>
+				</table>
+			</div>
 		</div>
 
 		<div class="part board">
