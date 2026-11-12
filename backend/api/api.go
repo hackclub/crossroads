@@ -88,6 +88,7 @@ func (a *API) signedInRoutes(r chi.Router) {
 	r.Route("/review", func(r chi.Router) {
 		r.Use(auth.RequireRole(db.UserRoleReviewer, db.UserRoleAdmin))
 		r.Get("/queue", a.reviewQueue)
+		r.Get("/stats", a.reviewStats)
 		r.Post("/next", a.claimNext)
 		r.Route("/submissions/{submissionID}", func(r chi.Router) {
 			r.Get("/", a.getSubmissionForReview)
@@ -109,6 +110,8 @@ func (a *API) signedInRoutes(r chi.Router) {
 		r.Get("/users", a.adminListUsers)
 		r.Patch("/users/{userID}", a.adminUpdateUser)
 		r.Get("/review-settings", a.adminGetReviewSettings)
+		r.Get("/reviewer-stats", a.adminReviewerStats)
+		r.Get("/reviews", a.adminReviewLog)
 		r.Patch("/review-settings", a.adminUpdateReviewSettings)
 		r.Post("/users/{userID}/boxes", a.adminGrantBox)
 		r.Post("/users/{userID}/special-stamps", a.adminGrantSpecialStamp)

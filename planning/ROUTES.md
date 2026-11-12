@@ -549,6 +549,26 @@ interface Queue {
 
 Priority review first, then oldest first. `422` for an unknown stage.
 
+### `GET /api/review/stats`
+
+The dashboard at the top of the queue: this week's leaderboard and the all-time one, and how the queue is doing. A **review** is one decision on a ship, its timeline event: approving or rejecting at the first review, passing or rejecting at the fraud check, signing off or rejecting at HQ, or sending back. Comments, notes and edits aren't reviews, and Sidekick decisions count the same. The admin's pay view below counts the same way. Weeks run Monday 12:00 AM to Monday 12:00 AM Eastern.
+
+```ts
+{
+  week_start: string; week_end: string;
+  week: Leader[]; all_time: Leader[]; // most reviews first; names only
+  pace: {
+    reviewed: number;              // reviews this week, by everyone
+    shipped: number;               // ships submitted this week
+    seconds_approved: number;      // hours signed off this week
+    waiting: number;               // ships waiting for a first review now
+    oldest_wait_seconds: number | null;
+    median_wait_seconds: number | null; // for a first review, over the last 7 days
+  };
+}
+Leader = { id; name; reviews; first_reviews; fraud_checks; hq_decisions; seconds_first_reviewed; last_review_at }
+```
+
 ### `POST /api/review/next`
 
 `{"stage": "review"}` claims the next ship in that queue for 30 minutes and answers `200 {submission_id, claim}`: their own live claim if they have one, otherwise the first ship (priority first, then oldest) that nobody's holding, isn't theirs, and they haven't skipped in the last 3 hours. `204` when there's nothing left. `403` for a stage they can't decide. Two reviewers asking at once never get the same ship.
@@ -673,6 +693,12 @@ interface AdminUser {
 **`GET /api/admin/users?q=heidi`** → `200 AdminUser[]`. Matches part of a name or email, or a whole Slack ID. Without `q`, the newest 50 people.
 
 **`PATCH /api/admin/users/{id}`** with any of `{"role": "reviewer", "can_review": true, "can_fraud_review": false, "can_hq_review": false}` → `200 AdminUser`. Fields left out don't change. `422` for an unknown role, an admin removing their own admin role, or review stages on a participant. `404` for no such user. Changes apply on the person's next request.
+
+### Reviewer stats (what reviewers are paid by)
+
+`GET /api/admin/reviewer-stats?from=2026-11-09&to=2026-11-15` counts each person's reviews (as defined under `GET /api/review/stats`) for those days, both included, midnight to midnight Eastern. Without `from` and `to` it's this week. Each row has `name`, `email`, `slack_id`, `reviews` (the total), `first_reviews` with `first_approvals` and `first_rejections`, `fraud_checks`, `hq_decisions`, `later_sent_back` (first reviews whose approval was later sent back; they still count), `seconds_first_reviewed` and `last_review_at`. Ships can't be deleted and events never are, so a finished period's counts never change.
+
+`GET /api/admin/reviews?from=&to=[&reviewer=ID]` lists the reviews behind the counts, oldest first. Add `&format=csv` to either for a spreadsheet; cells a spreadsheet would read as a formula get a leading apostrophe.
 
 ### Review settings
 
