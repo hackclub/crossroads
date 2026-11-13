@@ -65,7 +65,7 @@
 		const d = e.details;
 		switch (e.kind) {
 			case 'request':
-				return `${d.method} ${d.route || d.path}`;
+				return `${d.method} ${d.route || d.path}${d.unrecorded ? ` (${d.unrecorded} before it weren't recorded: too many too fast)` : ''}`;
 			case 'sign_in':
 				return `Signed in${d.first_time ? ' for the first time' : ''}${d.dev ? ` (dev, as ${d.role})` : ''} from ${d.ip || 'somewhere'}`;
 			case 'special_stamp.issued': {

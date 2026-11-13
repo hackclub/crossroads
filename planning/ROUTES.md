@@ -927,7 +927,7 @@ interface AuditEvent {
   id: number;
   kind: string;               // below
   at: string;
-  actor_id: number | null;    // who did it; null for nobody signed in, the server, or (role.changed, order.*) not known
+  actor_id: number | null;    // who did it; null for Sidekick, the server, or (role.changed, order.*) not known
   actor_name: string | null;
   user_id: number | null;     // who it happened to
   user_name: string | null;
@@ -937,7 +937,7 @@ interface AuditEvent {
 
 | Kind | When | `details` |
 |---|---|---|
-| `request` | Any request to `/api` or `/auth` but `GET`, `HEAD` and `OPTIONS`, whatever its status. `user_id` is the route's `{userID}`, if it has one. | `method`, `path`, `route` (`/api/admin/users/{userID}`), `params`, `status`, `ms`, `ip`, `user_agent`, and `body` if it's JSON up to 64 KB (otherwise `body_bytes` and `content_type`). Headers aren't kept. |
+| `request` | Any request to `/api` or `/auth` but `GET`, `HEAD` and `OPTIONS`, whatever its status, by someone signed in or from Sidekick. Other anonymous requests aren't recorded. `user_id` is the route's `{userID}`, if it has one. | `method`, `path`, `route` (`/api/admin/users/{userID}`), `params`, `status`, `ms`, `ip`, `user_agent` (each cut to 512 bytes), and `body` if it's JSON up to 64 KB and the request succeeded (otherwise `body_bytes` and `content_type`). `unrecorded` if some of this person's requests before it weren't recorded, for going over 128 KB of audit log a minute; their bodies are dropped first. Headers aren't kept. |
 | `sign_in` | Signing in, through Hack Club Auth or dev mode | `first_time`, `ip`, `user_agent`; `dev` for dev sign-ins, and `role` if one was given |
 | `special_stamp.issued` | A special stamp from a box (actor: the opener), an admin (actor: them) or a claim link | `special_stamp_id`, `special_stamp_type_id`, `special_stamp_type`, `rarity`, `source` (`box`, `admin`, `claim`), and for boxes `box_id`, `box_type_id`, `box_type`, `box_milestone` (null if an admin gave the box), `box_granted_by` |
 | `special_stamp.used` | Put on a submission | `special_stamp_id`, `special_stamp_type_id`, `special_stamp_type`, `effect`, `submission_id`, `project_id`, `project` |

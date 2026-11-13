@@ -36,6 +36,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/scherepi/crossroads-backend/audit"
 	"github.com/scherepi/crossroads-backend/db"
 	"github.com/scherepi/crossroads-backend/respond"
 )
@@ -69,6 +70,7 @@ func (a *API) sidekick(w http.ResponseWriter, r *http.Request) {
 		sidekickError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid secret.")
 		return
 	}
+	audit.Vouch(r)
 	var req struct {
 		Action string          `json:"action"`
 		Input  json.RawMessage `json:"input"`

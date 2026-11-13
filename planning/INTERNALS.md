@@ -218,11 +218,13 @@ Superadmins (the Slack IDs in `superadmins`, `main.go`) can read everything that
 
 Rows come from three places:
 
-- **`audit.Requests`** (middleware on `/auth` and `/api` in `main.go`) records every request but `GET`, `HEAD` and `OPTIONS`, after the handler, with its status: who was signed in, chi's route pattern and parameters, the JSON body (up to 64 KB; other bodies by size), IP and user agent. Headers aren't kept, so neither are Sidekick's and the Slack bot's secrets. `/slack/clicks` is left out (it's its own log) and so is `/dev`.
+- **`audit.Requests`** (middleware on `/auth` and `/api` in `main.go`) records every request but `GET`, `HEAD` and `OPTIONS`, after the handler, with its status: who was signed in, chi's route pattern and parameters, the JSON body if the request succeeded (up to 64 KB; other bodies, and rejected ones, by size), IP and user agent, each of those cut to 512 bytes. Headers aren't kept, so neither are Sidekick's and the Slack bot's secrets. `/slack/clicks` is left out (it's its own log) and so is `/dev`.
+  - Only requests someone answers for are recorded: someone signed in, or a handler that calls `audit.Vouch` once it knows who sent it another way (Sidekick, after checking its secret). Anonymous requests changed nothing, and anyone can send them, so recording them would let anyone fill the database; the request log still has them.
+  - Each person signed in can add `audit.DefaultBudget` (128 KB) of rows a minute, refilling steadily. Past it their rows are kept without the body, then not kept at all, and the next row kept has `unrecorded`: how many weren't. Vouched requests don't count against it. The budgets are in memory, so a restart refills them.
 - **`auth`** adds `sign_in` rows, since the sign-in callback is a `GET`.
 - **Triggers** (migration 24) add the rest when the rows change, so no code path can skip them: `special_stamp.issued` and `.used`, `box.granted`, `stamps.<ledger kind>`, `role.changed`, `order.<status>`. Each copies in the names it needs (stamp type, box type and how the box was got, item, project), so history doesn't change when things are renamed. A trigger only knows what's on the row: role changes and order statuses have no actor, and the request rows at the same moment say who.
 
-Kinds are `group.event`, and filtering on a group (`stamps`) keeps all its events. A new kind needs adding to `auditKinds` (`api/audit.go`) and the filter in `platform/src/lib/admin/AuditLog.svelte`. Recording a request or sign-in never fails the request; it's logged instead. The log isn't pruned.
+Kinds are `group.event`, and filtering on a group (`stamps`) keeps all its events. A new kind needs adding to `auditKinds` (`api/audit.go`) and the filter in `platform/src/lib/admin/AuditLog.svelte`. Recording a request or sign-in never fails the request; it's logged instead. The log isn't pruned: only people signed in and Sidekick can add request rows, at a capped rate.
 
 ## Airtable sync
 

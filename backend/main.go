@@ -200,8 +200,9 @@ func main() {
 	// Which days each person uses the platform, for the admin activity page.
 	visits := &activity.Visits{Queries: db.New(pool)}
 	r.Use(middleware.Logger, middleware.Recoverer, a.LoadSession, visits.Record)
-	// Every write to /auth and /api goes in the audit log (package audit).
-	// The Slack bot's clicks have their own table, and /dev is only local.
+	// Every write to /auth and /api by someone signed in, or Sidekick, goes in
+	// the audit log (package audit). The Slack bot's clicks have their own
+	// table, and /dev is only local.
 	requests := &audit.Requests{Queries: db.New(pool)}
 	r.Group(func(r chi.Router) {
 		r.Use(requests.Record)
