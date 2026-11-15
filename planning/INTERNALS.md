@@ -27,6 +27,7 @@ backend/
     shop.go           shop, orders, verification check, admin shop items, orders, stamp adjustments
     activity.go       the admin activity numbers
     audit.go          GET /api/superadmin/audit-log
+    announcements.go  Slack announcements: drafts, posting, engagement
   hca/              Hack Club Auth client: OAuth, GET /api/v1/me, the public verification check
   hackatime/        Hackatime client: user stats and heartbeat spans, filtered to some projects
   airtable/         small Airtable REST client: create, update, list
@@ -34,6 +35,7 @@ backend/
   audit/            middleware that puts every write request in the audit log
   airtablesync/     the background copy into Airtable, and picking up fulfilled orders
   slackclicks/      POST /slack/clicks: the Slack bot records clicks on its announcements' buttons
+  slack/            Slack Web API client with the bot token: post, edit, delete, profiles, reactions, channels
   respond/          JSON, error and 500 responses
   db/
     migrations/       the schema (goose)
@@ -225,6 +227,16 @@ Rows come from three places:
 - **Triggers** (migration 24) add the rest when the rows change, so no code path can skip them: `special_stamp.issued` and `.used`, `box.granted`, `stamps.<ledger kind>`, `role.changed`, `order.<status>`. Each copies in the names it needs (stamp type, box type and how the box was got, item, project), so history doesn't change when things are renamed. A trigger only knows what's on the row: role changes and order statuses have no actor, and the request rows at the same moment say who.
 
 Kinds are `group.event`, and filtering on a group (`stamps`) keeps all its events. A new kind needs adding to `auditKinds` (`api/audit.go`) and the filter in `platform/src/lib/admin/AuditLog.svelte`. Recording a request or sign-in never fails the request; it's logged instead. The log isn't pruned: only people signed in and Sidekick can add request rows, at a capped rate.
+
+## Announcements
+
+Superadmins write announcements on Admin's Announce tab and post them to the station channel: #crossroads-station from the real site (`PUBLIC_URL` is `https://crossroads.hackclub.com`) and #xr-station-test from everything else. Both IDs are constants in `main.go`, so a dev build can't be pointed at the real channel by an env var. The Slack app is the one in `slackbot/manifest.json`: its bot token (`SLACK_BOT_TOKEN`, package `slack`) posts, with `chat:write.customize` putting the superadmin's Slack name and picture on each post. The user token `slackbot/post.js` uses never reaches a server.
+
+- **The platform builds the blocks.** Its editor (Tiptap, `platform/src/lib/announce/`) and its preview need them anyway, so `slack.js` turns the editor's content into Block Kit, and the preview shows exactly what's sent. The backend stores the editor's content (`doc`) without reading it, checks the blocks, and works out from them the buttons (`buttons`, with the stamp type behind any claim link) and whether it @channels (`pings`, a `broadcast` element anywhere).
+- **Clicks** reach the backend the way every Slack button's do: Slack tells `slackbot/bot.js` over Socket Mode, and it posts them to `/slack/clicks`. A posted announcement's clicks are the `slack_clicks` rows with its `channel_id` and `message_ts`; buttons are told apart by `action_id`, which the editor gives each button once and keeps through edits. Tests sent to someone's DMs land in a different channel, so they never count. The bot runs in Production only (the development environment can't reach it), so posts from dev builds get no clicks recorded.
+- **Reactions, replies and channel size** are asked of Slack whenever an announcement is opened, not stored.
+- **Posting** locks the row, posts, then records the `ts`; if recording fails after Slack took it, the log says where the message is. Editing a posted one edits the message in Slack before saving, so the two can't disagree. Deleting one deletes the message and keeps the row and its clicks.
+- Every write is in the audit log as a request, with its body, like any other.
 
 ## Airtable sync
 

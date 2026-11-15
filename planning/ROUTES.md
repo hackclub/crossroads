@@ -270,6 +270,13 @@ Reviewer and admin shapes are listed with their routes below.
 | GET | `/api/admin/orders?status=` | admin | Orders to fulfill |
 | PATCH | `/api/admin/orders/{id}` | admin | Fulfill or cancel an order |
 | GET | `/api/superadmin/audit-log?kind=&user=&before=&limit=` | superadmin | Everything that's happened on the platform |
+| GET | `/api/superadmin/announcements` | superadmin | Slack announcements, and where they post |
+| POST | `/api/superadmin/announcements` | superadmin | Save a new draft |
+| POST | `/api/superadmin/announcements/test` | superadmin | Send a message to your own DMs |
+| GET | `/api/superadmin/announcements/{id}` | superadmin | An announcement and how it's doing |
+| PATCH | `/api/superadmin/announcements/{id}` | superadmin | Edit a draft, or a posted message in Slack |
+| DELETE | `/api/superadmin/announcements/{id}` | superadmin | Delete a draft, or a posted message from Slack |
+| POST | `/api/superadmin/announcements/{id}/post` | superadmin | Post a draft to the station channel |
 | POST | `/slack/clicks` | the Slack bot | Record a click on a Slack announcement's button |
 
 ---
@@ -950,6 +957,75 @@ interface AuditEvent {
 
 Names in `details` are as they were then. The log can't be edited or deleted, even from SQL, without dropping its trigger.
 
+## Announcements (`/api/superadmin`, superadmins only)
+
+Admin's Announce tab. Superadmins write Slack announcements and post them to the station channel with the Crossroads Announcements app's bot, under their own Slack name and picture (with Slack's APP tag). The station is **#crossroads-station** when the backend's `PUBLIC_URL` is `https://crossroads.hackclub.com`, and **#xr-station-test** everywhere else (`stationChannel` and `testChannel` in `backend/main.go`), so dev and local builds can't post to the real one. Sending needs `SLACK_BOT_TOKEN`; without it, drafts still work and sending is `503`.
+
+The platform builds the Block Kit blocks (`platform/src/lib/announce/slack.js`); the backend checks them and posts them as they are. Slack turning something down is `502`, with a message that says what to do (invite the app, add a permission, and so on).
+
+```ts
+type Announcement = {
+  id: number;
+  doc: object;          // the editor's own copy, for the platform
+  blocks: object[];     // Block Kit, 1 to 50 blocks
+  text: string;         // the notification text
+  buttons: AnnouncementButton[]; // worked out from blocks whenever it's saved
+  pings: boolean;       // the blocks have a broadcast (@channel)
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+  posted_by: number | null; // these five are null until it's posted
+  posted_at: string | null;
+  channel_id: string | null;
+  message_ts: string | null;
+  permalink: string | null;
+  deleted_at: string | null; // deleted from Slack
+};
+
+type AnnouncementButton = {
+  action_id: string;    // clicks are counted by it
+  text: string;
+  url?: string;
+  special_stamp_type_id?: number; // for a claim link, /claim/{code}
+};
+```
+
+**`GET /api/superadmin/announcements`** → `200 { channel, slack_problem, public_url, announcements }`. `channel` is `{ id, name, is_private, num_members, is_member }` as Slack says (just `id` if it couldn't be asked). `slack_problem` is why sending won't work right now, for people, or `""`. `public_url` is where buttons to the platform should link. `announcements` are drafts first, then newest first, without their content: `{ id, text, pings, created_by_name, created_at, updated_at, posted_by_name, posted_at, channel_id, permalink, deleted_at, clicks, people }`.
+
+**`POST /api/superadmin/announcements`** with `{ "doc", "blocks", "text" }` → `201 Announcement`, a draft. `422` if there are no blocks or more than 50, `text` isn't 1 to 4,000 characters, `doc` isn't an object, a button has no label or no `action_id`, two buttons share an `action_id`, a link isn't `http(s)`, or a claim link's code isn't any stamp type's.
+
+**`POST /api/superadmin/announcements/test`** with `{ "blocks", "text" }`, checked the same way → `204`, after sending it to your DMs with the app, as it would be posted. Nothing is saved, and clicks on it aren't any announcement's. `422` if your account has no Slack ID.
+
+**`GET /api/superadmin/announcements/{id}`** → `200 Announcement & { engagement }`. `engagement` is null for a draft, and otherwise:
+
+```ts
+{
+  clicks: number;
+  people: number;          // different people who clicked anything
+  with_accounts: number;   // of them, how many have a Crossroads account
+  signed_up_after: number; // of them, how many made it after their first click
+  buttons: (AnnouncementButton & {
+    removed: boolean;      // clicked, then edited out
+    clicks: number;
+    people: number;
+    stamp_name?: string;   // for a claim link
+    claims?: number;       // of that stamp since posting, through any link
+  })[];
+  clickers: { slack_id, user_id, name, signed_up_at, first_click, clicks, buttons }[]; // first click first
+  reactions: { name: string; count: number }[] | null; // from Slack, as of now
+  reactors: number | null; // different people who reacted
+  replies: number | null;
+  members: number | null;  // in the channel
+  slack_problem?: string;  // why those four are null
+}
+```
+
+**`PATCH /api/superadmin/announcements/{id}`** with `{ "doc", "blocks", "text" }` → `200 Announcement`. Once it's posted, the message in Slack is edited first (`chat.update`), and if Slack says no, nothing changes here. `409` once it's deleted from Slack.
+
+**`DELETE /api/superadmin/announcements/{id}`** → `204` for a draft, gone for good. A posted one is deleted from Slack and kept here with its numbers → `200 Announcement`. `409` if it already was.
+
+**`POST /api/superadmin/announcements/{id}/post`** → `200 Announcement`, posted. Checked again first, since a claim code could have changed. `409` if it's already been posted. The row stays locked while Slack is asked, so two superadmins can't post it twice.
+
 ## Slack clicks
 
 ### `POST /slack/clicks`
@@ -960,4 +1036,4 @@ For the Slack bot (`slackbot/`), not the frontend. Not under `/api`, and the pub
 { "slack_id": "U123", "button": "open_platform", "channel_id": "C123", "message_ts": "1731340000.000100" }
 ```
 
-`slack_id` and `button` (the button's `action_id`) are required. → `204`, and a row in `slack_clicks`.
+`slack_id` and `button` (the button's `action_id`) are required. → `204`, and a row in `slack_clicks`. An announcement's clicks are the rows with its `channel_id` and `message_ts`.
