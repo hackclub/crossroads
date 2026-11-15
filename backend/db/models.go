@@ -540,6 +540,24 @@ func AllUserRoleValues() []UserRole {
 	}
 }
 
+type Announcement struct {
+	ID        int64
+	Doc       []byte
+	Blocks    []byte
+	Text      string
+	Buttons   []byte
+	Pings     bool
+	CreatedBy int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	PostedBy  *int64
+	PostedAt  *time.Time
+	ChannelID *string
+	MessageTs *string
+	Permalink *string
+	DeletedAt *time.Time
+}
+
 type AuditLog struct {
 	ID      int64
 	Kind    string

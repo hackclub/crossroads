@@ -29,6 +29,7 @@ import (
 	"github.com/scherepi/crossroads-backend/hackatime"
 	"github.com/scherepi/crossroads-backend/hca"
 	"github.com/scherepi/crossroads-backend/linkcheck"
+	"github.com/scherepi/crossroads-backend/slack"
 	"github.com/scherepi/crossroads-backend/slackclicks"
 	"github.com/scherepi/crossroads-backend/unified"
 	"github.com/scherepi/crossroads-backend/uploads"
@@ -53,6 +54,15 @@ var superadmins = []string{
 	"U078ZJHUKFW", // Max
 	"U08RVF1BAN4", // Barnav
 }
+
+// Announcements from the admin page's Announce tab go to #crossroads-station
+// from the real site, and to #xr-station-test (private) from every other
+// build, dev and local, so trying them out never reaches the real channel.
+const (
+	realSite       = "https://crossroads.hackclub.com"
+	stationChannel = "C0CGSJP0L05" // #crossroads-station
+	testChannel    = "C0CHU1G66AW" // #xr-station-test
+)
 
 // The launch sale: from launch on November 6 until the community goal closes,
 // 11:59 PM Eastern on November 18. It first ran for a week, to Nov 13.
@@ -148,6 +158,18 @@ func main() {
 	} else {
 		log.Print("UNIFIED_AIRTABLE_TOKEN isn't set, so reviews don't check the Unified YSWS DB for double-dipping")
 	}
+	announceChannel := testChannel
+	if strings.TrimSuffix(publicURL, "/") == realSite {
+		announceChannel = stationChannel
+	}
+	// The Slack app's bot token, for posting announcements. Without it they
+	// can be drafted but not sent.
+	var slackClient *slack.Client
+	if token := os.Getenv("SLACK_BOT_TOKEN"); token != "" {
+		slackClient = slack.New(slack.Config{Token: token})
+	} else {
+		log.Print("SLACK_BOT_TOKEN isn't set, so announcements can't be posted to Slack")
+	}
 	apiRoutes := &api.API{
 		Pool:          pool,
 		Queries:       db.New(pool),
@@ -167,6 +189,8 @@ func main() {
 		Unified:        unifiedLookup,
 		// For example https://telescreen.hackclub.com/.../{slack_id}
 		TelescreenProfileURL: os.Getenv("TELESCREEN_PROFILE_URL"),
+		Slack:                slackClient,
+		AnnounceChannel:      announceChannel,
 	}
 
 	// Price locks are refunded if the tickets sell out before they're used.

@@ -20,6 +20,7 @@ import (
 	"github.com/scherepi/crossroads-backend/hca"
 	"github.com/scherepi/crossroads-backend/linkcheck"
 	"github.com/scherepi/crossroads-backend/respond"
+	"github.com/scherepi/crossroads-backend/slack"
 	"github.com/scherepi/crossroads-backend/unified"
 	"github.com/scherepi/crossroads-backend/uploads"
 )
@@ -46,6 +47,10 @@ type API struct {
 	// A person's Telescreen profile, with {slack_id} for their Slack ID, shown
 	// to fraud reviewers. Empty hides the link.
 	TelescreenProfileURL string
+	// Announcements (announcements.go) post to AnnounceChannel with the Slack
+	// app's bot. A nil Slack still lets superadmins write drafts.
+	Slack           *slack.Client
+	AnnounceChannel string
 }
 
 func (a *API) Routes() chi.Router {
@@ -139,6 +144,15 @@ func (a *API) signedInRoutes(r chi.Router) {
 	r.Route("/superadmin", func(r chi.Router) {
 		r.Use(auth.RequireRole(db.UserRoleSuperadmin))
 		r.Get("/audit-log", a.superadminAuditLog)
+		r.Get("/announcements", a.listAnnouncements)
+		r.Post("/announcements", a.createAnnouncement)
+		r.Route("/announcements/{announcementID}", func(r chi.Router) {
+			r.Get("/", a.getAnnouncement)
+			r.Patch("/", a.updateAnnouncement)
+			r.Delete("/", a.deleteAnnouncement)
+			r.Post("/post", a.postAnnouncement)
+			r.Post("/test", a.testAnnouncement)
+		})
 	})
 }
 
