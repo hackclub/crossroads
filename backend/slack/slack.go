@@ -183,6 +183,7 @@ type Channel struct {
 	Name    string `json:"name"`
 	Private bool   `json:"is_private"`
 	Members int    `json:"num_members"`
+	Member  bool   `json:"is_member"` // whether the app is in it
 }
 
 func (c *Client) Channel(ctx context.Context, id string) (Channel, error) {

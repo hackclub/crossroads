@@ -59,7 +59,7 @@ func (f *fakeSlack) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			{"name": "train", "count": 1, "users": []string{"U1"}},
 		}}}
 	case "conversations.info":
-		out = map[string]any{"channel": map[string]any{"id": "CSTATION", "name": "crossroads-station", "num_members": 400}}
+		out = map[string]any{"channel": map[string]any{"id": "CSTATION", "name": "crossroads-station", "num_members": 400, "is_member": true}}
 	}
 	if out == nil {
 		out = map[string]any{}
@@ -221,8 +221,13 @@ func TestPostingAnAnnouncementAndHowItDid(t *testing.T) {
 	}
 	path := "/api/superadmin/announcements/" + itoa(draft.ID)
 
-	// A test goes to the superadmin's DMs, under their Slack name.
-	e.mustCall(t, superadmin, http.StatusNoContent, "POST", path+"/test", nil, nil)
+	// A test goes to the superadmin's DMs, under their Slack name, and needs
+	// no saving.
+	test := announcementBody("station")
+	delete(test, "doc")
+	e.mustCall(t, superadmin, http.StatusNoContent, "POST", "/api/superadmin/announcements/test", test, nil)
+	test["blocks"] = []any{}
+	e.mustCall(t, superadmin, http.StatusUnprocessableEntity, "POST", "/api/superadmin/announcements/test", test, nil)
 	if posts := fake.called("chat.postMessage"); len(posts) != 1 || posts[0].Body["channel"] != "USUPER" ||
 		posts[0].Body["username"] != "conductor super" || posts[0].Body["icon_url"] != "https://avatars.test/super.png" {
 		t.Fatalf("the test was %+v", posts)

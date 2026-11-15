@@ -236,6 +236,9 @@ func (a *API) listAnnouncements(w http.ResponseWriter, r *http.Request) {
 			out.SlackProblem = slackProblem(err)
 		} else {
 			out.Channel = channel
+			if !channel.Member {
+				out.SlackProblem = slackProblem(&slack.Error{Code: "not_in_channel"})
+			}
 		}
 	}
 	respond.JSON(w, http.StatusOK, out)
@@ -521,14 +524,11 @@ func (a *API) postAnnouncement(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// testAnnouncement is POST /superadmin/announcements/{id}/test: send it to
-// the superadmin's own DMs with the app, exactly as it would be posted.
-// Clicks on a test's buttons aren't any announcement's.
+// testAnnouncement is POST /superadmin/announcements/test: send blocks and
+// text, as they are in the editor and saved or not, to the superadmin's own
+// DMs with the app, exactly as they'd be posted. Clicks on a test's buttons
+// aren't any announcement's.
 func (a *API) testAnnouncement(w http.ResponseWriter, r *http.Request) {
-	id, ok := idParam(w, r, "announcementID")
-	if !ok {
-		return
-	}
 	if a.Slack == nil {
 		respond.Error(w, http.StatusServiceUnavailable, "SLACK_BOT_TOKEN isn't set on the backend, so tests can't be sent.")
 		return
@@ -538,18 +538,25 @@ func (a *API) testAnnouncement(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusUnprocessableEntity, "Your account has no Slack ID, so there's nowhere to send a test.")
 		return
 	}
-	ann, err := a.Queries.GetAnnouncement(r.Context(), id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		respond.Error(w, http.StatusNotFound, "That announcement doesn't exist.")
+	var body struct {
+		Blocks json.RawMessage `json:"blocks"`
+		Text   string          `json:"text"`
+	}
+	if !decode(w, r, &body) {
 		return
 	}
+	c, problem, err := a.checkAnnouncement(r.Context(), announcementFields{Doc: json.RawMessage("{}"), Blocks: body.Blocks, Text: body.Text})
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return
 	}
+	if problem != "" {
+		respond.Error(w, http.StatusUnprocessableEntity, problem)
+		return
+	}
 	name, icon := a.poster(r.Context(), user)
 	if _, _, err := a.Slack.Post(r.Context(), slack.Message{
-		Channel: *user.SlackID, Text: ann.Text, Blocks: ann.Blocks, Username: name, IconURL: icon,
+		Channel: *user.SlackID, Text: c.fields.Text, Blocks: c.fields.Blocks, Username: name, IconURL: icon,
 	}); err != nil {
 		status, message, _ := slackFailure(r, err)
 		respond.Error(w, status, message.(string))

@@ -146,12 +146,12 @@ func (a *API) signedInRoutes(r chi.Router) {
 		r.Get("/audit-log", a.superadminAuditLog)
 		r.Get("/announcements", a.listAnnouncements)
 		r.Post("/announcements", a.createAnnouncement)
+		r.Post("/announcements/test", a.testAnnouncement)
 		r.Route("/announcements/{announcementID}", func(r chi.Router) {
 			r.Get("/", a.getAnnouncement)
 			r.Patch("/", a.updateAnnouncement)
 			r.Delete("/", a.deleteAnnouncement)
 			r.Post("/post", a.postAnnouncement)
-			r.Post("/test", a.testAnnouncement)
 		})
 	})
 }
