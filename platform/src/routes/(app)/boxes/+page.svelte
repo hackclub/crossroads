@@ -58,7 +58,7 @@
 	<div class="page-head">
 		<div class="stack-sm">
 			<h1>Boxes</h1>
-			<p class="muted">You get a box each time your approved hours pass a milestone. Each box drops one special stamp into your stamp box, and you stick stamps onto your projects from a project's page. Boxes can't be bought.</p>
+			<p class="muted">Hitting certain milestones in approved hours gets you stamp boxes! Stamps can be collected or applied to your projects for special effects when you ship.</p>
 		</div>
 	</div>
 
@@ -81,7 +81,7 @@
 				{#if reveal}
 					<p class="won">You got <strong>{reveal.type.name}</strong></p>
 					<p>{reveal.type.rarity} · {reveal.type.description || 'A collectible stamp.'}</p>
-					<p class="small muted">It's in your stamp box. Drag it onto a project from the project's page.</p>
+					<p class="small muted">YAY STAMPS! Drag it onto a project from the project's page.</p>
 				{/if}
 			</div>
 			<!-- The buttons come in with the stamp's name, once it's out. -->
@@ -102,13 +102,13 @@
 				<button class="btn primary" disabled={opening === box.id} onclick={() => open(box)}>{opening === box.id ? 'Opening…' : 'Open'}</button>
 			</div></div>
 		{:else}
-			<p class="muted small">No boxes to open. Get more hours approved to reach the next milestone.</p>
+			<p class="muted small">You don't have any boxes to open right now. Time to ship!</p>
 		{/each}
 	</section>
 
 	<section class="stack">
 		<h2>What's in each box</h2>
-		<p class="small muted">These are the real chances right now. Stamps that have run out aren't listed.</p>
+		<p class="small muted">These are the chance tables for each box, so that you know what you're getting! If a stamp isn't listed, it probably ran out.</p>
 		{#each types as t}
 			<div class="card">
 				<strong>{t.name}</strong>

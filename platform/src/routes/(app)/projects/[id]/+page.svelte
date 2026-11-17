@@ -300,7 +300,7 @@
 						{:else if isPending}
 							<p class="callout info small">Waiting for review since {date(latest.submitted_at)}{priority ? ', with priority review from your Express stamp' : ''}. The result shows up below.</p>
 						{:else if project.resubmit_blocked}
-							<p class="callout warn small">This project was rejected and can't be shipped again. The reason is on its last ship below. If you think that's a mistake, ask an organizer.</p>
+							<p class="callout warn small">Sorry, this project was rejected and can't be shipped again :( The reason is on its last ship below. If you think that's a mistake, ask an organizer.</p>
 						{:else if missing.length}
 							<p class="callout warn small">Before you can ship, add {missing.join(', ')}. <a href="/projects/{project.id}/edit">Edit project</a></p>
 						{:else if project.hackatime_error}
