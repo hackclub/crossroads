@@ -5,19 +5,7 @@ import (
 	"net/http"
 	"slices"
 	"testing"
-
-	"github.com/scherepi/crossroads-backend/db/dbtest"
 )
-
-func TestEveryShipGoesToTheFraudCheckByDefault(t *testing.T) {
-	var on bool
-	if err := dbtest.New(t).QueryRow(context.Background(), "select fraud_check_everything from review_settings").Scan(&on); err != nil {
-		t.Fatal(err)
-	}
-	if !on {
-		t.Error("a new database doesn't send every ship to the fraud check")
-	}
-}
 
 type pastReviews struct {
 	All   bool `json:"all"`

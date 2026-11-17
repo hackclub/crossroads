@@ -54,7 +54,7 @@ When the first reviewer approves, any of these sends it to `fraud_check`:
 | `large_ship` | It claims more than the large-ship limit (default 20h) |
 | `long_day` | The project had a UTC day over the long-day limit (default 14h) since its last approved ship |
 | `manual` | The reviewer ticked "send to the fraud check" |
-| `everything` | "Send every ship through the fraud check", on by default since Nov 17; admins can turn it off in Review settings |
+| `everything` | An admin turned on "send every ship through the fraud check" (Admin → Review settings; off by default) |
 
 | `unified_double_dip` | The repo or demo is already in the Unified YSWS DB from another program (needs `UNIFIED_AIRTABLE_TOKEN`; Sidekick's AT1) |
 

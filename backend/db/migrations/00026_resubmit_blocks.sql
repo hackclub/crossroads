@@ -18,13 +18,8 @@ alter table ship_events add column blocks_resubmit boolean not null default fals
 -- here uses the new value, so it can be added in the same transaction.
 alter type ship_event_kind add value if not exists 'reopened';
 
--- Every approved ship goes to the fraud check unless an admin turns it off.
-alter table review_settings alter column fraud_check_everything set default true;
-update review_settings set fraud_check_everything = true;
-
 -- +goose Down
 -- 'reopened' stays in ship_event_kind: Postgres can't drop an enum value.
-alter table review_settings alter column fraud_check_everything set default false;
 alter table ship_events drop column blocks_resubmit;
 alter table projects
     drop column resubmit_blocked_at,
