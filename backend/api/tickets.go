@@ -62,13 +62,13 @@ func toBatchesJSON(ticket db.ShopItem, sold int64) *batchesJSON {
 // locks the ticket's row, after the buyer's and the price lock's.
 func lockProblem(ctx context.Context, q *db.Queries, userID int64) (int32, string, error) {
 	if _, err := q.GetPriceLock(ctx, userID); err == nil {
-		return 0, "You've already locked your ticket price.", nil
+		return 0, "You've already locked your rail pass price.", nil
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return 0, "", err
 	}
 	ticket, err := q.LockTicket(ctx)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && ticket.BatchSize == nil) {
-		return 0, "The ticket's price doesn't change, so there's nothing to lock.", nil
+		return 0, "The rail pass price doesn't change, so there's nothing to lock.", nil
 	}
 	if err != nil {
 		return 0, "", err
@@ -76,10 +76,10 @@ func lockProblem(ctx context.Context, q *db.Queries, userID int64) (int32, strin
 	if has, err := q.HasTicket(ctx, userID); err != nil {
 		return 0, "", err
 	} else if has {
-		return 0, "You've already got your ticket!", nil
+		return 0, "You've already got your rail pass!", nil
 	}
 	if *ticket.Stock <= 0 {
-		return 0, "The tickets are sold out.", nil
+		return 0, "The rail passes are sold out.", nil
 	}
 	sold, err := q.CountSold(ctx, ticket.ID)
 	if err != nil {
@@ -87,7 +87,7 @@ func lockProblem(ctx context.Context, q *db.Queries, userID int64) (int32, strin
 	}
 	batches := toBatchesJSON(ticket, sold)
 	if batches.Current == len(batches.Prices)-1 {
-		return 0, "This is the last batch of tickets, so the price won't go up.", nil
+		return 0, "This is the last batch of rail passes, so the price won't go up.", nil
 	}
 	return ticketPrice(ticket, sold), "", nil
 }
@@ -158,7 +158,7 @@ func (a *API) refundPriceLock(ctx context.Context, orderID, userID int64) error 
 	if has, err := q.HasTicket(ctx, userID); err != nil || has {
 		return err
 	}
-	note := "Refunded automatically: the tickets sold out before they bought one."
+	note := "Refunded automatically: the rail passes sold out before they bought one."
 	if _, err := q.SetOrderStatus(ctx, db.SetOrderStatusParams{ID: order.ID, Status: db.OrderStatusCancelled, Notes: &note}); err != nil {
 		return err
 	}

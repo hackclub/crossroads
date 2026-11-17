@@ -121,7 +121,7 @@ Every error body is `{"error": "..."}`, written for the person using the site. *
 | Not signed in | 401 | Send them through `signIn()` |
 | Hackatime problems (`/api/hackatime/projects`, submitting) | 422 | Show the message. It tells them to link Slack on Hack Club Auth, sign in to Hackatime with the same Slack, or turn on public stats in Hackatime settings. |
 | Buying before verification | 403 | Show the message with a link to https://auth.hackclub.com |
-| Not enough stamps | 422 | Show the message; it includes how many more they need |
+| Not enough tickets | 422 | Show the message; it includes how many more they need |
 | Something changed underneath them | 409 | Show the message and reload the data |
 
 Unknown fields in a request body are rejected with `400`, which catches typos early.
@@ -130,6 +130,7 @@ Unknown fields in a request body are rejected with `400`, which catches typos ea
 
 - Time is in **seconds** everywhere. Show hours: `(seconds / 3600).toFixed(1)` or "3h 20m".
 - Stamps are whole numbers. A balance can be negative after an admin takes stamps back.
+- The site calls the currency **tickets** and the `kind: "ticket"` item the **rail pass**. The API keeps the old names (`stamps`, `stamps_per_hour`, `kind: "ticket"`), so use the new words in anything people see. "Stamps" on the site only means special stamps.
 - Stipends are in **cents** (`stipend_cents`).
 - Timestamps are RFC 3339 strings; parse them with `new Date(...)`.
 - IDs are numbers.

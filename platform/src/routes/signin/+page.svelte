@@ -43,7 +43,7 @@
 				<div class="row">
 					<input bind:value={name} pattern="[a-z0-9-]+" required style="max-width: 200px" aria-label="Test user name" />
 					<select bind:value={role} style="max-width: 200px" aria-label="Role">
-						<option>participant</option><option>reviewer</option><option>admin</option>
+						<option>participant</option><option>reviewer</option><option>admin</option><option>superadmin</option>
 					</select>
 					<button class="btn primary">Sign in</button>
 				</div>

@@ -122,7 +122,7 @@ insert into milestones (name, approved_seconds, box_type_id) values
 
 -- Stock is what's left after the orders below; the ones not cancelled took one each.
 insert into shop_items (kind, name, description, price, stipend_cents, stock, max_per_user, active) values
-    ('ticket', 'Crossroads ticket', 'Your seat on the train: Berlin, February 2027.', 1800, null, 29, 1, true),
+    ('ticket', 'Crossroads rail pass', 'Your seat on the train: Berlin, February 2027.', 1800, null, 29, 1, true),
     ('physical', 'Sticker pack', 'Ten stickers from the trip.', 60, null, null, null, true),
     ('physical', 'Rail map poster', 'Every stop on the route, printed A2.', 150, null, 24, 1, true),
     ('physical', 'Night train hoodie', 'Warm enough for the overnight stretch.', 600, null, 15, 1, true),
@@ -133,7 +133,7 @@ insert into shop_items (kind, name, description, price, stipend_cents, stock, ma
 -- a price lock costs 5 hours' worth.
 update shop_items set batch_size = 6, batch_step = 150 where kind = 'ticket';
 insert into shop_items (kind, name, description, price, max_per_user) values
-    ('price_lock', 'Price lock', 'Keep the ticket at the price it is now, however many batches sell before you buy.', 150, 1);
+    ('price_lock', 'Price lock', 'Keep the rail pass at the price it is now, however many batches sell before you buy.', 150, 1);
 
 -- Projects. Everything shipped has every field filled in, as shipping requires.
 insert into projects (user_id, name, description, repo_url, demo_url, screenshot_url, created_at)
@@ -304,7 +304,7 @@ select pg_temp.uid(owner), shop_items.id, shop_items.price, status::order_status
     case when shop_items.kind = 'physical' then users.address end, notes, pg_temp.ago(ordered)
 from (values
     ('maya', 'Sticker pack', 'fulfilled', 'Shipped with the first batch.', 5),
-    ('theo', 'Crossroads ticket', 'fulfilled', 'Seat confirmed.', 11),
+    ('theo', 'Crossroads rail pass', 'fulfilled', 'Seat confirmed.', 11),
     ('sana', 'Rail map poster', 'pending', null, 25),
     ('lea', 'Night train hoodie', 'cancelled', 'Out of stock in that size, so it was refunded.', 40),
     ('lea', 'Travel stipend', 'pending', null, 18)

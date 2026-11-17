@@ -18,7 +18,7 @@
 	onMount(load);
 
 	async function set(o, s) {
-		if (s === 'cancelled' && !confirm(`Cancel order #${o.id}? ${o.user.name} gets ${o.price} stamps back.`)) return;
+		if (s === 'cancelled' && !confirm(`Cancel order #${o.id}? ${o.user.name} gets ${o.price} tickets back.`)) return;
 		msg = null;
 		try {
 			await api('PATCH', `/admin/orders/${o.id}`, { status: s, notes: notes[o.id] || undefined });

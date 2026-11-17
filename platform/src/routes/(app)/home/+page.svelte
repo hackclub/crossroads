@@ -67,7 +67,7 @@
 			<div class="stack">
 				<h1>Hi {first}!</h1>
 				<div class="row">
-					<span class="stat">Stamps: <b>{stamps}<StampIcon /></b></span>
+					<span class="stat">Tickets: <b>{stamps}<StampIcon /></b></span>
 					<a class="stat" href="/boxes" style="text-decoration: none">Boxes: <b>{unopened}</b></a>
 				</div>
 			</div>

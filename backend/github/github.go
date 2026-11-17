@@ -3,10 +3,12 @@
 // changed, and its README. Reviewers see these next to Hackatime's numbers,
 // and the review checks use them (see api/stages.go).
 //
-// It works without a token, but GitHub then allows 60 requests an hour for the
+// With a gh-proxy key, requests go through gh-proxy.hackclub.com, Hack Club's
+// pool of donated GitHub tokens. Without one it asks GitHub directly, with or
+// without a token, but with no token GitHub allows 60 requests an hour for the
 // whole server, so line counts (one request per commit) are only fetched with
-// a token. Results are cached for a few minutes, and commit line counts for
-// good, since a commit never changes.
+// a token or a proxy key. Results are cached for a few minutes, and commit
+// line counts for good, since a commit never changes.
 package github
 
 import (
@@ -31,18 +33,25 @@ var (
 	// ErrNotFound means the repo doesn't exist, or is private: GitHub answers
 	// the same for both.
 	ErrNotFound    = errors.New("GitHub says the repo doesn't exist or is private")
-	ErrRateLimited = errors.New("GitHub's rate limit ran out (set GITHUB_TOKEN for a higher one)")
+	ErrRateLimited = errors.New("GitHub's rate limit ran out (set GH_PROXY_API_KEY or GITHUB_TOKEN for a higher one)")
 )
 
+// ProxyURL is gh-proxy's mirror of https://api.github.com.
+const ProxyURL = "https://gh-proxy.hackclub.com/gh"
+
 type Config struct {
-	BaseURL string // defaults to https://api.github.com
+	BaseURL string // defaults to https://api.github.com, or ProxyURL with a ProxyKey
 	Token   string // optional; any token works, it needs no scopes for public repos
+	// Optional. A gh-proxy API key. With one, Token isn't used: the proxy
+	// brings its own tokens, and ours shouldn't leave the server.
+	ProxyKey string
 }
 
 type Client struct {
-	baseURL string
-	token   string
-	http    *http.Client
+	baseURL  string
+	token    string
+	proxyKey string
+	http     *http.Client
 
 	mu      sync.Mutex
 	reports map[string]cachedReport
@@ -56,12 +65,17 @@ type cachedReport struct {
 }
 
 func New(cfg Config) *Client {
+	baseURL := "https://api.github.com"
+	if cfg.ProxyKey != "" {
+		baseURL, cfg.Token = ProxyURL, ""
+	}
 	return &Client{
-		baseURL: strings.TrimSuffix(cmp.Or(cfg.BaseURL, "https://api.github.com"), "/"),
-		token:   cfg.Token,
-		http:    &http.Client{Timeout: 10 * time.Second},
-		reports: map[string]cachedReport{},
-		lines:   map[string][2]int{},
+		baseURL:  strings.TrimSuffix(cmp.Or(cfg.BaseURL, baseURL), "/"),
+		token:    cfg.Token,
+		proxyKey: cfg.ProxyKey,
+		http:     &http.Client{Timeout: 10 * time.Second},
+		reports:  map[string]cachedReport{},
+		lines:    map[string][2]int{},
 	}
 }
 
@@ -296,7 +310,7 @@ func (c *Client) countLines(ctx context.Context, path string, r *Report) error {
 		return nil
 	}
 	if c.token == "" && c.baseURL == "https://api.github.com" {
-		r.LinesNote = "Line counts need GITHUB_TOKEN on the backend."
+		r.LinesNote = "Line counts need GH_PROXY_API_KEY or GITHUB_TOKEN on the backend."
 		return nil
 	}
 	n := min(len(r.Commits), maxLineCommits)
@@ -371,9 +385,27 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, err
+	if c.proxyKey != "" {
+		req.Header.Set("X-API-Key", c.proxyKey)
+	}
+	var resp *http.Response
+	for tries := 1; ; tries++ {
+		if resp, err = c.http.Do(req); err != nil {
+			return nil, err
+		}
+		// gh-proxy allows each key a few requests a second, and a 429 says
+		// when the next second starts. Counting lines alone sends dozens, so
+		// wait those out. Longer waits are GitHub's own limits, and fail.
+		wait, err := strconv.Atoi(resp.Header.Get("Retry-After"))
+		if resp.StatusCode != http.StatusTooManyRequests || err != nil || wait > 5 || tries == 5 {
+			break
+		}
+		resp.Body.Close()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Duration(max(wait, 1)) * time.Second):
+		}
 	}
 	defer resp.Body.Close()
 	switch {

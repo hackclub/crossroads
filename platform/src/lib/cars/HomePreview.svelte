@@ -17,7 +17,7 @@
 <div class="preview">
 	<h2>Hi {first}!</h2>
 	<div class="row">
-		<span class="stat">Stamps: <b>{session.me?.stamps}<StampIcon /></b></span>
+		<span class="stat">Tickets: <b>{session.me?.stamps}<StampIcon /></b></span>
 		<span class="stat">Boxes: <b>{unopened}</b></span>
 	</div>
 </div>

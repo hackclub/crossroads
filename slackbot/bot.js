@@ -1,6 +1,7 @@
-// Hears every click on the buttons of messages posted with post.js and
-// records it on the Crossroads backend (POST /slack/clicks) by Slack ID. Both
-// buttons are links, so Slack opens them by itself; this only counts.
+// Hears every click on the buttons of messages the app posts, from post.js or
+// Admin's Announce tab, and records it on the Crossroads backend (POST
+// /slack/clicks) by Slack ID. The buttons are links, so Slack opens them by
+// itself; this only counts.
 //
 // It holds just the app-level token, which can do nothing but receive events.
 // Run it with: SLACK_APP_TOKEN=xapp-... BACKEND_URL=... SLACK_CLICKS_SECRET=... bun bot.js

@@ -76,7 +76,7 @@ A link that answers 401, 403 or 429, or takes too long, is "couldn't check" rath
 
 Besides the checks, the review page shows:
 
-- **Code**: the repo on GitHub (language, created, last push, all-time commits), and for this ship (since the last approved ship, or the event's start, until it shipped) the commits, lines added and removed, who made them, and each commit with a link to it. Line counts need `GITHUB_TOKEN` and cover the newest 60 commits.
+- **Code**: the repo on GitHub (language, created, last push, all-time commits), and for this ship (since the last approved ship, or the event's start, until it shipped) the commits, lines added and removed, who made them, and each commit with a link to it. Line counts need `GH_PROXY_API_KEY` (gh-proxy.hackclub.com) or `GITHUB_TOKEN` and cover the newest 60 commits.
 - **Hackatime hours and commits per day** over the same window, as two small charts with a table view. Daily totals only: **reviewers never see heartbeats**.
 - On the fraud check, a link to the person's **Telescreen** profile, when `TELESCREEN_PROFILE_URL` is set.
 

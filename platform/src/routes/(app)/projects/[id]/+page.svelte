@@ -294,9 +294,9 @@
 				<section class="panel">
 					<div class="panel-head">Ship it</div>
 					<div class="panel-body">
-						<span class="small muted">A reviewer tries your project and approves the new hours you tracked on it. Approved hours pay stamps.</span>
+						<span class="small muted">A reviewer tries your project and approves the new hours you tracked on it. Approved hours pay tickets.</span>
 						{#if latest?.status === 'final_check'}
-							<p class="callout info small">A reviewer approved {hours(latest.approved_seconds)}. It's waiting for a final check; your stamps are paid once it's signed off. You can ship again after that.</p>
+							<p class="callout info small">A reviewer approved {hours(latest.approved_seconds)}. It's waiting for a final check; your tickets are paid once it's signed off. You can ship again after that.</p>
 						{:else if isPending}
 							<p class="callout info small">Waiting for review since {date(latest.submitted_at)}{priority ? ', with priority review from your Express stamp' : ''}. The result shows up below.</p>
 						{:else if missing.length}
@@ -310,7 +310,7 @@
 							{#if waitingExpress}<p class="small">Your Express stamp gives this ship priority review.</p>{/if}
 							<div class="row"><button class="btn primary" disabled={busy} onclick={ship}>{busy ? 'Shipping…' : project.submissions.length ? 'Ship again' : 'Ship'}</button></div>
 						{/if}
-						{#if spiked}<p class="small">Golden Spike: approved ships of this project earn 10% more stamps.</p>{/if}
+						{#if spiked}<p class="small">Golden Spike: approved ships of this project earn 10% more tickets.</p>{/if}
 						{#if actionError}<p class="callout warn small">{actionError}</p>{/if}
 					</div>
 				</section>
@@ -342,7 +342,7 @@
 					<div class="message">
 						<h3>Ship #{project.submissions.length - i}</h3>
 						{#if sub.status === 'final_check'}
-							<p class="note">A reviewer approved {hours(sub.approved_seconds)}. A final check comes next, then your stamps are paid.</p>
+							<p class="note">A reviewer approved {hours(sub.approved_seconds)}. A final check comes next, then your tickets are paid.</p>
 						{/if}
 						{#if sub.messages?.length}
 							{#each sub.messages as m}

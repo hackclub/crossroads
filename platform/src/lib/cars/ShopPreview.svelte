@@ -16,13 +16,13 @@
 
 <div class="preview">
 	<span class="kind">The trip</span>
-	<h2>{ticket?.name ?? 'Crossroads ticket'}</h2>
+	<h2>{ticket?.name ?? 'Crossroads rail pass'}</h2>
 	<span>Berlin, then across Europe by train · February 2027</span>
 	{#if ticket}
 		{#if ticket.bought > 0}
-			<span>You have your ticket. See you in Berlin!</span>
+			<span>You have your rail pass. See you in Berlin!</span>
 		{:else}
-			<span class="small">{Math.max(stamps, 0)} / {ticket.price} stamps</span>
+			<span class="small">{Math.max(stamps, 0)} / {ticket.price} tickets</span>
 			<div class="bar" aria-hidden="true"><span class="seg approved" style="width: {pct}%"></span></div>
 		{/if}
 	{/if}

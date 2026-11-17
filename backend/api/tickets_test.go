@@ -108,7 +108,7 @@ func TestTicketBatchesAndPriceLocks(t *testing.T) {
 	if got := e.stamps(t, early); got != 100-5-60 {
 		t.Errorf("the early lock paid %d in all, want 65", 100-got)
 	}
-	if status, o := e.buyAs(t, buyers[0], lock.ID); status != http.StatusConflict || !strings.Contains(o.Error, "already got your ticket") {
+	if status, o := e.buyAs(t, buyers[0], lock.ID); status != http.StatusConflict || !strings.Contains(o.Error, "already got your rail pass") {
 		t.Errorf("locking with a ticket: got %d %q", status, o.Error)
 	}
 

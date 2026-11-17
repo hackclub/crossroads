@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -37,6 +38,9 @@ type Auth struct {
 	// SecureCookies stops browsers sending cookies over plain HTTP. Leave it
 	// off only for local development.
 	SecureCookies bool
+	// The Slack IDs of the superadmins. Signing in makes the people listed
+	// superadmins and anyone else who was one an admin (db.SyncSuperadmins).
+	Superadmins []string
 }
 
 // Routes are mounted at /auth. The callback path has to match the redirect URL
@@ -119,6 +123,12 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Something went wrong signing in.", http.StatusInternalServerError)
 		return
 	}
+	// Superadmins are a fixed list, whatever an invite or an admin said.
+	if err := a.Queries.SyncSuperadmins(r.Context(), a.Superadmins); err != nil {
+		log.Printf("syncing superadmins for user %d: %v", user.ID, err)
+		http.Error(w, "Something went wrong signing in.", http.StatusInternalServerError)
+		return
+	}
 
 	token, err := a.startSession(r.Context(), user.ID)
 	if err != nil {
@@ -126,6 +136,7 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Something went wrong signing in.", http.StatusInternalServerError)
 		return
 	}
+	a.recordSignIn(r, user, map[string]any{})
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,
@@ -183,6 +194,40 @@ func (a *Auth) startSession(ctx context.Context, userID int64) (string, error) {
 		ExpiresAt: time.Now().Add(sessionLength),
 	})
 	return token, err
+}
+
+// recordSignIn adds a sign_in to the audit log, with details. Failing is
+// logged, not shown: it doesn't stop anyone signing in.
+func (a *Auth) recordSignIn(r *http.Request, user db.User, details map[string]any) {
+	details["ip"] = ClientIP(r)
+	details["user_agent"] = r.UserAgent()
+	// A new user's row was just inserted, so it hasn't been updated since.
+	details["first_time"] = user.CreatedAt.Equal(user.UpdatedAt)
+	b, _ := json.Marshal(details)
+	err := a.Queries.AddAuditEvent(context.WithoutCancel(r.Context()), db.AddAuditEventParams{
+		Kind: "sign_in", ActorID: &user.ID, UserID: &user.ID, Details: b,
+	})
+	if err != nil {
+		log.Printf("recording sign-in for user %d: %v", user.ID, err)
+	}
+}
+
+// ClientIP is the address a request came from. The site sits behind
+// Cloudflare and Orchard's ingress, so it takes their word for it: it's for
+// the audit log, not for deciding anything.
+func ClientIP(r *http.Request) string {
+	if ip := r.Header.Get("CF-Connecting-IP"); ip != "" {
+		return ip
+	}
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		first, _, _ := strings.Cut(forwarded, ",")
+		return strings.TrimSpace(first)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
@@ -248,11 +293,11 @@ func User(ctx context.Context) *db.User {
 
 // RequireUser responds 401 unless someone is signed in.
 func RequireUser(next http.Handler) http.Handler {
-	return RequireRole(db.UserRoleParticipant, db.UserRoleReviewer, db.UserRoleAdmin)(next)
+	return RequireRole(db.AllUserRoleValues()...)(next)
 }
 
 // RequireRole responds 401 unless someone is signed in, and 403 unless they
-// have one of roles.
+// have one of roles. Superadmins count as admins.
 func RequireRole(roles ...db.UserRole) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -261,7 +306,8 @@ func RequireRole(roles ...db.UserRole) func(http.Handler) http.Handler {
 				respond.Error(w, http.StatusUnauthorized, "Sign in first.")
 				return
 			}
-			if !slices.Contains(roles, user.Role) {
+			admin := user.Role == db.UserRoleSuperadmin && slices.Contains(roles, db.UserRoleAdmin)
+			if !slices.Contains(roles, user.Role) && !admin {
 				respond.Error(w, http.StatusForbidden, "You don't have access to this.")
 				return
 			}
@@ -294,7 +340,7 @@ type MeJSON struct {
 }
 
 func ToMeJSON(user *db.User) MeJSON {
-	admin, reviewer := user.Role == db.UserRoleAdmin, user.Role == db.UserRoleReviewer
+	admin, reviewer := user.Role.IsAdmin(), user.Role == db.UserRoleReviewer
 	return MeJSON{user.ID, user.Name, user.Email, user.SlackID, user.Role, user.Stamps, user.VerificationStatus, user.YswsEligible, nullableJSON(user.Address),
 		admin || reviewer && user.CanReview, admin || reviewer && user.CanFraudReview, admin || reviewer && user.CanHqReview,
 		user.InEmporium(), user.NameCustomized}

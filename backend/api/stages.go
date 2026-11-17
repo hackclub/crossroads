@@ -64,7 +64,7 @@ type permissions struct {
 }
 
 func permissionsOf(u *db.User) permissions {
-	if u.Role == db.UserRoleAdmin {
+	if u.Role.IsAdmin() {
 		return permissions{true, true, true}
 	}
 	if u.Role != db.UserRoleReviewer {
@@ -541,7 +541,7 @@ func (a *API) editDecision(ctx context.Context, actor *db.User, submissionID int
 		case kind != db.ShipEventKindApproval:
 			return problem(http.StatusBadRequest, "Only approvals have hours.")
 		case !current || (s.Status != db.SubmissionStatusFraudCheck && s.Status != db.SubmissionStatusAwaitingHq):
-			return problem(http.StatusBadRequest, "Hours can only change before the approval is signed off; stamps may already have been paid on it.")
+			return problem(http.StatusBadRequest, "Hours can only change before the approval is signed off; tickets may already have been paid on it.")
 		case *seconds < 0 || (*seconds > s.NewSeconds && s.OverrideReason == nil):
 			return problem(http.StatusBadRequest, "Hours have to be between 0 and what Hackatime tracked, unless the approval gave a reason for going over.")
 		}

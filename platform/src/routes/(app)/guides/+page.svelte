@@ -2,7 +2,7 @@
 	// Answers are trusted, hand-written HTML so they can hold links.
 	const hackatime = '<a href="https://hackatime.hackclub.com/" target="_blank" rel="noreferrer">Hackatime</a>';
 	const faq = [
-		['How does it work?', `Build any technical project with ${hackatime} tracking your work. Ship it when it's functional and share it with the community. A reviewer approves the new hours you tracked. Every approved hour pays 30 stamps. The trip ticket costs 1,800 stamps (60 hours), and buying it is how you qualify.`],
+		['How does it work?', `Build any technical project with ${hackatime} tracking your work. Ship it when it's functional and share it with the community. A reviewer approves the new hours you tracked. Every approved hour pays 30 tickets. The rail pass costs 1,800 tickets (60 hours), and buying it is how you qualify.`],
 		['What counts as a project?', 'Anything technical you build: apps, games, tools, hardware. To ship it needs a description, a public repo, a demo people can try, a screenshot and at least one linked Hackatime project.'],
 		['Why were fewer hours approved than I tracked?', 'Reviewers remove time that doesn\'t show up in the project, like idle time. The feedback on your project says why. Time a reviewer cut can\'t be shipped again; time from a rejected ship can.'],
 		['Can I ship the same project again?', 'Yes. Each ship only claims the time you tracked since the last one.'],

@@ -10,8 +10,11 @@
 	import Stats from '#lib/admin/Stats.svelte';
 	import ReviewSettings from '#lib/admin/ReviewSettings.svelte';
 	import ReviewerStats from '#lib/admin/ReviewerStats.svelte';
+	import AuditLog from '#lib/admin/AuditLog.svelte';
+	import Announce from '#lib/admin/Announce.svelte';
+	import { isSuperadmin } from '#lib/session.svelte.js';
 
-	const tabs = {
+	const tabs = $derived({
 		people: ['People', People],
 		review: ['Review', ReviewSettings],
 		reviewers: ['Reviewer stats', ReviewerStats],
@@ -20,8 +23,10 @@
 		shop: ['Shop items', ShopItems],
 		stamps: ['Special stamp types', StampTypes],
 		boxes: ['Box types', BoxTypes],
-		milestones: ['Milestones', Milestones]
-	};
+		milestones: ['Milestones', Milestones],
+		// Only superadmins can use these; the backend checks too.
+		...(isSuperadmin() ? { announce: ['Announce', Announce], audit: ['Audit log', AuditLog] } : {})
+	});
 	const tab = $derived(tabs[page.url.searchParams.get('tab')] ? page.url.searchParams.get('tab') : 'people');
 	const Current = $derived(tabs[tab][1]);
 </script>
@@ -29,7 +34,7 @@
 <div class="page-head">
 	<div class="stack-sm">
 		<h1>Admin</h1>
-		<p class="muted small">Setting up for launch: stamp types → box types and their drops → milestones → shop items (the ticket costs 1,800). See planning/INTEGRATING.md.</p>
+		<p class="muted small">Setting up for launch: stamp types → box types and their drops → milestones → shop items (the rail pass costs 1,800). See planning/INTEGRATING.md.</p>
 	</div>
 </div>
 

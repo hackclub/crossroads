@@ -100,7 +100,7 @@
 			<div class="car cargo" aria-hidden="true"><span class="door"></span></div>
 			<div class="joint" aria-hidden="true"><span class="coupler"><i class="block"></i><i class="bar"></i><i class="knob"></i><i class="bar"></i><i class="block"></i></span></div>
 
-			<section class="car station" aria-label="Your ticket" inert={at !== '/shop'}>
+			<section class="car station" aria-label="Your rail pass" inert={at !== '/shop'}>
 				{#if at === '/shop' && rail.shop}{@render rail.shop()}{:else}<ShopPreview />{/if}
 			</section>
 			<div class="joint" aria-hidden="true"><span class="coupler"><i class="block"></i><i class="bar"></i><i class="knob"></i><i class="bar"></i><i class="block"></i></span></div>

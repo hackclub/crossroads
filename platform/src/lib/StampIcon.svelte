@@ -23,8 +23,8 @@
 </script>
 
 <script>
-	// A little postage stamp shown after a stamp count. Pass `label` when the
-	// icon stands in for the word "stamps"; leave it out when the word is
+	// A little postage stamp shown after a ticket count. Pass `label` when the
+	// icon stands in for the word "tickets"; leave it out when the word is
 	// already there, so screen readers don't say it twice.
 	let { label = '', size = '1.05em' } = $props();
 </script>

@@ -270,7 +270,7 @@ img { max-width: 100%; }
 .btn.ghost { background: rgb(0 0 0 / 0.35); box-shadow: inset 0 0 0 2px var(--head); }
 .btn.danger { background: transparent; color: var(--danger); box-shadow: inset 0 0 0 2px currentColor; }
 .btn.small { padding: 3px 14px; font-size: 22px; }
-/* Solid colours instead of opacity: disabled labels often carry information ("Need 77 more stamps"). */
+/* Solid colours instead of opacity: disabled labels often carry information ("Need 77 more tickets"). */
 .btn:disabled { background: var(--deep); color: var(--muted); box-shadow: none; cursor: not-allowed; filter: none; }
 
 .link-btn {

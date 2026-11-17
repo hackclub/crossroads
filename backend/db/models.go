@@ -482,6 +482,7 @@ const (
 	UserRoleParticipant UserRole = "participant"
 	UserRoleReviewer    UserRole = "reviewer"
 	UserRoleAdmin       UserRole = "admin"
+	UserRoleSuperadmin  UserRole = "superadmin"
 )
 
 func (e *UserRole) Scan(src interface{}) error {
@@ -523,7 +524,8 @@ func (e UserRole) Valid() bool {
 	switch e {
 	case UserRoleParticipant,
 		UserRoleReviewer,
-		UserRoleAdmin:
+		UserRoleAdmin,
+		UserRoleSuperadmin:
 		return true
 	}
 	return false
@@ -534,7 +536,35 @@ func AllUserRoleValues() []UserRole {
 		UserRoleParticipant,
 		UserRoleReviewer,
 		UserRoleAdmin,
+		UserRoleSuperadmin,
 	}
+}
+
+type Announcement struct {
+	ID        int64
+	Doc       []byte
+	Blocks    []byte
+	Text      string
+	Buttons   []byte
+	Pings     bool
+	CreatedBy int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	PostedBy  *int64
+	PostedAt  *time.Time
+	ChannelID *string
+	MessageTs *string
+	Permalink *string
+	DeletedAt *time.Time
+}
+
+type AuditLog struct {
+	ID      int64
+	Kind    string
+	At      time.Time
+	ActorID *int64
+	UserID  *int64
+	Details []byte
 }
 
 type Box struct {

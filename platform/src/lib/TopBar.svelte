@@ -63,7 +63,7 @@
 	{#if session.me}
 		<div class="window w-right">
 			<div class="who">
-				<span class="wholine"><button class="name-btn" onclick={editName} title="Change your name" aria-haspopup="dialog">{shownName}</button> · {session.me.stamps}<StampIcon label="stamps" /></span>
+				<span class="wholine"><button class="name-btn" onclick={editName} title="Change your name" aria-haspopup="dialog">{shownName}</button> · {session.me.stamps}<StampIcon label="tickets" /></span>
 				<span class="links">
 					<a href="/shop/orders">Orders</a>
 					{#if session.me.emporium}<a href="/emporium" title="The Smugglers' Emporium">Emporium</a>{/if}

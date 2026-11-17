@@ -102,7 +102,7 @@ func TestBuyingTheTicket(t *testing.T) {
 	if got := e.stamps(t, user); got != 400 {
 		t.Errorf("balance is %d, want 400", got)
 	}
-	if status, o := e.buy(t, user, ticket, nil); status != http.StatusConflict || !strings.Contains(o.Error, "ticket") {
+	if status, o := e.buy(t, user, ticket, nil); status != http.StatusConflict || !strings.Contains(o.Error, "rail pass") {
 		t.Errorf("buying a second ticket: got %d %q", status, o.Error)
 	}
 

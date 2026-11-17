@@ -20,6 +20,7 @@ import (
 	"github.com/scherepi/crossroads-backend/airtable"
 	"github.com/scherepi/crossroads-backend/airtablesync"
 	"github.com/scherepi/crossroads-backend/api"
+	"github.com/scherepi/crossroads-backend/audit"
 	"github.com/scherepi/crossroads-backend/auth"
 	"github.com/scherepi/crossroads-backend/db"
 	"github.com/scherepi/crossroads-backend/devgithub"
@@ -28,6 +29,7 @@ import (
 	"github.com/scherepi/crossroads-backend/hackatime"
 	"github.com/scherepi/crossroads-backend/hca"
 	"github.com/scherepi/crossroads-backend/linkcheck"
+	"github.com/scherepi/crossroads-backend/slack"
 	"github.com/scherepi/crossroads-backend/slackclicks"
 	"github.com/scherepi/crossroads-backend/unified"
 	"github.com/scherepi/crossroads-backend/uploads"
@@ -43,6 +45,24 @@ var communityGoal = api.CommunityGoal{
 	Seconds: 500 * 3600,
 	Ends:    time.Date(2026, time.November, 18, 23, 59, 0, 0, time.FixedZone("EST", -5*3600)),
 }
+
+// Superadmins are admins who can also read the audit log. It's exactly these
+// Slack IDs, set at startup and every sign-in, and nothing in the app can
+// change it: adding someone takes a commit here.
+var superadmins = []string{
+	"U083W5CCFDG", // Joaquin
+	"U078ZJHUKFW", // Max
+	"U08RVF1BAN4", // Barnav
+}
+
+// Announcements from the admin page's Announce tab go to #crossroads-station
+// from the real site, and to #xr-station-test (private) from every other
+// build, dev and local, so trying them out never reaches the real channel.
+const (
+	realSite       = "https://crossroads.hackclub.com"
+	stationChannel = "C0CGSJP0L05" // #crossroads-station
+	testChannel    = "C0CHU1G66AW" // #xr-station-test
+)
 
 // The launch sale: from launch on November 6 until the community goal closes,
 // 11:59 PM Eastern on November 18. It first ran for a week, to Nov 13.
@@ -66,6 +86,9 @@ func main() {
 	if err := db.Migrate(ctx, pool); err != nil {
 		log.Fatalf("migrating: %v", err)
 	}
+	if err := db.New(pool).SyncSuperadmins(ctx, superadmins); err != nil {
+		log.Fatalf("setting superadmins: %v", err)
+	}
 
 	clientID, clientSecret, redirectURL := os.Getenv("HCA_CLIENT_ID"), os.Getenv("HCA_CLIENT_SECRET"), os.Getenv("HCA_REDIRECT_URL")
 	if clientID == "" || clientSecret == "" || redirectURL == "" {
@@ -76,6 +99,7 @@ func main() {
 		Queries:       db.New(pool),
 		HCA:           hcaClient,
 		SecureCookies: strings.HasPrefix(redirectURL, "https://"),
+		Superadmins:   superadmins,
 	}
 
 	// DEV_MODE=1 adds a sign-in that skips Hack Club Auth and a fake Hackatime,
@@ -120,7 +144,7 @@ func main() {
 	}
 	// GitHub stats and link checks for reviewers. In dev mode GitHub is faked,
 	// and so are links on the example projects' made-up hosts.
-	githubConfig := github.Config{Token: os.Getenv("GITHUB_TOKEN")}
+	githubConfig := github.Config{Token: os.Getenv("GITHUB_TOKEN"), ProxyKey: os.Getenv("GH_PROXY_API_KEY")}
 	var links linkcheck.Checker = linkcheck.New()
 	// Searching the Unified YSWS DB for projects another program paid for.
 	// Read-only; dev mode never touches it.
@@ -133,6 +157,18 @@ func main() {
 		unifiedLookup = unified.NewAirtable(token)
 	} else {
 		log.Print("UNIFIED_AIRTABLE_TOKEN isn't set, so reviews don't check the Unified YSWS DB for double-dipping")
+	}
+	announceChannel := testChannel
+	if strings.TrimSuffix(publicURL, "/") == realSite {
+		announceChannel = stationChannel
+	}
+	// The Slack app's bot token, for posting announcements. Without it they
+	// can be drafted but not sent.
+	var slackClient *slack.Client
+	if token := os.Getenv("SLACK_BOT_TOKEN"); token != "" {
+		slackClient = slack.New(slack.Config{Token: token})
+	} else {
+		log.Print("SLACK_BOT_TOKEN isn't set, so announcements can't be posted to Slack")
 	}
 	apiRoutes := &api.API{
 		Pool:          pool,
@@ -153,6 +189,8 @@ func main() {
 		Unified:        unifiedLookup,
 		// For example https://telescreen.hackclub.com/.../{slack_id}
 		TelescreenProfileURL: os.Getenv("TELESCREEN_PROFILE_URL"),
+		Slack:                slackClient,
+		AnnounceChannel:      announceChannel,
 	}
 
 	// Price locks are refunded if the tickets sell out before they're used.
@@ -186,8 +224,15 @@ func main() {
 	// Which days each person uses the platform, for the admin activity page.
 	visits := &activity.Visits{Queries: db.New(pool)}
 	r.Use(middleware.Logger, middleware.Recoverer, a.LoadSession, visits.Record)
-	r.Mount("/auth", a.Routes())
-	r.Mount("/api", apiRoutes.Routes())
+	// Every write to /auth and /api by someone signed in, or Sidekick, goes in
+	// the audit log (package audit). The Slack bot's clicks have their own
+	// table, and /dev is only local.
+	requests := &audit.Requests{Queries: db.New(pool)}
+	r.Group(func(r chi.Router) {
+		r.Use(requests.Record)
+		r.Mount("/auth", a.Routes())
+		r.Mount("/api", apiRoutes.Routes())
+	})
 	r.Handle("/uploads/*", http.StripPrefix("/uploads", uploadStore.Files()))
 	// Clicks on the Slack bot's buttons (slackbot/). Off unless the secret it
 	// shares with the bot is set.

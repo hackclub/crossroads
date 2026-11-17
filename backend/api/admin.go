@@ -647,7 +647,8 @@ func (a *API) adminListUsers(w http.ResponseWriter, r *http.Request) {
 // adminUpdateUser changes someone's role, which review stages they can
 // decide, and whether they're let into the Smugglers' Emporium:
 // {"emporium_access": true, "emporium_note": "for Tiny Compiler"}. Fields
-// left out aren't changed.
+// left out aren't changed. Nobody can make someone a superadmin or stop them
+// being one here: main.go lists them.
 func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	admin := auth.User(r.Context())
 	userID, ok := idParam(w, r, "userID")
@@ -676,7 +677,7 @@ func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusUnprocessableEntity, fmt.Sprintf("role has to be one of %v.", db.AllUserRoleValues()))
 		return
 	}
-	if userID == admin.ID && body.Role != nil && *body.Role != db.UserRoleAdmin {
+	if userID == admin.ID && body.Role != nil && !body.Role.IsAdmin() {
 		respond.Error(w, http.StatusUnprocessableEntity, "You can't take away your own admin access. Ask another admin.")
 		return
 	}
@@ -687,6 +688,10 @@ func (a *API) adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		respond.ServerError(w, r, err)
+		return
+	}
+	if body.Role != nil && (*body.Role == db.UserRoleSuperadmin) != (user.Role == db.UserRoleSuperadmin) {
+		respond.Error(w, http.StatusUnprocessableEntity, "Superadmins are set in the code (main.go), not here.")
 		return
 	}
 	if body.Role != nil {
@@ -854,7 +859,8 @@ func withRole(user db.User, role db.UserRole, defaultStages bool) db.User {
 // "role": "reviewer"}: gives whoever has that Hack Club Auth email (ignoring
 // case) a role. If they've signed in, it changes now; if not, they get it the
 // first time they sign in. "participant" for someone who hasn't signed in
-// drops whatever role was waiting for them.
+// drops whatever role was waiting for them. Superadmins can't be made or
+// changed here: main.go lists them.
 func (a *API) adminSetRoleByEmail(w http.ResponseWriter, r *http.Request) {
 	admin := auth.User(r.Context())
 	var body struct {
@@ -871,6 +877,10 @@ func (a *API) adminSetRoleByEmail(w http.ResponseWriter, r *http.Request) {
 	}
 	if !body.Role.Valid() {
 		respond.Error(w, http.StatusUnprocessableEntity, "role has to be participant, reviewer or admin.")
+		return
+	}
+	if body.Role == db.UserRoleSuperadmin {
+		respond.Error(w, http.StatusUnprocessableEntity, "Superadmins are set in the code (main.go), not here.")
 		return
 	}
 	type resultJSON struct {
@@ -893,6 +903,10 @@ func (a *API) adminSetRoleByEmail(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		if user.ID == admin.ID && body.Role != db.UserRoleAdmin {
 			respond.Error(w, http.StatusUnprocessableEntity, "You can't take away your own admin access. Ask another admin.")
+			return
+		}
+		if user.Role == db.UserRoleSuperadmin {
+			respond.Error(w, http.StatusUnprocessableEntity, "Superadmins are set in the code (main.go), not here.")
 			return
 		}
 		user = withRole(user, body.Role, true)

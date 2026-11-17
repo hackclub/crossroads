@@ -20,7 +20,8 @@
 		['alice', 'participant'],
 		['bob', 'participant'],
 		['rita', 'reviewer'],
-		['adam', 'admin']
+		['adam', 'admin'],
+		['sam', 'superadmin']
 	];
 
 	onMount(async () => {

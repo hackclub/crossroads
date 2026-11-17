@@ -99,7 +99,7 @@
 					<tr>
 						<td>{i.position}</td>
 						<td>{i.name}{#if i.emporium} <span class="badge warn">Emporium</span>{/if}</td>
-						<td>{i.kind}{i.stipend_cents ? ` (${money(i.stipend_cents)})` : ''}{i.grant_cents ? ` (${money(i.grant_cents)} pieces at ${money(i.grant_cents_per_hour)}/h)` : ''}</td>
+						<td>{i.kind === 'ticket' ? 'rail pass' : i.kind}{i.stipend_cents ? ` (${money(i.stipend_cents)})` : ''}{i.grant_cents ? ` (${money(i.grant_cents)} pieces at ${money(i.grant_cents_per_hour)}/h)` : ''}</td>
 						<td>{i.price}{i.batch_step ? ` (+${i.batch_step} a batch)` : ''}{#if i.batches}<br /><span class="small muted">{batchNote(i)}</span>{/if}</td>
 						<td>{i.stock ?? '∞'}</td>
 						<td>{i.max_per_user ?? '∞'}</td>
@@ -107,7 +107,7 @@
 						<td><button class="btn small ghost" onclick={() => edit(i)}>Edit</button></td>
 					</tr>
 				{:else}
-					<tr><td colspan="7" class="muted">No items yet. Start with the ticket (kind ticket, price 1800, stock 30, 6 per batch, 150 more a batch), then a price lock (150).</td></tr>
+					<tr><td colspan="7" class="muted">No items yet. Start with the rail pass (kind rail pass, price 1800, stock 30, 6 per batch, 150 more a batch), then a price lock (150).</td></tr>
 				{/each}
 			</tbody>
 		</table>
@@ -117,22 +117,22 @@
 		<h2>{editing ? `Edit ${form.name}` : 'New item'}</h2>
 		<div class="grid-halves">
 			<label class="field"><span>Kind</span>
-				<select bind:value={form.kind} disabled={!!editing}><option>ticket</option><option value="price_lock">price lock</option><option>physical</option><option>stipend</option><option>grant</option></select>
+				<select bind:value={form.kind} disabled={!!editing}><option value="ticket">rail pass</option><option value="price_lock">price lock</option><option>physical</option><option>stipend</option><option>grant</option></select>
 			</label>
 			<label class="field"><span>Name</span><input required bind:value={form.name} /></label>
 			{#if form.kind === 'grant'}
 				<label class="field"><span>Each piece ($)</span><input type="number" min="0.01" step="0.01" required bind:value={form.grant_dollars} /></label>
 				<label class="field"><span>Per approved hour ($) <em>sets the price</em></span><input type="number" min="0.01" step="0.01" required bind:value={form.grant_rate} /></label>
 			{:else}
-				<label class="field"><span>Price (stamps) {#if form.kind === 'ticket'}<em>the first batch</em>{/if}</span><input type="number" min="0" required bind:value={form.price} /></label>
+				<label class="field"><span>Price (tickets) {#if form.kind === 'ticket'}<em>the first batch</em>{/if}</span><input type="number" min="0" required bind:value={form.price} /></label>
 			{/if}
 			{#if form.kind === 'stipend'}
 				<label class="field"><span>Stipend ($)</span><input type="number" min="0" step="0.01" required bind:value={form.stipend_dollars} /></label>
 			{/if}
 			<label class="field"><span>Stock <em>{form.kind === 'grant' ? 'in pieces: the budget; empty = unlimited' : 'empty = unlimited'}</em></span><input type="number" min="0" bind:value={form.stock} /></label>
 			{#if form.kind === 'ticket'}
-				<label class="field"><span>Tickets per batch <em>empty = one price</em></span><input type="number" min="1" bind:value={form.batch_size} /></label>
-				<label class="field"><span>Each batch costs more by <em>stamps</em></span><input type="number" min="1" required={form.batch_size !== ''} bind:value={form.batch_step} /></label>
+				<label class="field"><span>Passes per batch <em>empty = one price</em></span><input type="number" min="1" bind:value={form.batch_size} /></label>
+				<label class="field"><span>Each batch costs more by <em>tickets</em></span><input type="number" min="1" required={num(form.batch_size) != null} bind:value={form.batch_step} /></label>
 			{/if}
 			{#if !onePerPerson(form.kind) && form.kind !== 'grant'}
 				<label class="field"><span>Max per person <em>empty = unlimited</em></span><input type="number" min="1" bind:value={form.max_per_user} /></label>
@@ -147,7 +147,7 @@
 		<label class="field"><span>Description</span><textarea bind:value={form.description}></textarea></label>
 		<label class="check"><input type="checkbox" bind:checked={form.active} /> In the shop (active)</label>
 		{#if form.kind === 'grant'}
-			<p class="small muted">Grants are only sold in the Smugglers' Emporium. People choose how many pieces; at {session.me.stamps_per_hour} stamps an hour a piece costs {Math.ceil((Number(form.grant_dollars) * session.me.stamps_per_hour) / Number(form.grant_rate)) || '–'} stamps.</p>
+			<p class="small muted">Grants are only sold in the Smugglers' Emporium. People choose how many pieces; at {session.me.stamps_per_hour} tickets an hour a piece costs {Math.ceil((Number(form.grant_dollars) * session.me.stamps_per_hour) / Number(form.grant_rate)) || '–'} tickets.</p>
 		{:else if !onePerPerson(form.kind)}
 			<label class="check"><input type="checkbox" bind:checked={form.emporium} /> In the Smugglers' Emporium instead of the shop</label>
 		{/if}

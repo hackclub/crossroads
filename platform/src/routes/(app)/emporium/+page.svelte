@@ -111,7 +111,7 @@
 				Goods that don't make it to the shop window, for reviewers and for makers whose projects caught our eye.
 				{#if session.me.role === 'participant'}You're here because of something you built.{/if}
 			</p>
-			<p class="purse">You have <b>{stamps}</b><StampIcon /> stamps, worth {stampHours(stamps, rate)} of approved time.</p>
+			<p class="purse">You have <b>{stamps}</b><StampIcon /> tickets, worth {stampHours(stamps, rate)} of approved time.</p>
 		</header>
 
 		{#if error}<p class="callout warn">{error}</p>{/if}
@@ -143,9 +143,9 @@
 							</label>
 							<button class="step" aria-label="{dollars(g.grant_cents)} more" disabled={n >= Math.min(200, g.stock ?? 200)} onclick={() => setPieces(g, n + 1)}>+</button>
 						</div>
-						<p class="cost">{cost} stamps <span class="muted">· {stampHours(cost, rate)}</span></p>
+						<p class="cost">{cost} tickets <span class="muted">· {stampHours(cost, rate)}</span></p>
 						{#if cost > stamps}
-							<button class="btn" disabled>Need {cost - stamps} more stamps</button>
+							<button class="btn" disabled>Need {cost - stamps} more tickets</button>
 							{#if mostPieces(g) > 0}<button class="link-btn small" onclick={() => setPieces(g, mostPieces(g))}>Most you can get now: {dollars(mostPieces(g) * g.grant_cents)}</button>{/if}
 						{:else}
 							<button class="btn primary" onclick={() => ask(g, n)}>Take {dollars(n * g.grant_cents)}</button>
@@ -164,14 +164,14 @@
 						<div class="thumb">{#if item.image_url}<img src={item.image_url} alt="" loading="lazy" />{/if}</div>
 						<div class="info">
 							<h3>{item.name}</h3>
-							<span class="price">{item.price} stamps</span>
+							<span class="price">{item.price} tickets</span>
 							{#if item.description}<p class="desc">{item.description}</p>{/if}
 						</div>
 						<div class="card-foot">
 							{#if reason}
 								<button class="btn" disabled>{reason}</button>
 							{:else if short > 0}
-								<button class="btn" disabled>Need {short} more stamps</button>
+								<button class="btn" disabled>Need {short} more tickets</button>
 							{:else}
 								<button class="btn primary" onclick={() => ask(item)}>Buy for {item.price}</button>
 							{/if}
@@ -191,9 +191,9 @@
 		<form class="stack" method="dialog" onsubmit={buy}>
 			<h2 id="buy-title">{item.kind === 'grant' ? `Take a ${dollars(pending.pieces * item.grant_cents)} grant?` : `Buy ${item.name}?`}</h2>
 			<dl class="sums">
-				<dt>Price</dt><dd>{pending.price} stamps</dd>
-				<dt>You have</dt><dd>{stamps} stamps</dd>
-				<dt>Left after</dt><dd><b>{stamps - pending.price} stamps</b></dd>
+				<dt>Price</dt><dd>{pending.price} tickets</dd>
+				<dt>You have</dt><dd>{stamps} tickets</dd>
+				<dt>Left after</dt><dd><b>{stamps - pending.price} tickets</b></dd>
 			</dl>
 			{#if item.kind === 'grant'}
 				<p class="small">That's {stampHours(pending.price, rate)} of approved time at {dollars(item.grant_cents_per_hour)} an hour. We'll send it once an admin processes the order.</p>

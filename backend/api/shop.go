@@ -340,9 +340,9 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 		if bought >= int64(*item.MaxPerUser) {
 			switch item.Kind {
 			case db.ShopItemKindTicket:
-				respond.Error(w, http.StatusConflict, "You've already got your ticket!")
+				respond.Error(w, http.StatusConflict, "You've already got your rail pass!")
 			case db.ShopItemKindPriceLock:
-				respond.Error(w, http.StatusConflict, "You've already locked your ticket price.")
+				respond.Error(w, http.StatusConflict, "You've already locked your rail pass price.")
 			default:
 				respond.Error(w, http.StatusConflict, fmt.Sprintf("You can only get %d of these.", *item.MaxPerUser))
 			}
@@ -394,7 +394,7 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 	}
 	if locked.Stamps < price {
 		respond.Error(w, http.StatusUnprocessableEntity, fmt.Sprintf(
-			"That costs %d stamps and you have %d, so you need %d more.", price, locked.Stamps, price-locked.Stamps))
+			"That costs %d tickets and you have %d, so you need %d more.", price, locked.Stamps, price-locked.Stamps))
 		return
 	}
 
@@ -420,7 +420,7 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 		Amount:  -price,
 		OrderID: &order.ID,
 	}); db.IsNotEnoughStamps(err) {
-		respond.Error(w, http.StatusUnprocessableEntity, "You don't have enough stamps for that.")
+		respond.Error(w, http.StatusUnprocessableEntity, "You don't have enough tickets for that.")
 		return
 	} else if err != nil {
 		respond.ServerError(w, r, err)
@@ -572,7 +572,7 @@ func (f shopItemFields) apply(item *db.ShopItem, stampsPerHour int) string {
 	case isGrant && item.MaxPerUser != nil:
 		return "Grants are sold in pieces, so they can't have max_per_user. Use stock, in pieces, to cap the budget."
 	case item.Emporium && (item.Kind == db.ShopItemKindTicket || item.Kind == db.ShopItemKindPriceLock):
-		return "Tickets and price locks belong in the shop, not the Emporium."
+		return "Rail passes and price locks belong in the shop, not the Emporium."
 	case !item.Kind.Valid():
 		return fmt.Sprintf("kind has to be one of %v.", db.AllShopItemKindValues())
 	case item.Name == "" || len(item.Name) > 100:
@@ -590,17 +590,17 @@ func (f shopItemFields) apply(item *db.ShopItem, stampsPerHour int) string {
 	case item.MaxPerUser != nil && *item.MaxPerUser <= 0:
 		return "max_per_user has to be above 0."
 	case item.Kind == db.ShopItemKindTicket && (item.MaxPerUser == nil || *item.MaxPerUser != 1):
-		return "Tickets are one per person, so max_per_user has to be 1."
+		return "Rail passes are one per person, so max_per_user has to be 1."
 	case item.Kind == db.ShopItemKindPriceLock && (item.MaxPerUser == nil || *item.MaxPerUser != 1):
 		return "Price locks are one per person, so max_per_user has to be 1."
 	case (item.BatchSize == nil) != (item.BatchStep == nil):
 		return "Set batch_size and batch_step together, or neither."
 	case item.BatchSize != nil && item.Kind != db.ShopItemKindTicket:
-		return "Only tickets sell in batches."
+		return "Only rail passes sell in batches."
 	case item.BatchSize != nil && (*item.BatchSize <= 0 || *item.BatchStep <= 0):
 		return "batch_size and batch_step have to be above 0."
 	case item.BatchSize != nil && item.Stock == nil:
-		return "Tickets sold in batches need a stock: how many there are across every batch."
+		return "Rail passes sold in batches need a stock: how many there are across every batch."
 	}
 	return ""
 }

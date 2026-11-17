@@ -19,7 +19,7 @@ export const STAGES = {
 		label: 'HQ sign-off',
 		status: 'awaiting_hq',
 		perm: 'can_hq_review',
-		blurb: 'The last step. Signing off pays the stamps and sends the ship to the Unified YSWS DB.'
+		blurb: 'The last step. Signing off pays out the tickets and sends the ship to the Unified YSWS DB.'
 	}
 };
 

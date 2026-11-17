@@ -62,7 +62,7 @@
 	}).join(', ')})`;
 
 	function soldOutReason(item) {
-		if (item.max_per_user != null && item.bought >= item.max_per_user) return item.kind === 'ticket' ? 'You have your ticket' : 'You have the most you can get';
+		if (item.max_per_user != null && item.bought >= item.max_per_user) return item.kind === 'ticket' ? 'You have your rail pass' : 'You have the most you can get';
 		if (item.stock === 0) return 'Sold out';
 		return '';
 	}
@@ -95,9 +95,9 @@
 				tone: 'good',
 				text:
 					item.kind === 'ticket'
-						? `You have your ticket (order #${order.id}). You've qualified for the trip!`
+						? `You have your rail pass (order #${order.id}). You've qualified for the trip!`
 						: item.kind === 'price_lock'
-							? `Your ticket is locked at ${inHours(order.locked_price)} (${order.locked_price} stamps), whenever you buy it.`
+							? `Your rail pass is locked at ${inHours(order.locked_price)} (${order.locked_price} tickets), whenever you buy it.`
 							: `Ordered ${item.name} (order #${order.id}). Track it in My orders.`
 			};
 			dialog.close();
@@ -122,7 +122,7 @@
 	<div class="page-head">
 		<div class="stack-sm">
 			<h1>Shop</h1>
-			<p>You have {stamps}<StampIcon /> stamps. You earn {rate} per approved hour.</p>
+			<p>You have {stamps}<StampIcon /> tickets. You earn {rate} per approved hour.</p>
 		</div>
 		<a class="btn ghost" href="/shop/orders">My orders</a>
 	</div>
@@ -152,28 +152,28 @@
 					<h2 id="ticket-name">{ticket.name}</h2>
 					<span>Berlin, then across Europe by train · February 2027</span>
 					{#if ticket.description}<span class="small">{ticket.description}</span>{/if}
-					{#if !hasTicket}<span class="small">Buying the ticket is how you qualify. Everything else here spends stamps the ticket needs.</span>{/if}
+					{#if !hasTicket}<span class="small">Buying the rail pass is how you qualify. Everything else here spends tickets the rail pass needs.</span>{/if}
 				</div>
 				<div class="progress stack">
 					{#if hasTicket}
-						<p class="big-line">You have your ticket. See you in Berlin!</p>
+						<p class="big-line">You have your rail pass. See you in Berlin!</p>
 						<a class="btn ghost" href="/shop/orders">See your order</a>
 					{:else}
-						<div class="row between"><span>{Math.max(stamps, 0)} / {ticket.price} stamps</span><span>{short > 0 ? `${short} to go · about ${hoursFor(short)}h` : 'You can buy it now'}</span></div>
-						<div class="bar" role="img" aria-label="{Math.round(pct)}% of the way to your ticket"><span class="seg approved" style="width: {pct}%"></span></div>
+						<div class="row between"><span>{Math.max(stamps, 0)} / {ticket.price} tickets</span><span>{short > 0 ? `${short} to go · about ${hoursFor(short)}h` : 'You can buy it now'}</span></div>
+						<div class="bar" role="img" aria-label="{Math.round(pct)}% of the way to your rail pass"><span class="seg approved" style="width: {pct}%"></span></div>
 						{#if soldOutReason(ticket)}
 							<button class="btn" disabled>{soldOutReason(ticket)}</button>
 						{:else if short > 0}
 							<button class="btn" disabled>Buy for {ticket.price}</button>
 						{:else}
-							<button class="btn primary" disabled={buying === ticket.id} onclick={() => ask(ticket)}>{buying === ticket.id ? 'Buying…' : `Buy your ticket for ${ticket.price}`}</button>
+							<button class="btn primary" disabled={buying === ticket.id} onclick={() => ask(ticket)}>{buying === ticket.id ? 'Buying…' : `Buy your rail pass for ${ticket.price}`}</button>
 						{/if}
 					{/if}
 				</div>
 				{#if !hasTicket && (batches || ticket.locked_price)}
 					<div class="ladder stack-sm">
 						{#if batches}
-							<ol class="batches" aria-label="Ticket batches, {batches.size} tickets each">
+							<ol class="batches" aria-label="Rail pass batches, {batches.size} passes each">
 								{#each batches.prices as price, i}
 									<li class:sold={i < batches.current} class:now={i === batches.current} aria-current={i === batches.current ? 'step' : undefined}>
 										{inHours(price)}<span class="visually-hidden">{i < batches.current ? ', sold out' : i === batches.current ? ', on sale now' : ''}</span>
@@ -190,7 +190,7 @@
 							</span>
 						{/if}
 						{#if ticket.locked_price}
-							<p class="callout info small">Your price is locked at {inHours(ticket.locked_price)} ({ticket.locked_price} stamps).</p>
+							<p class="callout info small">Your price is locked at {inHours(ticket.locked_price)} ({ticket.locked_price} tickets).</p>
 						{/if}
 						{#if canLock}
 							<div class="lock">
@@ -203,8 +203,8 @@
 									{/if}
 								</div>
 								<span class="small">
-									Keeps this price however many batches sell before you're ready. It's on top of the ticket, and if the tickets sell out
-									before you buy one, you get the {lock.price} stamps back.
+									Keeps this price however many batches sell before you're ready. It's on top of the rail pass, and if the passes sell out
+									before you buy one, you get the {lock.price} tickets back.
 								</span>
 							</div>
 						{/if}
@@ -231,9 +231,9 @@
 					<div class="info">
 						<h3 class="item-name">{item.name}</h3>
 						{#if item.sale}
-							<span class="price"><s aria-hidden="true">{item.sale.full_price}</s> {item.price} stamps<span class="visually-hidden"> ({item.sale.percent}% off, was {item.sale.full_price})</span></span>
+							<span class="price"><s aria-hidden="true">{item.sale.full_price}</s> {item.price} tickets<span class="visually-hidden"> ({item.sale.percent}% off, was {item.sale.full_price})</span></span>
 						{:else}
-							<span class="price">{item.price} stamps</span>
+							<span class="price">{item.price} tickets</span>
 						{/if}
 						{#if item.description}<p class="desc">{item.description}</p>{/if}
 					</div>
@@ -242,7 +242,7 @@
 						{#if reason}
 							<button class="btn" disabled>{reason}</button>
 						{:else if short > 0}
-							<button class="btn" disabled>Need {short} more stamps (~{hoursFor(short)}h)</button>
+							<button class="btn" disabled>Need {short} more tickets (~{hoursFor(short)}h)</button>
 						{:else}
 							<!-- Secondary until they have the ticket, so the trip stays the obvious choice. -->
 							<button class="btn {hasTicket || !ticket ? 'primary' : 'ghost'}" disabled={buying === item.id} onclick={() => ask(item)}>{buying === item.id ? 'Buying…' : `Buy for ${item.price}`}</button>
@@ -261,21 +261,21 @@
 		{@const left = stamps - pending.price}
 		{@const short = ticketAfter(pending)}
 		<form class="stack" method="dialog" onsubmit={buy}>
-			<h2 id="buy-title">{pending.kind === 'price_lock' ? `Lock your ticket at ${inHours(batches.prices[batches.current])}?` : `Buy ${pending.name}?`}</h2>
+			<h2 id="buy-title">{pending.kind === 'price_lock' ? `Lock your rail pass at ${inHours(batches.prices[batches.current])}?` : `Buy ${pending.name}?`}</h2>
 			<dl class="sums">
-				<dt>Price</dt><dd>{#if pending.sale}<s aria-hidden="true">{pending.sale.full_price}</s> {/if}{pending.price} stamps{#if pending.sale}<span class="visually-hidden"> ({pending.sale.percent}% off)</span>{/if}</dd>
-				<dt>You have</dt><dd>{stamps} stamps</dd>
-				<dt>Left after</dt><dd><b>{left} stamps</b></dd>
+				<dt>Price</dt><dd>{#if pending.sale}<s aria-hidden="true">{pending.sale.full_price}</s> {/if}{pending.price} tickets{#if pending.sale}<span class="visually-hidden"> ({pending.sale.percent}% off)</span>{/if}</dd>
+				<dt>You have</dt><dd>{stamps} tickets</dd>
+				<dt>Left after</dt><dd><b>{left} tickets</b></dd>
 			</dl>
 			{#if pending.kind === 'ticket'}
-				<p>Buying the ticket is how you qualify for the trip.</p>
+				<p>Buying the rail pass is how you qualify for the trip.</p>
 			{:else if pending.kind === 'price_lock'}
 				<p>
-					Your ticket will cost {batches.prices[batches.current]} stamps whenever you buy it, even after later batches cost more. The
-					lock doesn't hold a ticket for you: if they sell out before you buy one, you get these {pending.price} stamps back.
+					Your rail pass will cost {batches.prices[batches.current]} tickets whenever you buy it, even after later batches cost more. The
+					lock doesn't hold a pass for you: if they sell out before you buy one, you get these {pending.price} tickets back.
 				</p>
 			{:else if short}
-				<p class="callout warn">Your ticket costs {ticket.price}. After this you'd need {short} more stamps (about {hoursFor(short)} approved hours) to buy it.</p>
+				<p class="callout warn">Your rail pass costs {ticket.price}. After this you'd need {short} more tickets (about {hoursFor(short)} approved hours) to buy it.</p>
 			{/if}
 
 			{#if pending.kind === 'physical'}

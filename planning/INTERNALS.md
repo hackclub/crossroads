@@ -26,12 +26,16 @@ backend/
     admin.go          admin people, stamp types, box types, drop tables, milestones, grants
     shop.go           shop, orders, verification check, admin shop items, orders, stamp adjustments
     activity.go       the admin activity numbers
+    audit.go          GET /api/superadmin/audit-log
+    announcements.go  Slack announcements: drafts, posting, engagement
   hca/              Hack Club Auth client: OAuth, GET /api/v1/me, the public verification check
   hackatime/        Hackatime client: user stats and heartbeat spans, filtered to some projects
   airtable/         small Airtable REST client: create, update, list
   activity/         the background poll of each project's Hackatime time per day, and recording visits
+  audit/            middleware that puts every write request in the audit log
   airtablesync/     the background copy into Airtable, and picking up fulfilled orders
   slackclicks/      POST /slack/clicks: the Slack bot records clicks on its announcements' buttons
+  slack/            Slack Web API client with the bot token: post, edit, delete, profiles, reactions, channels
   respond/          JSON, error and 500 responses
   db/
     migrations/       the schema (goose)
@@ -40,6 +44,7 @@ backend/
     migrate.go        embeds and runs migrations
     errors.go         IsViolation, IsNotEnoughStamps
     address.go        the shared mailing address type
+    roles.go          UserRole.IsAdmin: admins and superadmins
     dbtest/           a throwaway, migrated schema for each test
 ```
 
@@ -61,7 +66,7 @@ Responses always use explicit JSON structs with `snake_case` tags. Never return 
 
 | Table | What |
 |---|---|
-| `users` | Everyone. `can_review`, `can_fraud_review` and `can_hq_review` are a reviewer's stages (admins have all of them whatever these say); `reviewer_note` is the reviewers-only note on a person. `hca_id` (unique) is their Hack Club Auth identity; the profile (Slack ID, names, email, birthday, phone, address as `db.Address` JSON, verification) is refreshed at every sign-in. `role` is `participant`, `reviewer` or `admin`. `stamps` is their balance, kept up to date by a trigger. |
+| `users` | Everyone. `can_review`, `can_fraud_review` and `can_hq_review` are a reviewer's stages (admins have all of them whatever these say); `reviewer_note` is the reviewers-only note on a person. `hca_id` (unique) is their Hack Club Auth identity; the profile (Slack ID, names, email, birthday, phone, address as `db.Address` JSON, verification) is refreshed at every sign-in. `role` is `participant`, `reviewer`, `admin` or `superadmin` (an admin who can read the audit log; see "Audit log"). `stamps` is their balance, kept up to date by a trigger. |
 | `sessions` | `token_hash` (SHA-256 of the cookie value) and `expires_at`. |
 | `role_invites` | A role (`reviewer` or `admin`) waiting for whoever first signs in with `email` (stored lowercase). Signing in uses it up (`auth.callback`, query `ClaimRoleInvite`). |
 | `projects` | Name, description, repo, demo and screenshot links. |
@@ -80,6 +85,7 @@ Responses always use explicit JSON structs with `snake_case` tags. Never return 
 | `shop_items` | `kind` (`ticket`, `price_lock`, `physical`, `stipend`), `price`, optional `stock` and `max_per_user`, `stipend_cents`, `active`. Tickets can have `batch_size` and `batch_step`. |
 | `project_activity` | Each project's Hackatime `seconds` per UTC `day`, written by the activity poller. Only days with time have rows. |
 | `platform_activity` | `(user_id, day)` for each UTC day a person made a signed-in request, written by `activity.Visits`. |
+| `audit_log` | Everything that happens, for superadmins: `kind` (`group.event`, like `stamps.payout`), `at`, `actor_id` (who did it), `user_id` (who it happened to), `details` (JSON). Append-only. See "Audit log". |
 | `orders` | `price` as paid, `status` (`pending`, `fulfilled`, `cancelled`), `shipping_address`, admin `notes`, Airtable bookkeeping. |
 
 ### Where each rule is enforced
@@ -101,6 +107,9 @@ Rules live in the database wherever possible, so a bug in Go can't break them. S
 | A submission pays out once | unique index `stamp_ledger_one_payout_per_submission` |
 | An order is charged once and refunded at most once | unique index `stamp_ledger_one_entry_per_order_kind` |
 | The ledger is never edited | trigger `stamp_ledger_append_only` |
+| The audit log is never edited | trigger `audit_log_append_only` |
+| Stamps, special stamps, boxes, roles and order statuses are logged whatever code changed them | the `*_audit*` triggers in migration 24 |
+| Superadmins are exactly the list in `main.go` | `SyncSuperadmins` at startup and every sign-in; Go: `adminUpdateUser` and `adminInviteRole` refuse to grant or remove it |
 | `users.stamps` always equals the ledger's sum | trigger `stamp_ledger_apply` (function `apply_stamp_entry`) |
 | A purchase can't take a balance below zero | the same trigger raises `stamps_not_negative`; Go checks with `db.IsNotEnoughStamps` |
 | One box per milestone per person | unique `(user_id, milestone_id)` on `boxes` |
@@ -203,6 +212,31 @@ A lock doesn't hold a ticket. When the tickets sell out, `RefundPriceLocks` canc
 - Scopes are `email name slack_id verification_status basic_info address`. The last two need the app's `hq_official` trust level.
 - The session token comes from `crypto/rand`. The cookie holds the token and the database holds only its SHA-256, so a database leak can't be used to sign in. Sessions last 30 days, and a person's expired sessions are cleaned up when they sign in.
 - `next` redirects only go to paths on this site (`safeNext`).
+- After upserting, the callback claims any role invite, then runs `SyncSuperadmins`, so the superadmin list wins over an invite. It adds a `sign_in` to the audit log.
+
+## Audit log
+
+Superadmins (the Slack IDs in `superadmins`, `main.go`) can read everything that's happened at `GET /api/superadmin/audit-log`, the Audit log tab in Admin. Changing who's on the list takes a commit; `SyncSuperadmins` applies it when the server starts and whenever anyone signs in. A superadmin is an admin in every other way: `RequireRole` lets them through wherever admins are allowed, and Go code asks `user.Role.IsAdmin()` rather than comparing with `UserRoleAdmin`.
+
+Rows come from three places:
+
+- **`audit.Requests`** (middleware on `/auth` and `/api` in `main.go`) records every request but `GET`, `HEAD` and `OPTIONS`, after the handler, with its status: who was signed in, chi's route pattern and parameters, the JSON body if the request succeeded (up to 64 KB; other bodies, and rejected ones, by size), IP and user agent, each of those cut to 512 bytes. Headers aren't kept, so neither are Sidekick's and the Slack bot's secrets. `/slack/clicks` is left out (it's its own log) and so is `/dev`.
+  - Only requests someone answers for are recorded: someone signed in, or a handler that calls `audit.Vouch` once it knows who sent it another way (Sidekick, after checking its secret). Anonymous requests changed nothing, and anyone can send them, so recording them would let anyone fill the database; the request log still has them.
+  - Each person signed in can add `audit.DefaultBudget` (128 KB) of rows a minute, refilling steadily. Past it their rows are kept without the body, then not kept at all, and the next row kept has `unrecorded`: how many weren't. Vouched requests don't count against it. The budgets are in memory, so a restart refills them.
+- **`auth`** adds `sign_in` rows, since the sign-in callback is a `GET`.
+- **Triggers** (migration 24) add the rest when the rows change, so no code path can skip them: `special_stamp.issued` and `.used`, `box.granted`, `stamps.<ledger kind>`, `role.changed`, `order.<status>`. Each copies in the names it needs (stamp type, box type and how the box was got, item, project), so history doesn't change when things are renamed. A trigger only knows what's on the row: role changes and order statuses have no actor, and the request rows at the same moment say who.
+
+Kinds are `group.event`, and filtering on a group (`stamps`) keeps all its events. A new kind needs adding to `auditKinds` (`api/audit.go`) and the filter in `platform/src/lib/admin/AuditLog.svelte`. Recording a request or sign-in never fails the request; it's logged instead. The log isn't pruned: only people signed in and Sidekick can add request rows, at a capped rate.
+
+## Announcements
+
+Superadmins write announcements on Admin's Announce tab and post them to the station channel: #crossroads-station from the real site (`PUBLIC_URL` is `https://crossroads.hackclub.com`) and #xr-station-test from everything else. Both IDs are constants in `main.go`, so a dev build can't be pointed at the real channel by an env var. The Slack app is the one in `slackbot/manifest.json`: its bot token (`SLACK_BOT_TOKEN`, package `slack`) posts, with `chat:write.customize` putting the superadmin's Slack name and picture on each post. The user token `slackbot/post.js` uses never reaches a server.
+
+- **The platform builds the blocks.** Its editor (Tiptap, `platform/src/lib/announce/`) and its preview need them anyway, so `slack.js` turns the editor's content into Block Kit, and the preview shows exactly what's sent. The backend stores the editor's content (`doc`) without reading it, checks the blocks, and works out from them the buttons (`buttons`, with the stamp type behind any claim link) and whether it @channels (`pings`, a `broadcast` element anywhere).
+- **Clicks** reach the backend the way every Slack button's do: Slack tells `slackbot/bot.js` over Socket Mode, and it posts them to `/slack/clicks`. A posted announcement's clicks are the `slack_clicks` rows with its `channel_id` and `message_ts`; buttons are told apart by `action_id`, which the editor gives each button once and keeps through edits. Tests sent to someone's DMs land in a different channel, so they never count. The bot runs in Production only (the development environment can't reach it), so posts from dev builds get no clicks recorded.
+- **Reactions, replies and channel size** are asked of Slack whenever an announcement is opened, not stored.
+- **Posting** locks the row, posts, then records the `ts`; if recording fails after Slack took it, the log says where the message is. Editing a posted one edits the message in Slack before saving, so the two can't disagree. Deleting one deletes the message and keeps the row and its clicks.
+- Every write is in the audit log as a request, with its body, like any other.
 
 ## Airtable sync
 

@@ -90,3 +90,10 @@ update users set role = invite.role, can_review = users.can_review or invite.rol
 from invite
 where users.id = sqlc.arg(id)
 returning users.*;
+
+-- name: SyncSuperadmins :exec
+-- Makes the people with these Slack IDs superadmins, and anyone else who was
+-- one an admin. main.go has the list.
+update users
+set role = case when slack_id = any(sqlc.arg(slack_ids)::text[]) then 'superadmin'::user_role else 'admin'::user_role end
+where coalesce(slack_id = any(sqlc.arg(slack_ids)::text[]), false) <> (role = 'superadmin');

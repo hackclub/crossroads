@@ -76,7 +76,7 @@
 	}
 	const doAdjust = (e) => {
 		e.preventDefault();
-		run(() => api('POST', `/admin/users/${selected.id}/stamp-adjustments`, { amount: Number(adjust.amount), note: adjust.note }), (r) => `${r.name} now has ${r.stamps} stamps.`).then(() => (adjust = { amount: 0, note: '' }));
+		run(() => api('POST', `/admin/users/${selected.id}/stamp-adjustments`, { amount: Number(adjust.amount), note: adjust.note }), (r) => `${r.name} now has ${r.stamps} tickets.`).then(() => (adjust = { amount: 0, note: '' }));
 	};
 	const giveBox = () => run(() => api('POST', `/admin/users/${selected.id}/boxes`, { box_type_id: Number(boxTypeId) }), () => `Gave ${selected.name} a box.`);
 	const giveStamp = () => run(() => api('POST', `/admin/users/${selected.id}/special-stamps`, { special_stamp_type_id: Number(stampTypeId) }), (s) => `Gave ${selected.name} a ${s.type.name}.`);
@@ -141,7 +141,7 @@
 
 	<div class="card table-wrap">
 		<table>
-			<thead><tr><th>Name</th><th>Email</th><th>Slack</th><th>Stamps</th><th>Verified</th><th>Role</th><th>Review stages</th><th></th></tr></thead>
+			<thead><tr><th>Name</th><th>Email</th><th>Slack</th><th>Tickets</th><th>Verified</th><th>Role</th><th>Review stages</th><th></th></tr></thead>
 			<tbody>
 				{#each users as u}
 					<tr class:you={selected?.id === u.id}>
@@ -151,18 +151,22 @@
 						<td>{u.stamps}</td>
 						<td class="small">{u.verification_status}{u.ysws_eligible ? ' ✓' : ''}</td>
 						<td>
-							<div class="row" style="flex-wrap: nowrap; gap: 6px">
-								<select value={roleDraft[u.id] ?? u.role} onchange={(e) => (roleDraft[u.id] = e.currentTarget.value)} aria-label="Role for {u.name}" style="padding: 3px 6px">
-									<option>participant</option><option>reviewer</option><option>admin</option>
-								</select>
-								{#if roleDraft[u.id] && roleDraft[u.id] !== u.role}
-									<button class="btn small primary" onclick={() => setRole(u)}>Save</button>
-									<button class="btn small ghost" onclick={() => delete roleDraft[u.id]}>Undo</button>
-								{/if}
-							</div>
+							{#if u.role === 'superadmin'}
+								<span title="Superadmins are set in the code (backend/main.go)">superadmin</span>
+							{:else}
+								<div class="row" style="flex-wrap: nowrap; gap: 6px">
+									<select value={roleDraft[u.id] ?? u.role} onchange={(e) => (roleDraft[u.id] = e.currentTarget.value)} aria-label="Role for {u.name}" style="padding: 3px 6px">
+										<option>participant</option><option>reviewer</option><option>admin</option>
+									</select>
+									{#if roleDraft[u.id] && roleDraft[u.id] !== u.role}
+										<button class="btn small primary" onclick={() => setRole(u)}>Save</button>
+										<button class="btn small ghost" onclick={() => delete roleDraft[u.id]}>Undo</button>
+									{/if}
+								</div>
+							{/if}
 						</td>
 						<td class="small">
-							{#if u.role === 'admin'}
+							{#if u.role === 'admin' || u.role === 'superadmin'}
 								<span class="muted">All (admin)</span>
 							{:else if u.role === 'reviewer'}
 								<div class="stack-sm">
@@ -183,12 +187,12 @@
 
 	{#if selected}
 		<section class="card">
-			<div class="card-title"><h2>{selected.name}: {selected.stamps} stamps</h2><button class="link-btn small" onclick={() => (selected = null)}>Close</button></div>
+			<div class="card-title"><h2>{selected.name}: {selected.stamps} tickets</h2><button class="link-btn small" onclick={() => (selected = null)}>Close</button></div>
 			<form class="row" onsubmit={doAdjust}>
 				<input type="number" bind:value={adjust.amount} style="max-width: 110px" aria-label="Amount" />
 				<input bind:value={adjust.note} placeholder="Why (required)" required style="max-width: 320px" />
-				<button class="btn">Adjust stamps</button>
-				<span class="small muted">Negative takes stamps away, even below zero.</span>
+				<button class="btn">Adjust tickets</button>
+				<span class="small muted">Negative takes tickets away, even below zero.</span>
 			</form>
 			<div class="row">
 				<select bind:value={boxTypeId} style="max-width: 220px" aria-label="Box type">
@@ -205,7 +209,7 @@
 			<div class="stack-sm">
 				<h3>Smugglers' Emporium</h3>
 				{#if selected.role !== 'participant'}
-					<p class="small muted">In, as {selected.role === 'admin' ? 'an admin' : 'a reviewer'}.</p>
+					<p class="small muted">In, as {selected.role === 'reviewer' ? 'a reviewer' : `an ${selected.role}`}.</p>
 				{:else if selected.emporium_access_at}
 					<p class="small">In since {date(selected.emporium_access_at)}{selected.emporium_note ? `: ${selected.emporium_note}` : ''}.</p>
 					<div class="row"><button class="btn small ghost" onclick={() => letOut(selected)}>Take them out</button></div>

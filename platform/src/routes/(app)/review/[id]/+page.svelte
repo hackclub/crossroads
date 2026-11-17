@@ -129,9 +129,10 @@
 
 	let nextMsg = $state('');
 	let moving = $state(false);
-	// The queue this page belongs to: the ship's stage, or the stage it was
-	// just decided at.
-	const queueStage = $derived(stage ?? result?.stage ?? 'review');
+	// The queue this page belongs to: the ship's stage if you can decide it,
+	// or else the stage you just decided it at (a fraud reviewer who passed it
+	// goes back to the fraud queue, not HQ's).
+	const queueStage = $derived((d?.can_decide && stage) || result?.stage || stage || 'review');
 	// Next review: skip this ship if it's still waiting for you (so the queue
 	// doesn't hand it straight back), then claim the next one.
 	async function nextReview() {
@@ -282,15 +283,15 @@
 		if (stage === 'review') {
 			const over = overriding && Number(approvedHours) * 3600 > sub.new_seconds;
 			if (sendToFraud) return 'It goes to the fraud check, then HQ.';
-			if (over && !failing.some((c) => c.fraud)) return 'Approving more than Hackatime tracked always waits for HQ sign-off, even if you have it yourself. Stamps are paid then.';
+			if (over && !failing.some((c) => c.fraud)) return 'Approving more than Hackatime tracked always waits for HQ sign-off, even if you have it yourself. Tickets are paid then.';
 			return failing.some((c) => c.fraud)
 				? 'The automatic checks flagged it, so it goes to the fraud check, then HQ.'
 				: session.me.can_hq_review
-					? "Unless the fraud check is on for every ship, you have HQ sign-off, so this approval is final: stamps are paid right away."
-					: 'Unless the fraud check is on for every ship, it goes to HQ for sign-off. Stamps are paid then.';
+					? "Unless the fraud check is on for every ship, you have HQ sign-off, so this approval is final: tickets are paid right away."
+					: 'Unless the fraud check is on for every ship, it goes to HQ for sign-off. Tickets are paid then.';
 		}
 		if (stage === 'fraud') return 'Passing sends it to HQ for sign-off. You can only lower the hours.';
-		return 'Signing off pays the stamps and boxes, and sends the ship to the Unified YSWS DB.';
+		return 'Signing off pays out the tickets and boxes, and sends the ship to the Unified YSWS DB.';
 	});
 </script>
 
@@ -341,7 +342,8 @@
 				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>
 			</button>
 		</header>
-		{#if claimError || nextMsg}
+		<!-- Once it's decided, the saved message says it instead. -->
+		{#if claimError || (nextMsg && !result)}
 			<p class="notice small" role="status">{claimError || nextMsg}</p>
 		{/if}
 
@@ -557,8 +559,14 @@
 					<div class="callout good small" role="status">
 						<strong>Saved. It's now: {STATUS_LABELS[d.submission.status] ?? d.submission.status}.</strong>
 						{#if result.stamps_paid || result.boxes_granted.length}
-							<span>Paid {result.stamps_paid} stamps{result.boxes_granted.length ? ` and gave ${result.boxes_granted.length} box(es)` : ''}.</span>
+							<span>Paid {result.stamps_paid} tickets{result.boxes_granted.length ? ` and gave ${result.boxes_granted.length} box(es)` : ''}.</span>
 						{/if}
+						<!-- The bar's links too, since on a phone it's scrolled away by now. -->
+						<div class="row">
+							<button class="btn small primary" onclick={nextReview} disabled={moving}>{moving ? 'Finding one…' : 'Next review'}</button>
+							<a class="btn small ghost" href="/review?stage={queueStage}">Back to the queue</a>
+						</div>
+						{#if nextMsg}<span>{nextMsg}</span>{/if}
 					</div>
 				{/if}
 				{#if stage && d.can_decide}
