@@ -570,6 +570,8 @@ func skEventFrom(e db.ShipEvent, actor string, actorName string) skEvent {
 			out.Summary, out.Tone = fmt.Sprintf("HQ sign-off by %s at %.2fh", actorName, *hours()), "success"
 		case db.ShipEventKindSentBack:
 			out.Summary, out.Tone = "sent back to review by "+actorName, "warning"
+		case db.ShipEventKindReopened:
+			out.Summary, out.Tone = "rejection undone and put back in review by "+actorName, "warning"
 		}
 		for _, text := range []*string{e.Message, e.Internal} {
 			if text != nil {

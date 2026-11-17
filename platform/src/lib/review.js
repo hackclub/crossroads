@@ -25,6 +25,12 @@ export const STAGES = {
 
 export const canDecideStage = (me, stage) => !!me?.[STAGES[stage]?.perm];
 
+// A hard reject (for fraud) stops the project being shipped again: the fraud
+// check, HQ and admins can do it. HQ and admins see every rejection, can let
+// a project be shipped again, and can undo a rejection.
+export const canHardReject = (me) => !!(me?.can_fraud_review || me?.can_hq_review);
+export const canManageRejections = (me) => !!me?.can_hq_review;
+
 // Why a ship went to the fraud check (submission.fraud_reasons).
 const REASONS = {
 	hackatime_flagged: 'Hackatime flag',
@@ -58,8 +64,11 @@ export const EVENT_LABELS = {
 	fraud_pass: 'passed the fraud check',
 	sent_back: 'sent it back to review',
 	final_approval: 'signed off',
-	rejection: 'rejected it'
+	rejection: 'rejected it',
+	reopened: 'undid the rejection and put it back in review'
 };
+// A rejection that stopped the project being shipped again.
+export const eventLabel = (ev) => (ev.kind === 'rejection' && ev.blocks_resubmit ? 'hard rejected it: it can\'t be shipped again' : (EVENT_LABELS[ev.kind] ?? ev.kind));
 
 // "14:05" in the viewer's time.
 export const time = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });

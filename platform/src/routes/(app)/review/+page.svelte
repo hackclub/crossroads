@@ -6,11 +6,20 @@
 	import { api, get } from '#lib/api.js';
 	import { session } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
-	import { STAGES, canDecideStage, reasonLabel, time } from '#lib/review.js';
+	import { STAGES, canDecideStage, canManageRejections, reasonLabel, time } from '#lib/review.js';
 	import ReviewDashboard from '#lib/review/ReviewDashboard.svelte';
+	import PastReviews from '#lib/review/PastReviews.svelte';
 
-	const stage = $derived(STAGES[page.url.searchParams.get('stage')] ? page.url.searchParams.get('stage') : 'review');
-	const canDecide = $derived(canDecideStage(session.me, stage));
+	// Besides the three queues: decided ships, and (HQ and admins) every
+	// rejection.
+	const EXTRA = $derived({
+		past: { label: 'Past reviews', blurb: 'Ships that have been decided. Open one to see what happened.' },
+		...(canManageRejections(session.me) ? { rejected: { label: 'Rejected', blurb: 'Every rejected ship. Change a soft reject to hard or back, or undo a rejection.' } } : {})
+	});
+	const wanted = $derived(page.url.searchParams.get('stage'));
+	const stage = $derived(STAGES[wanted] || EXTRA[wanted] ? wanted : 'review');
+	const queue = $derived(!!STAGES[stage]);
+	const canDecide = $derived(queue && canDecideStage(session.me, stage));
 
 	let data = $state(null);
 	let error = $state('');
@@ -27,7 +36,7 @@
 	}
 	$effect(() => {
 		nextMsg = '';
-		load(stage);
+		if (queue) load(stage);
 	});
 
 	async function next() {
@@ -48,7 +57,7 @@
 <div class="page-head">
 	<div class="stack-sm">
 		<h1>Review</h1>
-		<p class="muted">{STAGES[stage].blurb}</p>
+		<p class="muted">{(STAGES[stage] ?? EXTRA[stage]).blurb}</p>
 	</div>
 	<div class="row">
 		<a class="btn small ghost" href="/review/templates">Feedback templates</a>
@@ -66,8 +75,14 @@
 			{s.label}{#if data?.counts}{' '}<span class="tab-count">{data.counts[key]}</span>{/if}
 		</button>
 	{/each}
+	{#each Object.entries(EXTRA) as [key, s]}
+		<button role="tab" aria-selected={stage === key} class:active={stage === key} onclick={() => goto(`?stage=${key}`, { replace: true, reset: false })}>{s.label}</button>
+	{/each}
 </div>
 
+{#if !queue}
+	{#key stage}<PastReviews mode={stage} />{/key}
+{:else}
 <div class="stack">
 	{#if !canDecide}
 		<p class="callout info small">You can look, but you can't decide ships at {STAGES[stage].label.toLowerCase()}. An admin can give you that on the Admin page.</p>
@@ -122,6 +137,7 @@
 		<div class="card dashed"><p class="muted">Nothing waiting here.</p></div>
 	{/if}
 </div>
+{/if}
 
 <style>
 	.tiny { font-size: 17px; padding: 0 8px; }

@@ -161,6 +161,11 @@ func newEnv(t *testing.T) *env {
 		SidekickSecret: sidekickSecret,
 		PublicURL:      "https://crossroads.test",
 	}
+	// Every approved ship goes to the fraud check by default (migration 26).
+	// Most tests are about the other stages, so they start with it off.
+	if _, err := pool.Exec(context.Background(), "update review_settings set fraud_check_everything = false"); err != nil {
+		t.Fatal(err)
+	}
 	r := chi.NewRouter()
 	r.Mount("/api", a.Routes())
 	return &env{pool: pool, queries: db.New(pool), hackatime: fake, verification: verification, router: r, api: a}

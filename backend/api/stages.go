@@ -109,6 +109,11 @@ type decision struct {
 	// approve, reject or send_back. What approving means depends on the
 	// stage: deciding the hours, passing the fraud check, or signing off.
 	Action string `json:"action"`
+	// Rejections: a hard reject, for fraud. The project can't be shipped
+	// again until HQ or an admin allows it (PUT
+	// /review/projects/{id}/resubmit-block). Without it, a rejection is soft:
+	// they change the project and ship it again. Needs internal_notes.
+	BlockResubmit bool `json:"block_resubmit"`
 	// The status the reviewer saw. If the ship has moved on since, the
 	// decision is refused rather than applied to a stage they didn't mean.
 	// Optional.
@@ -159,6 +164,12 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		return out, problem(http.StatusUnprocessableEntity, "stage isn't a status.")
 	case d.Action == "reject" && d.Feedback == "":
 		return out, problem(http.StatusUnprocessableEntity, "Tell them why it was rejected.")
+	case d.BlockResubmit && d.Action != "reject":
+		return out, problem(http.StatusUnprocessableEntity, "Only a rejection can stop a project being shipped again.")
+	case d.BlockResubmit && !perms.FraudReview && !perms.HQReview:
+		return out, problem(http.StatusForbidden, "Only fraud reviewers, HQ and admins can hard reject. Send it to the fraud check instead.")
+	case d.BlockResubmit && d.InternalNotes == "":
+		return out, problem(http.StatusUnprocessableEntity, "Say why it's a hard reject, for HQ and the admins.")
 	case d.Action == "send_back" && d.InternalNotes == "":
 		return out, problem(http.StatusUnprocessableEntity, "Say why you're sending it back, for the reviewer who picks it up.")
 	case d.Action != "approve" && d.ApprovedSeconds != nil:
@@ -259,6 +270,12 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 			s.HqReviewerID, s.HqReviewedAt = &reviewer.ID, &now
 		}
 		s.Status, s.ApprovedSeconds, s.Feedback = db.SubmissionStatusRejected, nil, nonEmpty(d.Feedback)
+		if d.BlockResubmit {
+			event.BlocksResubmit = true
+			if err := q.BlockResubmit(ctx, db.BlockResubmitParams{ID: s.ProjectID, ResubmitBlockedBy: &reviewer.ID, ResubmitBlockReason: &d.InternalNotes}); err != nil {
+				return out, err
+			}
+		}
 
 	case d.Action == "send_back":
 		if s.Status == db.SubmissionStatusPending {

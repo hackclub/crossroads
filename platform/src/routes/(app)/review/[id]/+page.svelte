@@ -9,7 +9,8 @@
 	import { api, get } from '#lib/api.js';
 	import { session, isAdmin } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
-	import { STAGES, canDecideStage, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, time, toSeconds, toHours, fromHours } from '#lib/review.js';
+	import { STAGES, canDecideStage, canHardReject, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, eventLabel, time, toSeconds, toHours, fromHours } from '#lib/review.js';
+	import RejectionControls from '#lib/review/RejectionControls.svelte';
 	import GitHubPanel from '#lib/review/GitHubPanel.svelte';
 	import HackatimePanel from '#lib/review/HackatimePanel.svelte';
 
@@ -49,7 +50,7 @@
 	const shipEvents = $derived.by(() => {
 		if (!d) return [];
 		const evs = d.events.filter((e) => e.submission_id === sub.id);
-		const lastBack = evs.findLastIndex((e) => e.kind === 'sent_back');
+		const lastBack = evs.findLastIndex((e) => e.kind === 'sent_back' || e.kind === 'reopened');
 		return evs.slice(lastBack + 1);
 	});
 	const approval = $derived(shipEvents.findLast((e) => e.kind === 'approval'));
@@ -191,7 +192,9 @@
 	async function decide(e) {
 		e.preventDefault();
 		formError = '';
-		const body = { action, stage: sub.status, feedback: feedback || undefined, internal_notes: notes || undefined };
+		// A hard reject is a rejection that stops the project being shipped again.
+		const body = { action: action === 'hard_reject' ? 'reject' : action, stage: sub.status, feedback: feedback || undefined, internal_notes: notes || undefined };
+		if (action === 'hard_reject') body.block_resubmit = true;
 		if (action === 'approve') {
 			const asked = askedSeconds;
 			if (!overriding && asked > maxSeconds) {
@@ -474,7 +477,7 @@
 										<li class:internal={hidden} class:other={ev.submission_id !== sub.id}>
 											<div class="row between small">
 												<span>
-													{#if ev.kind === 'flagged'}<strong>{EVENT_LABELS.flagged}</strong>{:else}<strong>{ev.actor?.name ?? 'Someone'}</strong> {EVENT_LABELS[ev.kind] ?? ev.kind}{/if}
+													{#if ev.kind === 'flagged'}<strong>{EVENT_LABELS.flagged}</strong>{:else}<strong>{ev.actor?.name ?? 'Someone'}</strong> {eventLabel(ev)}{/if}
 													{#if ev.seconds != null} · {hours(ev.seconds)}{/if}
 													<span class="muted"> · ship #{ev.submission_id}</span>
 												</span>
@@ -595,9 +598,15 @@
 								{/if}
 								<div class="row actions">
 									<label class="check"><input type="radio" bind:group={action} value="approve" /> {approveWord}</label>
-									<label class="check"><input type="radio" bind:group={action} value="reject" /> Reject</label>
-									{#if stage !== 'review'}<label class="check"><input type="radio" bind:group={action} value="send_back" /> Send back</label>{/if}
+									<label class="check" title="They can change the project and ship it again."><input type="radio" bind:group={action} value="reject" /> Soft reject</label>
+									{#if canHardReject(session.me)}<label class="check" title="For fraud: the project can't be shipped again unless HQ or an admin allows it."><input type="radio" bind:group={action} value="hard_reject" /> Hard reject</label>{/if}
+									{#if stage !== 'review'}<label class="check" title="Back to the first stage, for another reviewer."><input type="radio" bind:group={action} value="send_back" /> Back to review</label>{/if}
 								</div>
+								{#if action === 'reject'}
+									<p class="small muted">They can change the project and ship it again.</p>
+								{:else if action === 'hard_reject'}
+									<p class="small muted">For fraud. The project can't be shipped again unless HQ or an admin allows it.</p>
+								{/if}
 								{#if action === 'approve'}
 									<label class="field">
 										<span>Hours</span>
@@ -634,10 +643,10 @@
 									</label>
 								{/if}
 								<label class="field grow">
-									<span>{action === 'send_back' ? 'Why, for the reviewer who picks it up' : stage === 'review' ? 'Additional justification' : 'Notes'}</span>
-									<textarea bind:value={notes} required={action === 'send_back'} placeholder={stage === 'review' && action === 'approve' ? 'What you checked: you ran it, the commits match the time, the demo works.' : ''}></textarea>
+									<span>{action === 'send_back' ? 'Why, for the reviewer who picks it up' : action === 'hard_reject' ? 'Why, for HQ and the admins' : stage === 'review' ? 'Additional justification' : 'Notes'}</span>
+									<textarea bind:value={notes} required={action === 'send_back' || action === 'hard_reject'} placeholder={stage === 'review' && action === 'approve' ? 'What you checked: you ran it, the commits match the time, the demo works.' : ''}></textarea>
 									<small>
-										{action === 'send_back' ? 'Required. ' : 'Reviewers only. '}{stage === 'review' && action === 'approve' ? 'Goes to the Unified YSWS DB.' : ''}
+										{action === 'send_back' || action === 'hard_reject' ? 'Required. ' : 'Reviewers only. '}{stage === 'review' && action === 'approve' ? 'Goes to the Unified YSWS DB.' : ''}
 									</small>
 								</label>
 								{#if action !== 'send_back'}
@@ -649,14 +658,14 @@
 												{#each templates as t}<option value={t.id}>{t.title}</option>{/each}
 											</select>
 										{/if}
-										<textarea bind:value={feedback} required={action === 'reject'}></textarea>
-										<small>{action === 'reject' ? 'Required. ' : 'Optional. '}They see this on their project page.</small>
+										<textarea bind:value={feedback} required={action === 'reject' || action === 'hard_reject'}></textarea>
+										<small>{action === 'reject' || action === 'hard_reject' ? 'Required. ' : 'Optional. '}They see this on their project page.</small>
 									</label>
 								{/if}
 								{#if formError}<p class="callout warn small">{formError}</p>{/if}
 								{#if action === 'approve'}<p class="small muted next">{whatNext}</p>{/if}
 								<button class="btn primary submit" disabled={busy}>
-									{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Reject' : 'Send back'}
+									{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Soft reject' : action === 'hard_reject' ? 'Hard reject' : 'Back to review'}
 								</button>
 							</div>
 						</div>
@@ -666,6 +675,9 @@
 					<p class="callout info small">{d.cant_decide_reason}</p>
 				{:else if !result}
 					<p class="callout info small">This ship has been decided: {STATUS_LABELS[sub.status] ?? sub.status}{sub.approved_seconds != null ? `, ${hours(sub.approved_seconds)}` : ''}.</p>
+				{/if}
+				{#if sub.status === 'rejected'}
+					<RejectionControls submissionId={sub.id} projectId={d.project.id} block={d.resubmit_block} mine={d.user.id === session.me.id} onchange={load} />
 				{/if}
 			</aside>
 		</div>

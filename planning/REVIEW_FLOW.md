@@ -36,6 +36,8 @@ A reviewer who can also sign off (an admin, or someone with `can_hq_review`) ski
 | Justification (later stages: notes) | everyone | to send back | the justification (the first reviewer's) |
 | Feedback for them | everyone | to reject | the participant's project page only |
 
+**Soft and hard rejects.** A soft reject is a plain rejection: the ship's time goes back to them, and they change the project and ship it again. A hard reject (`block_resubmit`, for fraud) also stops the project being shipped again, and its Hackatime projects can't be unlinked, so the time can't move to another project. Only the fraud check, HQ and admins can hard reject, and they have to say why (internal notes). Both are one `rejection` event, so each counts as one review. HQ and admins see every rejection on /review → Rejected, and admins on Admin → Can't ship again. They can make a soft reject hard or let a project be shipped again (`PUT /api/review/projects/{id}/resubmit-block`), or undo a rejection (`POST /api/review/submissions/{id}/reopen`, with a reason). Undoing puts the ship back in the review queue as if just shipped and lets the project be shipped again. It's a `reopened` event, which isn't a review and isn't paid. It's refused once the project has been shipped again. Everyone who reviews can see the ships they decided on /review → Past reviews; HQ and admins can see everyone's.
+
 **Sent back** clears every decision on the ship and puts it back in the review queue. The timeline keeps the old approval, and the person sending it back has to say why.
 
 Participants see three states: **In review** (`pending`), **Approved, final check** (`fraud_check` or `awaiting_hq`: a reviewer approved it and it's waiting to be signed off), and **Approved** or **Rejected**. They aren't told when a ship is at the fraud check. They see the feedback on each decision and any comment a reviewer marks for them.
@@ -52,7 +54,7 @@ When the first reviewer approves, any of these sends it to `fraud_check`:
 | `large_ship` | It claims more than the large-ship limit (default 20h) |
 | `long_day` | The project had a UTC day over the long-day limit (default 14h) since its last approved ship |
 | `manual` | The reviewer ticked "send to the fraud check" |
-| `everything` | An admin turned on "send every ship through the fraud check" |
+| `everything` | "Send every ship through the fraud check", on by default since Nov 17; admins can turn it off in Review settings |
 
 | `unified_double_dip` | The repo or demo is already in the Unified YSWS DB from another program (needs `UNIFIED_AIRTABLE_TOKEN`; Sidekick's AT1) |
 

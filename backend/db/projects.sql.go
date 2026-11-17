@@ -9,10 +9,55 @@ import (
 	"context"
 )
 
+const allowResubmit = `-- name: AllowResubmit :one
+update projects
+set resubmit_blocked_at = null, resubmit_blocked_by = null, resubmit_block_reason = null
+where id = $1 and resubmit_blocked_at is not null
+returning id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason
+`
+
+func (q *Queries) AllowResubmit(ctx context.Context, id int64) (Project, error) {
+	row := q.db.QueryRow(ctx, allowResubmit, id)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Description,
+		&i.RepoUrl,
+		&i.DemoUrl,
+		&i.ScreenshotUrl,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ResubmitBlockedAt,
+		&i.ResubmitBlockedBy,
+		&i.ResubmitBlockReason,
+	)
+	return i, err
+}
+
+const blockResubmit = `-- name: BlockResubmit :exec
+update projects
+set resubmit_blocked_at = now(), resubmit_blocked_by = $2, resubmit_block_reason = $3
+where id = $1
+`
+
+type BlockResubmitParams struct {
+	ID                  int64
+	ResubmitBlockedBy   *int64
+	ResubmitBlockReason *string
+}
+
+// A hard reject: the project can't be shipped again until an admin allows it.
+func (q *Queries) BlockResubmit(ctx context.Context, arg BlockResubmitParams) error {
+	_, err := q.db.Exec(ctx, blockResubmit, arg.ID, arg.ResubmitBlockedBy, arg.ResubmitBlockReason)
+	return err
+}
+
 const createProject = `-- name: CreateProject :one
 insert into projects (user_id, name, description, repo_url, demo_url, screenshot_url)
 values ($1, $2, $3, $4, $5, $6)
-returning id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at
+returning id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason
 `
 
 type CreateProjectParams struct {
@@ -44,6 +89,9 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.ScreenshotUrl,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ResubmitBlockedAt,
+		&i.ResubmitBlockedBy,
+		&i.ResubmitBlockReason,
 	)
 	return i, err
 }
@@ -62,8 +110,33 @@ func (q *Queries) DeleteProject(ctx context.Context, arg DeleteProjectParams) er
 	return err
 }
 
+const getAnyProject = `-- name: GetAnyProject :one
+select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason from projects where id = $1
+`
+
+// A project by ID, whoever owns it, for HQ and admins.
+func (q *Queries) GetAnyProject(ctx context.Context, id int64) (Project, error) {
+	row := q.db.QueryRow(ctx, getAnyProject, id)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Description,
+		&i.RepoUrl,
+		&i.DemoUrl,
+		&i.ScreenshotUrl,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ResubmitBlockedAt,
+		&i.ResubmitBlockedBy,
+		&i.ResubmitBlockReason,
+	)
+	return i, err
+}
+
 const getProject = `-- name: GetProject :one
-select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at from projects where id = $1 and user_id = $2
+select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason from projects where id = $1 and user_id = $2
 `
 
 type GetProjectParams struct {
@@ -84,6 +157,9 @@ func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (Project
 		&i.ScreenshotUrl,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ResubmitBlockedAt,
+		&i.ResubmitBlockedBy,
+		&i.ResubmitBlockReason,
 	)
 	return i, err
 }
@@ -152,7 +228,7 @@ func (q *Queries) ListProjectHackatimeLinks(ctx context.Context, projectID int64
 }
 
 const listProjects = `-- name: ListProjects :many
-select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at from projects where user_id = $1 order by id desc
+select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason from projects where user_id = $1 order by id desc
 `
 
 func (q *Queries) ListProjects(ctx context.Context, userID int64) ([]Project, error) {
@@ -174,6 +250,9 @@ func (q *Queries) ListProjects(ctx context.Context, userID int64) ([]Project, er
 			&i.ScreenshotUrl,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ResubmitBlockedAt,
+			&i.ResubmitBlockedBy,
+			&i.ResubmitBlockReason,
 		); err != nil {
 			return nil, err
 		}
@@ -186,7 +265,7 @@ func (q *Queries) ListProjects(ctx context.Context, userID int64) ([]Project, er
 }
 
 const lockProject = `-- name: LockProject :one
-select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at from projects where id = $1 and user_id = $2 for update
+select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason from projects where id = $1 and user_id = $2 for update
 `
 
 type LockProjectParams struct {
@@ -207,6 +286,9 @@ func (q *Queries) LockProject(ctx context.Context, arg LockProjectParams) (Proje
 		&i.ScreenshotUrl,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ResubmitBlockedAt,
+		&i.ResubmitBlockedBy,
+		&i.ResubmitBlockReason,
 	)
 	return i, err
 }
@@ -228,7 +310,7 @@ func (q *Queries) UnlinkHackatimeProject(ctx context.Context, arg UnlinkHackatim
 const updateProject = `-- name: UpdateProject :one
 update projects set name = $3, description = $4, repo_url = $5, demo_url = $6, screenshot_url = $7
 where id = $1 and user_id = $2
-returning id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at
+returning id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason
 `
 
 type UpdateProjectParams struct {
@@ -262,6 +344,9 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.ScreenshotUrl,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ResubmitBlockedAt,
+		&i.ResubmitBlockedBy,
+		&i.ResubmitBlockReason,
 	)
 	return i, err
 }
