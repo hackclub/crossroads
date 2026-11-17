@@ -11,6 +11,7 @@
 	import ReviewSettings from '#lib/admin/ReviewSettings.svelte';
 	import ReviewerStats from '#lib/admin/ReviewerStats.svelte';
 	import AuditLog from '#lib/admin/AuditLog.svelte';
+	import Announce from '#lib/admin/Announce.svelte';
 	import { isSuperadmin } from '#lib/session.svelte.js';
 
 	const tabs = $derived({
@@ -23,8 +24,8 @@
 		stamps: ['Special stamp types', StampTypes],
 		boxes: ['Box types', BoxTypes],
 		milestones: ['Milestones', Milestones],
-		// Only superadmins can read it; the backend checks too.
-		...(isSuperadmin() ? { audit: ['Audit log', AuditLog] } : {})
+		// Only superadmins can use these; the backend checks too.
+		...(isSuperadmin() ? { announce: ['Announce', Announce], audit: ['Audit log', AuditLog] } : {})
 	});
 	const tab = $derived(tabs[page.url.searchParams.get('tab')] ? page.url.searchParams.get('tab') : 'people');
 	const Current = $derived(tabs[tab][1]);
