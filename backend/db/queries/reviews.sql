@@ -1,3 +1,42 @@
+-- name: ListPastReviews :many
+-- Ships that have been decided (approved or rejected), the latest decided
+-- first. With decided_by, only ships that person made a decision on; with
+-- status, only ships with that status.
+select
+    submissions.id,
+    submissions.project_id,
+    submissions.status,
+    submissions.new_seconds,
+    submissions.approved_seconds,
+    submissions.submitted_at,
+    coalesce(submissions.hq_reviewed_at, submissions.fraud_reviewed_at, submissions.reviewed_at)::timestamptz as decided_at,
+    submissions.feedback,
+    projects.name as project_name,
+    (projects.resubmit_blocked_at is not null)::boolean as resubmit_blocked,
+    users.id as user_id,
+    users.name as user_name,
+    coalesce(decider.name, '')::text as decided_by_name,
+    exists (
+        select 1 from submissions newer
+        where newer.project_id = submissions.project_id and newer.id > submissions.id
+    ) as shipped_again
+from submissions
+join projects on projects.id = submissions.project_id
+join users on users.id = projects.user_id
+left join users decider on decider.id = coalesce(submissions.hq_reviewer_id, submissions.fraud_reviewer_id, submissions.reviewer_id)
+where submissions.status in ('approved', 'rejected')
+    and (sqlc.narg(status)::submission_status is null or submissions.status = sqlc.narg(status))
+    and (sqlc.narg(decided_by)::bigint is null or exists (
+        select 1 from ship_events d
+        where d.submission_id = submissions.id and d.actor_id = sqlc.narg(decided_by)
+            and d.kind in ('approval', 'rejection', 'fraud_pass', 'final_approval', 'sent_back')
+    ))
+order by decided_at desc, submissions.id desc
+limit sqlc.arg(max_rows);
+
+-- name: NewerSubmissionExists :one
+select exists (select 1 from submissions where project_id = $1 and id > $2);
+
 -- name: ListReviewQueue :many
 -- Ships at one stage, priority review first, then oldest first. Claims are
 -- returned as they are; expired ones are ignored in Go.
@@ -167,8 +206,8 @@ where project_id = $1 and day >= sqlc.arg(since)::date
 order by day;
 
 -- name: AddShipEvent :one
-insert into ship_events (submission_id, kind, actor_id, stage, seconds, message, internal, deflation_reason)
-values ($1, $2, $3, $4, $5, $6, $7, $8)
+insert into ship_events (submission_id, kind, actor_id, stage, seconds, message, internal, deflation_reason, blocks_resubmit)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 returning *;
 
 -- name: ListProjectShipEvents :many

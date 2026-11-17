@@ -21,16 +21,19 @@ import (
 )
 
 type projectJSON struct {
-	ID                int64     `json:"id"`
-	Name              string    `json:"name"`
-	Description       string    `json:"description"`
-	RepoURL           *string   `json:"repo_url"`
-	DemoURL           *string   `json:"demo_url"`
-	ScreenshotURL     *string   `json:"screenshot_url"`
-	HackatimeProjects []string  `json:"hackatime_projects"`
-	ApprovedSeconds   int       `json:"approved_seconds"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                int64    `json:"id"`
+	Name              string   `json:"name"`
+	Description       string   `json:"description"`
+	RepoURL           *string  `json:"repo_url"`
+	DemoURL           *string  `json:"demo_url"`
+	ScreenshotURL     *string  `json:"screenshot_url"`
+	HackatimeProjects []string `json:"hackatime_projects"`
+	ApprovedSeconds   int      `json:"approved_seconds"`
+	// A hard reject stopped it being shipped again, until HQ or an admin
+	// allows it.
+	ResubmitBlocked bool      `json:"resubmit_blocked"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 
 	// Only on GET /projects/{id}, fresh from Hackatime. If Hackatime couldn't
 	// be asked, HackatimeError says why instead.
@@ -114,6 +117,7 @@ func toProjectJSON(project db.Project, links []string, submissions []db.Submissi
 		HackatimeProjects: links,
 		CreatedAt:         project.CreatedAt,
 		UpdatedAt:         project.UpdatedAt,
+		ResubmitBlocked:   project.ResubmitBlockedAt != nil,
 		Submissions:       []submissionJSON{},
 	}
 	if p.HackatimeProjects == nil {
@@ -186,6 +190,14 @@ func linkNames(links []db.ProjectHackatimeProject) []string {
 }
 
 // hasPending says whether a project has a ship in review, at any stage.
+// sameNames says whether a and b hold the same names, in any order.
+func sameNames(a, b []string) bool {
+	a, b = slices.Clone(a), slices.Clone(b)
+	slices.Sort(a)
+	slices.Sort(b)
+	return slices.Equal(slices.Compact(a), slices.Compact(b))
+}
+
 func hasPending(submissions []db.Submission) bool {
 	return slices.ContainsFunc(submissions, func(s db.Submission) bool {
 		return inReview(s.Status)
@@ -529,6 +541,19 @@ func (a *API) updateProject(w http.ResponseWriter, r *http.Request) {
 			respond.Error(w, http.StatusUnprocessableEntity, problem)
 			return
 		}
+		// A hard-rejected project keeps its Hackatime projects, so their time
+		// can't be shipped again on another project.
+		if project.ResubmitBlockedAt != nil {
+			have, err := q.ListProjectHackatimeLinks(r.Context(), project.ID)
+			if err != nil {
+				respond.ServerError(w, r, err)
+				return
+			}
+			if !sameNames(have, links) {
+				respond.Error(w, http.StatusConflict, "This project was rejected and can't be shipped again, so its Hackatime projects can't change.")
+				return
+			}
+		}
 		_, paid := accountedFor(submissions)
 		if problem, err := setHackatimeLinks(r.Context(), q, project, links, paid); err != nil {
 			respond.ServerError(w, r, err)
@@ -678,13 +703,17 @@ func (a *API) submit(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
-	_, err = q.LockProject(r.Context(), db.LockProjectParams{ID: project.ID, UserID: user.ID})
+	project, err = q.LockProject(r.Context(), db.LockProjectParams{ID: project.ID, UserID: user.ID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		respond.Error(w, http.StatusNotFound, "That project doesn't exist.")
 		return
 	}
 	if err != nil {
 		respond.ServerError(w, r, err)
+		return
+	}
+	if project.ResubmitBlockedAt != nil {
+		respond.Error(w, http.StatusForbidden, "This project was rejected and can't be shipped again. If you think that's a mistake, ask an organizer.")
 		return
 	}
 	lockedLinks, err := q.ListHackatimeLinks(r.Context(), user.ID)

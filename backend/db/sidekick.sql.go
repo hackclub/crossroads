@@ -10,7 +10,7 @@ import (
 )
 
 const getProjectWithOwner = `-- name: GetProjectWithOwner :one
-select projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized
+select projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, projects.resubmit_blocked_at, projects.resubmit_blocked_by, projects.resubmit_block_reason, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized
 from projects
 join users on users.id = projects.user_id
 where projects.id = $1
@@ -34,6 +34,9 @@ func (q *Queries) GetProjectWithOwner(ctx context.Context, id int64) (GetProject
 		&i.Project.ScreenshotUrl,
 		&i.Project.CreatedAt,
 		&i.Project.UpdatedAt,
+		&i.Project.ResubmitBlockedAt,
+		&i.Project.ResubmitBlockedBy,
+		&i.Project.ResubmitBlockReason,
 		&i.User.ID,
 		&i.User.HcaID,
 		&i.User.SlackID,
@@ -95,7 +98,7 @@ func (q *Queries) ListHackatimeLinksForProjects(ctx context.Context, projectIds 
 
 const listProjectsForSidekick = `-- name: ListProjectsForSidekick :many
 
-select projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized, count(*) over () as total
+select projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, projects.resubmit_blocked_at, projects.resubmit_blocked_by, projects.resubmit_block_reason, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized, count(*) over () as total
 from projects
 join users on users.id = projects.user_id
 where exists (
@@ -151,6 +154,9 @@ func (q *Queries) ListProjectsForSidekick(ctx context.Context, arg ListProjectsF
 			&i.Project.ScreenshotUrl,
 			&i.Project.CreatedAt,
 			&i.Project.UpdatedAt,
+			&i.Project.ResubmitBlockedAt,
+			&i.Project.ResubmitBlockedBy,
+			&i.Project.ResubmitBlockReason,
 			&i.User.ID,
 			&i.User.HcaID,
 			&i.User.SlackID,
@@ -188,7 +194,7 @@ func (q *Queries) ListProjectsForSidekick(ctx context.Context, arg ListProjectsF
 }
 
 const listProjectsWithOwnerByUser = `-- name: ListProjectsWithOwnerByUser :many
-select projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized
+select projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, projects.resubmit_blocked_at, projects.resubmit_blocked_by, projects.resubmit_block_reason, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized
 from projects
 join users on users.id = projects.user_id
 where projects.user_id = $1 and projects.id <> $2
@@ -225,6 +231,9 @@ func (q *Queries) ListProjectsWithOwnerByUser(ctx context.Context, arg ListProje
 			&i.Project.ScreenshotUrl,
 			&i.Project.CreatedAt,
 			&i.Project.UpdatedAt,
+			&i.Project.ResubmitBlockedAt,
+			&i.Project.ResubmitBlockedBy,
+			&i.Project.ResubmitBlockReason,
 			&i.User.ID,
 			&i.User.HcaID,
 			&i.User.SlackID,

@@ -31,3 +31,19 @@ insert into project_hackatime_projects (user_id, hackatime_project, project_id) 
 
 -- name: UnlinkHackatimeProject :exec
 delete from project_hackatime_projects where user_id = $1 and hackatime_project = $2;
+
+-- name: BlockResubmit :exec
+-- A hard reject: the project can't be shipped again until an admin allows it.
+update projects
+set resubmit_blocked_at = now(), resubmit_blocked_by = $2, resubmit_block_reason = $3
+where id = $1;
+
+-- name: AllowResubmit :one
+update projects
+set resubmit_blocked_at = null, resubmit_blocked_by = null, resubmit_block_reason = null
+where id = $1 and resubmit_blocked_at is not null
+returning *;
+
+-- name: GetAnyProject :one
+-- A project by ID, whoever owns it, for HQ and admins.
+select * from projects where id = $1;

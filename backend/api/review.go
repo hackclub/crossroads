@@ -344,9 +344,11 @@ type shipEventJSON struct {
 	Message      *string     `json:"message"`  // what the participant sees
 	Internal     *string     `json:"internal"` // reviewers only
 	// Why this approval was lower than what came in, if it was.
-	DeflationReason *string    `json:"deflation_reason"`
-	CreatedAt       time.Time  `json:"created_at"`
-	EditedAt        *time.Time `json:"edited_at"`
+	DeflationReason *string `json:"deflation_reason"`
+	// A hard reject: the project can't be shipped again.
+	BlocksResubmit bool       `json:"blocks_resubmit"`
+	CreatedAt      time.Time  `json:"created_at"`
+	EditedAt       *time.Time `json:"edited_at"`
 }
 
 func toShipEventJSON(row db.ListProjectShipEventsRow) shipEventJSON {
@@ -354,7 +356,7 @@ func toShipEventJSON(row db.ListProjectShipEventsRow) shipEventJSON {
 	out := shipEventJSON{
 		ID: e.ID, SubmissionID: e.SubmissionID, Kind: string(e.Kind), Stage: string(e.Stage),
 		Seconds: e.Seconds, Message: e.Message, Internal: e.Internal, DeflationReason: e.DeflationReason,
-		CreatedAt: e.CreatedAt, EditedAt: e.EditedAt,
+		BlocksResubmit: e.BlocksResubmit, CreatedAt: e.CreatedAt, EditedAt: e.EditedAt,
 	}
 	if e.ActorID != nil {
 		out.Actor = &personJSON{ID: *e.ActorID, Name: *row.ActorName}
@@ -429,6 +431,11 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		claim = activeClaim(s.ClaimedBy, s.ClaimExpiresAt, holder.Name)
 	}
 
+	block, err := a.resubmitBlock(r, row.Project)
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
 	// Whether the viewer can decide it right now, and if not, why.
 	var cantDecide string
 	switch {
@@ -443,12 +450,15 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond.JSON(w, http.StatusOK, struct {
-		Submission submissionJSON  `json:"submission"`
-		Stage      string          `json:"stage"` // review, fraud or hq; empty once it's decided
-		Project    projectJSON     `json:"project"`
-		User       reviewUserJSON  `json:"user"`
-		Events     []shipEventJSON `json:"events"` // the project's timeline, oldest first
-		Checks     []check         `json:"checks"` // run just now
+		Submission submissionJSON `json:"submission"`
+		Stage      string         `json:"stage"` // review, fraud or hq; empty once it's decided
+		Project    projectJSON    `json:"project"`
+		// Who stopped the project being shipped again (a hard reject), and
+		// why; null when it can be.
+		ResubmitBlock *resubmitBlockJSON `json:"resubmit_block"`
+		User          reviewUserJSON     `json:"user"`
+		Events        []shipEventJSON    `json:"events"` // the project's timeline, oldest first
+		Checks        []check            `json:"checks"` // run just now
 		// Other projects, anyone's, with the same repo or demo link: a sign
 		// of a copied project, or one project split up to be paid twice.
 		ProjectsSharingLinks []sharedLinkProjectJSON `json:"projects_sharing_links"`
@@ -473,9 +483,10 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		CanDecide        bool                `json:"can_decide"`
 		CantDecideReason string              `json:"cant_decide_reason,omitempty"`
 	}{
-		Submission: toReviewerSubmissionJSON(s),
-		Stage:      stageName(s.Status),
-		Project:    project,
+		Submission:    toReviewerSubmissionJSON(s),
+		Stage:         stageName(s.Status),
+		Project:       project,
+		ResubmitBlock: block,
 		User: reviewUserJSON{
 			ID: row.User.ID, Name: row.User.Name, Email: row.User.Email, SlackID: row.User.SlackID,
 			VerificationStatus: row.User.VerificationStatus, YSWSEligible: row.User.YswsEligible, ReviewerNote: row.User.ReviewerNote,

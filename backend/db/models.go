@@ -82,6 +82,7 @@ const (
 	ShipEventKindSentBack        ShipEventKind = "sent_back"
 	ShipEventKindFinalApproval   ShipEventKind = "final_approval"
 	ShipEventKindRejection       ShipEventKind = "rejection"
+	ShipEventKindReopened        ShipEventKind = "reopened"
 )
 
 func (e *ShipEventKind) Scan(src interface{}) error {
@@ -128,7 +129,8 @@ func (e ShipEventKind) Valid() bool {
 		ShipEventKindFraudPass,
 		ShipEventKindSentBack,
 		ShipEventKindFinalApproval,
-		ShipEventKindRejection:
+		ShipEventKindRejection,
+		ShipEventKindReopened:
 		return true
 	}
 	return false
@@ -144,6 +146,7 @@ func AllShipEventKindValues() []ShipEventKind {
 		ShipEventKindSentBack,
 		ShipEventKindFinalApproval,
 		ShipEventKindRejection,
+		ShipEventKindReopened,
 	}
 }
 
@@ -632,15 +635,18 @@ type PlatformActivity struct {
 }
 
 type Project struct {
-	ID            int64
-	UserID        int64
-	Name          string
-	Description   string
-	RepoUrl       *string
-	DemoUrl       *string
-	ScreenshotUrl *string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID                  int64
+	UserID              int64
+	Name                string
+	Description         string
+	RepoUrl             *string
+	DemoUrl             *string
+	ScreenshotUrl       *string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	ResubmitBlockedAt   *time.Time
+	ResubmitBlockedBy   *int64
+	ResubmitBlockReason *string
 }
 
 type ProjectActivity struct {
@@ -697,6 +703,7 @@ type ShipEvent struct {
 	CreatedAt       time.Time
 	EditedAt        *time.Time
 	DeflationReason *string
+	BlocksResubmit  bool
 }
 
 type ShopItem struct {

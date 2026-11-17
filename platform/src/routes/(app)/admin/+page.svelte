@@ -10,6 +10,7 @@
 	import Stats from '#lib/admin/Stats.svelte';
 	import ReviewSettings from '#lib/admin/ReviewSettings.svelte';
 	import ReviewerStats from '#lib/admin/ReviewerStats.svelte';
+	import BlockedProjects from '#lib/admin/BlockedProjects.svelte';
 	import AuditLog from '#lib/admin/AuditLog.svelte';
 	import Announce from '#lib/admin/Announce.svelte';
 	import { isSuperadmin } from '#lib/session.svelte.js';
@@ -18,6 +19,7 @@
 		people: ['People', People],
 		review: ['Review', ReviewSettings],
 		reviewers: ['Reviewer stats', ReviewerStats],
+		blocked: ["Can't ship again", BlockedProjects],
 		stats: ['Stats', Stats],
 		orders: ['Orders', Orders],
 		shop: ['Shop items', ShopItems],
