@@ -5,7 +5,7 @@
 	import { dayColumns } from './days.js';
 	import DayChart from './DayChart.svelte';
 
-	let { hackatime, hackatimeError, submission, earlierSeconds, days, windowStart, reship, checks } = $props();
+	let { hackatime, hackatimeError, submission, earlierSeconds, days, windowStart, reship, checks, telescreenUrl = '' } = $props();
 	const since = $derived(reship ? 'since the last approved ship' : 'since Crossroads started');
 	const columns = $derived(dayColumns(days, windowStart));
 	const busiest = $derived(columns.reduce((b, c) => (c.seconds > (b?.seconds ?? 0) ? c : b), null));
@@ -30,7 +30,10 @@
 		</ul>
 		{#if hackatime?.projects.length}
 			<div class="stack-sm">
-				<h3 class="small">Hackatime projects on this ship</h3>
+				<div class="row between">
+					<h3 class="small">Hackatime projects on this ship</h3>
+					{#if telescreenUrl}<a class="btn small ghost" href={telescreenUrl} target="_blank" rel="noreferrer">Look in Telescreen</a>{/if}
+				</div>
 				<ul class="projects small">
 					{#each hackatime.projects as p (p.name)}
 						<li>

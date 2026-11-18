@@ -63,7 +63,8 @@ type checksDetail struct {
 		Seconds int    `json:"seconds"`
 		Commits int    `json:"commits"`
 	} `json:"days"`
-	TelescreenURL string `json:"telescreen_url"`
+	TelescreenURL          string `json:"telescreen_url"`
+	TelescreenHackatimeURL string `json:"telescreen_hackatime_url"`
 }
 
 func (e *env) checks(t *testing.T, reviewer *db.User, id int64) (checksDetail, map[string]string) {
@@ -183,15 +184,16 @@ func TestFullNameAndUnifiedReadiness(t *testing.T) {
 	}
 }
 
-func TestTelescreenLink(t *testing.T) {
+func TestTelescreenLinks(t *testing.T) {
 	e := newEnv(t)
 	reviewer := e.newReviewer(t)
 	_, ship := e.shipFor(t, "UTELE", 2)
-	if d, _ := e.checks(t, reviewer, ship); d.TelescreenURL != "" {
-		t.Errorf("a Telescreen link without TELESCREEN_PROFILE_URL: %q", d.TelescreenURL)
-	}
-	e.api.TelescreenProfileURL = "https://telescreen.example/people/{slack_id}"
-	if d, _ := e.checks(t, reviewer, ship); d.TelescreenURL != "https://telescreen.example/people/UTELE" {
+	d, _ := e.checks(t, reviewer, ship)
+	if d.TelescreenURL != "https://telescreen.hackclub.com/subjects/UTELE" {
 		t.Errorf("Telescreen link %q", d.TelescreenURL)
+	}
+	// Their time on the ship's Hackatime projects, by Hackatime account number.
+	if want := "https://telescreen.hackclub.com/workbench/hackatime/overview?u=id-UTELE&p=ht-UTELE"; d.TelescreenHackatimeURL != want {
+		t.Errorf("Telescreen Hackatime link %q, want %q", d.TelescreenHackatimeURL, want)
 	}
 }

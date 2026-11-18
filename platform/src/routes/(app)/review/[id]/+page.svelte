@@ -393,8 +393,11 @@
 					<div class="maker small">
 						<strong>{d.user.name}</strong>
 						<span class="muted">{d.user.slack_id ?? 'no Slack'} · {d.user.verification_status}{d.user.ysws_eligible ? ', YSWS-eligible' : ', not YSWS-eligible'}</span>
-						{#if stage === 'fraud' && d.telescreen_url}
-							<a href={d.telescreen_url} target="_blank" rel="noreferrer">Telescreen</a>
+						{#if d.telescreen_url}
+							<a href={d.telescreen_url} target="_blank" rel="noreferrer" title="Their page on Telescreen">Telescreen</a>
+						{/if}
+						{#if d.telescreen_hackatime_url}
+							<a href={d.telescreen_hackatime_url} target="_blank" rel="noreferrer" title="This ship's Hackatime projects in Telescreen">Hackatime in Telescreen</a>
 						{/if}
 						{#if d.user.in_emporium}
 							<span class="badge warn tiny" title={d.user.emporium_note ?? ''}>In the Emporium</span>
@@ -568,7 +571,7 @@
 				{:else}
 					<div class="tab-panel part" role="tabpanel" id="panel-hackatime" aria-labelledby="tab-hackatime">
 						<HackatimePanel hackatime={d.hackatime} hackatimeError={d.hackatime_error} submission={sub} earlierSeconds={p.approved_seconds}
-							days={d.days} windowStart={d.window_start} {reship} checks={d.checks} />
+							days={d.days} windowStart={d.window_start} {reship} checks={d.checks} telescreenUrl={d.telescreen_hackatime_url} />
 					</div>
 				{/if}
 			</div>

@@ -51,6 +51,8 @@ type Stats struct {
 	Projects []Project
 	// Convicted means Hackatime caught them cheating (trust level red).
 	Convicted bool
+	// UserID is their Hackatime account number, which Telescreen links use.
+	UserID string
 }
 
 // Stats returns someone's time since Start, looking them up by Slack ID. If
@@ -67,6 +69,7 @@ func (c *Client) Stats(ctx context.Context, slackID string, projects []string) (
 	var body struct {
 		Data struct {
 			TotalSeconds float64 `json:"total_seconds"`
+			UserID       string  `json:"user_id"`
 			Projects     []struct {
 				Name         string  `json:"name"`
 				TotalSeconds float64 `json:"total_seconds"`
@@ -82,6 +85,7 @@ func (c *Client) Stats(ctx context.Context, slackID string, projects []string) (
 	stats := Stats{
 		Seconds:   int(body.Data.TotalSeconds),
 		Convicted: body.TrustFactor.TrustLevel == "red",
+		UserID:    body.Data.UserID,
 	}
 	for _, p := range body.Data.Projects {
 		stats.Projects = append(stats.Projects, Project{Name: p.Name, Seconds: int(p.TotalSeconds)})

@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -130,6 +131,7 @@ func (f *Fake) stats(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Data struct {
 			TotalSeconds float64   `json:"total_seconds"`
+			UserID       string    `json:"user_id"`
 			Projects     []project `json:"projects"`
 		} `json:"data"`
 		TrustFactor struct {
@@ -138,6 +140,7 @@ func (f *Fake) stats(w http.ResponseWriter, r *http.Request) {
 	}
 	body.Data.TotalSeconds = float64(total)
 	body.Data.Projects = list
+	body.Data.UserID = fakeUserID(slackID)
 	body.TrustFactor.TrustLevel = "green"
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(body)
@@ -225,4 +228,14 @@ func (f *Fake) add(w http.ResponseWriter, r *http.Request) {
 	f.save()
 	f.mu.Unlock()
 	f.mine(w, r)
+}
+
+// fakeUserID makes up a Hackatime account number for a Slack ID, the same
+// one every time, so dev Telescreen links have something in them.
+func fakeUserID(slackID string) string {
+	n := 0
+	for _, c := range slackID {
+		n = (n*31 + int(c)) % 90000
+	}
+	return strconv.Itoa(10000 + n)
 }

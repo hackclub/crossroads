@@ -44,9 +44,6 @@ type API struct {
 	GitHub  *github.Client
 	Links   linkcheck.Checker
 	Unified unified.Lookup // reads the Unified YSWS DB; nil when no token is set
-	// A person's Telescreen profile, with {slack_id} for their Slack ID, shown
-	// to fraud reviewers. Empty hides the link.
-	TelescreenProfileURL string
 	// Announcements (announcements.go) post to AnnounceChannel with the Slack
 	// app's bot. A nil Slack still lets superadmins write drafts.
 	Slack           *slack.Client

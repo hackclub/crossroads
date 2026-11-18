@@ -41,10 +41,13 @@ type checkReport struct {
 	Checks         []check
 	Hackatime      *reviewHackatimeJSON
 	HackatimeError string
-	SharedLinks    []sharedLinkProjectJSON
-	GitHub         *github.Report
-	GitHubError    string
-	Unified        []unified.Record // this project's links in the Unified YSWS DB, from other programs
+	// Their Hackatime account number, for Telescreen links; empty when
+	// Hackatime couldn't be asked.
+	HackatimeUserID string
+	SharedLinks     []sharedLinkProjectJSON
+	GitHub          *github.Report
+	GitHubError     string
+	Unified         []unified.Record // this project's links in the Unified YSWS DB, from other programs
 	// Hackatime's time and GitHub's commits per day (UTC) since the window
 	// started. Daily totals only: reviewers never see heartbeats.
 	Days        []dayJSON
@@ -177,6 +180,7 @@ func (a *API) runChecks(ctx context.Context, row db.GetSubmissionForReviewRow, s
 		report.HackatimeError = statsErr.Error()
 	default:
 		report.Hackatime = &reviewHackatimeJSON{Seconds: stats.Seconds, Projects: []hackatimeProjectJSON{}, Convicted: stats.Convicted}
+		report.HackatimeUserID = stats.UserID
 		for _, p := range stats.Projects {
 			report.Hackatime.Projects = append(report.Hackatime.Projects, hackatimeProjectJSON{Name: p.Name, Seconds: p.Seconds})
 		}

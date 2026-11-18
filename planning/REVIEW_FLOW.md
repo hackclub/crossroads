@@ -82,7 +82,7 @@ Besides the checks, the review page shows:
 
 - **Code**: the repo on GitHub (language, created, last push, all-time commits), and for this ship (since the last approved ship, or the event's start, until it shipped) the commits, lines added and removed, who made them, and each commit with a link to it. Line counts need `GH_PROXY_API_KEY` (gh-proxy.hackclub.com) or `GITHUB_TOKEN` and cover the newest 60 commits.
 - **Hackatime hours and commits per day** over the same window, as two small charts with a table view. Daily totals only: **reviewers never see heartbeats**.
-- On the fraud check, a link to the person's **Telescreen** profile, when `TELESCREEN_PROFILE_URL` is set.
+- **Telescreen** links at every stage: next to the person's name, their page (`/subjects/{slack_id}`) and their time on this ship's Hackatime projects (`/workbench/hackatime/overview?u={hackatime user id}&p=a,b,c`, like Ari's "Audit in Telescreen"), which is also on the Hackatime tab. The Hackatime user id comes from Hackatime's stats (`data.user_id`), so that link is missing when Hackatime couldn't be asked.
 
 GitHub answers are cached for 10 minutes and link checks for 5, so opening a ship and then approving it doesn't ask twice.
 
@@ -159,7 +159,6 @@ Not supported: rewarded hours overrides (refused with 400), and the shop and ful
 
 - **A repo has to be on GitHub to go to the Unified YSWS DB automatically**, because the DB asks for a GitHub username. Projects on GitLab or Codeberg wait for a person. Drop that line from `unified.Missing` if the DB takes them without one.
 - **Broken links and missing READMEs don't send ships to the fraud check**; they're for the reviewer. To make one a fraud signal, set `Fraud: true` on it in `api/checks.go`.
-- **The Telescreen link format** is a guess until someone sets `TELESCREEN_PROFILE_URL` to the real one.
 
 - **HQ reviewers skip HQ sign-off on unflagged ships.** That matches Sidekick's `isHq`. If every ship should get a second person, change the `perms.HQReview` case in `decide` to always go to `awaiting_hq`.
 - **Hackatime being down sends ships to the fraud check.** That's the safe choice, but an outage during a busy day fills the fraud queue.
