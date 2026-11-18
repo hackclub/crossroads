@@ -86,6 +86,17 @@ Besides the checks, the review page shows:
 
 GitHub answers are cached for 10 minutes and link checks for 5, so opening a ship and then approving it doesn't ask twice.
 
+## AI pre-reviews
+
+Like Ari's Jame Gam pre-reviews, but nothing runs Claude on a server (`backend/api/prereview.go`). Claude writes, for each ship in review: what it is, how big, what it does, how AI-written the code and README look (none, low, medium or high, with evidence), the README and the demo link in a line each, who made what, and up to five things worth knowing. It never suggests hours or a decision. Reviewers see it in the ship's **AI pre-review** tab.
+
+Two ways to make them, from the **AI pre-reviews** tab on the Review page (anyone with a review permission):
+
+- **Copy and paste.** "Copy the prompt" copies one prompt: the instructions, then every ship without a pre-review (up to 5, 10 or 20, oldest first) with its description, README, commits, Hackatime time and the checks that didn't pass. Give it to your own Claude (claude.ai with web search can also open the repos and demos), paste the whole answer back, and save. The site finds the JSON in it and saves each ship's on its own, saying why any were refused.
+- **The laptop script**, `scripts/prereview.mjs`, with Claude Code signed in. It clones each repo and runs `claude -p` in it, read-only, so Claude reads the actual code and git history. "Download the ships" gives it a batch file; its answer file goes in the same paste box. With `PREREVIEW_TOKEN` set on the server, `PREREVIEW_TOKEN=… node scripts/prereview.mjs --base <site>` fetches and uploads by itself.
+
+A ship has one pre-review; a newer one replaces it ("Redo ones that have one"). Pre-reviews write no ship events, so **they're never paid**, and they're only taken for ships still in review. What the maker wrote is in the prompt, so the prompt tells Claude it's data, not instructions; still, a pre-review can be wrong or steered, and the tab says to check what matters.
+
 Admins change the toggle and both limits on the admin page (Review tab), or with `PATCH /api/admin/review-settings`. Changes apply to approvals from then on; ships already past the first stage stay where they are.
 
 ## Who can do what

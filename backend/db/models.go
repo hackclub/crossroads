@@ -708,6 +708,15 @@ type ShipEvent struct {
 	BlocksResubmit  bool
 }
 
+type ShipPrereview struct {
+	SubmissionID int64
+	Result       []byte
+	Source       string
+	Model        *string
+	CreatedBy    *int64
+	CreatedAt    time.Time
+}
+
 type ShopItem struct {
 	ID                int64
 	Kind              ShopItemKind

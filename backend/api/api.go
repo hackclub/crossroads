@@ -39,6 +39,9 @@ type API struct {
 	// turns the endpoint off.
 	SidekickSecret string
 	PublicURL      string // the site, for links Sidekick shows reviewers
+	// The token scripts/prereview.mjs sends to /api/prereviews (prereview.go).
+	// Empty turns those off; reviewers can still use the script signed in.
+	PrereviewToken string
 	// For the review checks (checks.go). Any of them can be nil, and the
 	// checks that need it say they couldn't run.
 	GitHub  *github.Client
@@ -55,6 +58,10 @@ func (a *API) Routes() chi.Router {
 	// Sidekick signs its requests with a shared secret instead of a session.
 	if a.SidekickSecret != "" {
 		r.Post("/sidekick", a.sidekick)
+	}
+	if a.PrereviewToken != "" {
+		r.With(a.prereviewToken).Get("/prereviews", a.prereviewBatch)
+		r.With(a.prereviewToken).Post("/prereviews", a.savePrereviews)
 	}
 	r.Group(func(r chi.Router) { a.signedInRoutes(r) })
 	return r
@@ -105,6 +112,9 @@ func (a *API) signedInRoutes(r chi.Router) {
 			r.Post("/reopen", a.reopenSubmission)
 		})
 		r.Get("/past", a.pastReviews)
+		r.Get("/prereviews/prompt", a.prereviewPrompt)
+		r.Get("/prereviews/batch", a.prereviewBatch)
+		r.Post("/prereviews", a.savePrereviews)
 		r.Put("/projects/{projectID}/resubmit-block", a.setResubmitBlock)
 		r.Patch("/projects/{projectID}", a.reviewerEditProject)
 		r.Put("/users/{userID}/note", a.setReviewerNote)

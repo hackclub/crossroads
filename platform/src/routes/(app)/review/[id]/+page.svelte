@@ -13,6 +13,7 @@
 	import RejectionControls from '#lib/review/RejectionControls.svelte';
 	import FixLinks from '#lib/review/FixLinks.svelte';
 	import UnifiedHistory from '#lib/review/UnifiedHistory.svelte';
+	import PrereviewPanel from '#lib/review/PrereviewPanel.svelte';
 	import GitHubPanel from '#lib/review/GitHubPanel.svelte';
 	import HackatimePanel from '#lib/review/HackatimePanel.svelte';
 
@@ -168,8 +169,9 @@
 	}
 
 	// The details under the summary, in tabs: the checks and notes first,
-	// then GitHub, then Hackatime. Each ship opens on the first.
-	const TABS = [['checks', 'Checks & notes'], ['github', 'GitHub'], ['hackatime', 'Hackatime']];
+	// then the AI pre-review, GitHub and Hackatime. Each ship opens on the first.
+	const TABS = [['checks', 'Checks & notes'], ['ai', 'AI pre-review'], ['github', 'GitHub'], ['hackatime', 'Hackatime']];
+	const AI_COUNTS = { none: 'no AI seen', low: 'a little AI', medium: 'some AI', high: 'mostly AI' };
 	let tab = $state('checks');
 	// Arrow keys move between tabs, as tablists do.
 	function tabKeys(e) {
@@ -440,6 +442,7 @@
 							onclick={() => (tab = key)} onkeydown={tabKeys}>
 							{label}
 							{#if key === 'checks'}<span class="count" class:bad={failing.length}>{failing.length ? `${failing.length} to look at` : 'all passed'}</span>
+							{:else if key === 'ai'}<span class="count" class:bad={d.prereview?.ai_usage?.level === 'medium' || d.prereview?.ai_usage?.level === 'high'}>{d.prereview ? (AI_COUNTS[d.prereview.ai_usage?.level] ?? 'ready') : 'none yet'}</span>
 							{:else if key === 'github'}<span class="count">{d.github ? `${d.github.commits.length}${d.github.truncated ? '+' : ''} commits` : 'no data'}</span>
 							{:else}<span class="count">{d.hackatime ? hours(d.hackatime.seconds) : 'no data'}</span>{/if}
 						</button>
@@ -562,6 +565,10 @@
 								<p class="small muted">Nothing yet: the row is written once a reviewer approves the ship. Its justification carries Hackatime's numbers, the technical features, the reviewer's justification, every deflation and why, the fraud check if there was one, and HQ's sign-off.</p>
 							{/if}
 						</section>
+					</div>
+				{:else if tab === 'ai'}
+					<div class="tab-panel part" role="tabpanel" id="panel-ai" aria-labelledby="tab-ai">
+						<PrereviewPanel prereview={d.prereview} />
 					</div>
 				{:else if tab === 'github'}
 					<div class="tab-panel part" role="tabpanel" id="panel-github" aria-labelledby="tab-github">

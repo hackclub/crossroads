@@ -183,6 +183,7 @@ func main() {
 		// Off unless set. Sidekick is Hack Club's review platform; see
 		// api/sidekick.go and planning/REVIEW_FLOW.md.
 		SidekickSecret:  sidekickSecret,
+		PrereviewToken:  os.Getenv("PREREVIEW_TOKEN"),
 		PublicURL:       publicURL,
 		GitHub:          github.New(githubConfig),
 		Links:           links,
