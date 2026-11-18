@@ -560,7 +560,8 @@
 					</div>
 				{:else if tab === 'github'}
 					<div class="tab-panel part" role="tabpanel" id="panel-github" aria-labelledby="tab-github">
-						<GitHubPanel github={d.github} githubError={d.github_error} repoUrl={p.repo_url} days={d.days} windowStart={d.window_start} {reship} />
+						<GitHubPanel github={d.github} githubError={d.github_error} repoUrl={p.repo_url} days={d.days} windowStart={d.window_start} {reship}
+							commitSeconds={d.commit_seconds} afterLastCommit={d.after_last_commit_seconds} commitTimeError={d.commit_time_error} />
 					</div>
 				{:else}
 					<div class="tab-panel part" role="tabpanel" id="panel-hackatime" aria-labelledby="tab-hackatime">

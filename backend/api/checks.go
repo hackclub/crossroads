@@ -49,6 +49,14 @@ type checkReport struct {
 	// started. Daily totals only: reviewers never see heartbeats.
 	Days        []dayJSON
 	WindowStart time.Time
+	// Hackatime's time between commits, like Ari: each commit's time is what
+	// was tracked after the commit before it (or the window's start) up to
+	// it, by SHA. AfterLastCommit is the time after the last commit, up to
+	// shipping. Nil when there are no commits or Hackatime couldn't be asked
+	// (CommitTimeError).
+	CommitSeconds   map[string]int
+	AfterLastCommit *int
+	CommitTimeError string
 }
 
 type dayJSON struct {
@@ -124,6 +132,8 @@ func (a *API) runChecks(ctx context.Context, row db.GetSubmissionForReviewRow, s
 		demoLink   linkcheck.Result
 		inUnified  []unified.Record
 		unifiedErr error
+		spans      []hackatime.Span
+		spansErr   error
 	)
 	repoURL, demoURL := deref(project.RepoUrl), deref(project.DemoUrl)
 	_, _, onGitHub := github.ParseRepo(repoURL)
@@ -133,6 +143,11 @@ func (a *API) runChecks(ctx context.Context, row db.GetSubmissionForReviewRow, s
 	switch {
 	case onGitHub && a.GitHub != nil:
 		wg.Go(func() { gh, ghErr = a.GitHub.Activity(ctx, repoURL, since, s.SubmittedAt) })
+		if user.SlackID != nil && len(s.HackatimeProjects) > 0 {
+			wg.Go(func() {
+				spans, spansErr = a.Hackatime.Spans(ctx, *user.SlackID, s.HackatimeProjects, since, s.SubmittedAt)
+			})
+		}
 	case !onGitHub && repoURL != "" && a.Links != nil:
 		wg.Go(func() { repoLink = a.Links.Check(ctx, repoURL) })
 	}
@@ -143,6 +158,14 @@ func (a *API) runChecks(ctx context.Context, row db.GetSubmissionForReviewRow, s
 		wg.Go(func() { inUnified, unifiedErr = a.Unified.FindByLinks(ctx, repoURL, demoURL) })
 	}
 	wg.Wait()
+	switch {
+	case gh == nil || len(gh.Commits) == 0 || user.SlackID == nil || len(s.HackatimeProjects) == 0:
+	case spansErr != nil:
+		report.CommitTimeError = spansErr.Error()
+	default:
+		bySHA, after := commitTimes(gh.Commits, spans, since, s.SubmittedAt, gh.Truncated)
+		report.CommitSeconds, report.AfterLastCommit = bySHA, &after
+	}
 
 	// Hackatime (Sidekick's H1, and Crossroads' dropped-time check).
 	hackatimeCheck := check{ID: "hackatime_flagged", Name: "Hackatime hasn't flagged them", Fraud: true, Severity: "critical"}
@@ -468,4 +491,41 @@ func hoursText(seconds int) string {
 		return fmt.Sprintf("%dh", int(h))
 	}
 	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.2f", h), "0"), ".") + "h"
+}
+
+// commitTimes splits Hackatime's time between commits, like Ari: each commit
+// gets what was tracked after the commit before it (or since, for the first)
+// up to it. When truncated, older commits weren't fetched, so the oldest one
+// here has no known start and is left out. after is what was tracked after
+// the last commit, up to until.
+func commitTimes(commits []github.Commit, spans []hackatime.Span, since, until time.Time, truncated bool) (map[string]int, int) {
+	sorted := slices.Clone(commits)
+	slices.SortStableFunc(sorted, func(a, b github.Commit) int { return a.Date.Compare(b.Date) })
+	tracked := func(from, to time.Time) int {
+		var total time.Duration
+		for _, s := range spans {
+			lo, hi := s.Start, s.End
+			if lo.Before(from) {
+				lo = from
+			}
+			if hi.After(to) {
+				hi = to
+			}
+			if hi.After(lo) {
+				total += hi.Sub(lo)
+			}
+		}
+		return int(total.Seconds())
+	}
+	out := map[string]int{}
+	prev := since
+	for i, c := range sorted {
+		if !truncated || i > 0 {
+			out[c.SHA] = tracked(prev, c.Date)
+		}
+		if c.Date.After(prev) {
+			prev = c.Date
+		}
+	}
+	return out, tracked(prev, until)
 }

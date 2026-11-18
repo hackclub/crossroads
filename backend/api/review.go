@@ -473,9 +473,14 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		UnifiedRecords []unified.Record `json:"unified_records"`
 		// Hackatime time and commits per day since WindowStart: the last
 		// approved ship, or the event's start. Daily totals, never heartbeats.
-		Days          []dayJSON `json:"days"`
-		WindowStart   time.Time `json:"window_start"`
-		TelescreenURL string    `json:"telescreen_url,omitempty"`
+		Days []dayJSON `json:"days"`
+		// Hackatime's time between commits, by SHA, and after the last one
+		// (checkReport.CommitSeconds); null when unknown.
+		CommitSeconds   map[string]int `json:"commit_seconds"`
+		AfterLastCommit *int           `json:"after_last_commit_seconds"`
+		CommitTimeError string         `json:"commit_time_error,omitempty"`
+		WindowStart     time.Time      `json:"window_start"`
+		TelescreenURL   string         `json:"telescreen_url,omitempty"`
 		// What the Airtable sync will send to the Unified YSWS DB; null until
 		// a reviewer approves it.
 		UnifiedPreview   *unifiedPreviewJSON `json:"unified_preview"`
@@ -501,6 +506,9 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		GitHubError:          report.GitHubError,
 		UnifiedRecords:       report.Unified,
 		Days:                 report.Days,
+		CommitSeconds:        report.CommitSeconds,
+		AfterLastCommit:      report.AfterLastCommit,
+		CommitTimeError:      report.CommitTimeError,
 		WindowStart:          report.WindowStart,
 		TelescreenURL:        a.telescreenURL(row.User.SlackID),
 		UnifiedPreview:       preview,
