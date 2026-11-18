@@ -78,3 +78,12 @@ export async function devGiveBox(body) {
 	if (!res.ok) throw new ApiError(res.status, data?.error ?? `Couldn't add a box (${res.status}).`);
 	return data;
 }
+
+// Dev mode: give the signed-in person a stamp the way an admin does (POST
+// /dev/stamp). It takes over Home until they've seen it.
+export async function devGiveStamp() {
+	const res = await fetch('/dev/stamp', { method: 'POST' });
+	const data = await res.json().catch(() => null);
+	if (!res.ok) throw new ApiError(res.status, data?.error ?? `Couldn't add a stamp (${res.status}).`);
+	return data;
+}
