@@ -13,7 +13,7 @@
 	let name = $state('crossroads-game');
 	let addHours = $state(5);
 	let error = $state('');
-	let boxNote = $state('');
+	let boxNote = $state(null);
 	let giving = $state(false);
 
 	const users = [
@@ -38,12 +38,15 @@
 	}
 
 	// A box to open on the Boxes page, which drops a stamp into your stamp box.
-	async function giveBox() {
+	// A project's box takes over Home instead.
+	async function giveBox(project) {
 		error = '';
 		giving = true;
 		try {
-			await devGiveBox();
-			boxNote = 'Added a box. Open it on the Boxes page.';
+			await devGiveBox(project ? { project } : undefined);
+			boxNote = project
+				? { href: '/home', text: 'Added a box with your newest project. Go Home to open it.' }
+				: { href: '/boxes', text: 'Added a box. Open it on the Boxes page.' };
 			onchange?.();
 		} catch (err) {
 			error = err.message;
@@ -87,8 +90,10 @@
 				</form>
 				<div class="row small">
 					<strong>Stamp box:</strong>
-					<button class="btn small" disabled={giving} onclick={giveBox}>{giving ? 'Adding…' : 'Add a box'}</button>
-					{#if boxNote}<a href="/boxes">{boxNote}</a>{/if}
+					<button class="btn small" disabled={giving} onclick={() => giveBox(false)}>{giving ? 'Adding…' : 'Add a box'}</button>
+					<button class="btn small" disabled={giving} onclick={() => giveBox(true)}>Add a project's box</button>
+					<!-- A full load, so Home loads the new box even from Home. -->
+					{#if boxNote}<a href={boxNote.href} data-sveltekit-reload>{boxNote.text}</a>{/if}
 				</div>
 				{#if time.length}
 					<span class="small muted">Your Hackatime: {time.map((t) => `${t.name} ${(t.seconds / 3600).toFixed(1)}h`).join(' · ')}</span>

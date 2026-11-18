@@ -4,6 +4,7 @@
 	import { session } from '#lib/session.svelte.js';
 	import Station from '#lib/Station.svelte';
 	import StampIcon from '#lib/StampIcon.svelte';
+	import BoxTakeover from '#lib/BoxTakeover.svelte';
 	import { hours, approvedSeconds, projectStatus, inReview, GOAL_HOURS } from '#lib/format.js';
 
 	let projects = $state(null);
@@ -57,6 +58,8 @@
 </script>
 
 <svelte:window bind:innerWidth />
+
+{#if projects}<BoxTakeover {boxes} {projects} onopened={() => get('/boxes').then((b) => (boxes = b)).catch(() => {})} />{/if}
 
 <div class="stack-lg">
 	{#if error}<p class="callout warn">{error}</p>{/if}
