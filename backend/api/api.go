@@ -109,6 +109,7 @@ func (a *API) signedInRoutes(r chi.Router) {
 		})
 		r.Get("/past", a.pastReviews)
 		r.Put("/projects/{projectID}/resubmit-block", a.setResubmitBlock)
+		r.Patch("/projects/{projectID}", a.reviewerEditProject)
 		r.Put("/users/{userID}/note", a.setReviewerNote)
 		r.Get("/templates", a.listFeedbackTemplates)
 		r.Post("/templates", a.createFeedbackTemplate)

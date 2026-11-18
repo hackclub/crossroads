@@ -11,6 +11,7 @@
 	import { hours, date } from '#lib/format.js';
 	import { STAGES, canDecideStage, canHardReject, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, eventLabel, time, toSeconds, toHours, fromHours } from '#lib/review.js';
 	import RejectionControls from '#lib/review/RejectionControls.svelte';
+	import FixLinks from '#lib/review/FixLinks.svelte';
 	import GitHubPanel from '#lib/review/GitHubPanel.svelte';
 	import HackatimePanel from '#lib/review/HackatimePanel.svelte';
 
@@ -367,6 +368,7 @@
 						{#if p.demo_url}<a class="btn small primary" href={p.demo_url} target="_blank" rel="noreferrer">Try the demo</a>{/if}
 						{#if p.repo_url}<a class="btn small ghost" href={p.repo_url} target="_blank" rel="noreferrer">Repo</a>{/if}
 						<span class="muted small">shipped {date(sub.submitted_at)}</span>
+						{#if d.user.id !== session.me.id}<FixLinks project={p} onsaved={load} />{/if}
 					</div>
 					<div class="maker small">
 						<strong>{d.user.name}</strong>

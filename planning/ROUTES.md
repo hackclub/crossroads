@@ -244,6 +244,7 @@ Reviewer and admin shapes are listed with their routes below.
 | POST | `/api/review/submissions/{id}/reopen` | HQ, admin | Undo a rejection: back in the review queue |
 | GET | `/api/review/past?scope=&status=` | reviewer | Decided ships, the latest first |
 | PUT | `/api/review/projects/{id}/resubmit-block` | HQ, admin | Stop a project being shipped again, or allow it |
+| PATCH | `/api/review/projects/{id}` | reviewer | Fix a shipped project's demo link or screenshot |
 | PUT | `/api/review/users/{id}/note` | reviewer | The reviewers-only note on a person |
 | GET | `/api/review/templates` | reviewer | Feedback templates |
 | POST | `/api/review/templates` | reviewer | Add one |
@@ -699,6 +700,7 @@ interface ReviewResult {
 - **`POST /api/review/submissions/{id}/comments`** `{"message": "Can you add a README?", "internal": false}` → `201 ShipEvent`. Not internal: the participant sees it on their project. `422` for an empty or 5,000+ character message, `403` on their own project.
 - **`POST /api/review/submissions/{id}`** with `"action": "reject", "block_resubmit": true` is a hard reject: the project can't be shipped again (`403` from `POST /api/projects/{id}/submissions`, `409` for changing its Hackatime projects) until HQ or an admin allows it. Needs `internal_notes`; `403` unless the reviewer can do the fraud check or HQ sign-off. Projects say `resubmit_blocked`; the review page says who blocked it and why (`resubmit_block: {at, by, reason}`), and the event `blocks_resubmit`.
 - **`GET /api/review/past?scope=mine|all&status=approved|rejected`** → `200 {all, items}`: decided ships, the latest decided first, at most 200. Each item: `{id, project_id, project_name, user_id, user_name, status, new_seconds, approved_seconds, submitted_at, decided_at, decided_by, feedback, resubmit_blocked, shipped_again}`. Reviewers get the ships they made a decision on whatever `scope` says; HQ and admins get everyone's unless `scope=mine`.
+- **`PATCH /api/review/projects/{id}`** `{"demo_url": "https://...", "screenshot_url": "https://..."}` → `200 Project`: anyone who can review fixes a shipped project's demo link or screenshot, even while it's in review, instead of rejecting it for a wrong one. Fields left out aren't changed and neither can be emptied (`422`). Each change is a comment on the latest ship that the maker sees ("A reviewer changed the demo link to … (it was …)"); comments aren't reviews, so it isn't paid. `403` on their own project, `409` if it was never shipped.
 - **`PUT /api/review/projects/{id}/resubmit-block`** `{"blocked": false}` or `{"blocked": true, "reason": "..."}` → `200 {resubmit_blocked, resubmit_block}`. HQ and admins only; not on their own project.
 - **`POST /api/review/submissions/{id}/reopen`** `{"reason": "..."}` → `204`: undoes a rejection. HQ and admins only. `409` if it isn't rejected or the project has been shipped again since. Not a review: it doesn't count toward pay.
 - **`PUT /api/review/users/{id}/note`** `{"note": "Hackatime was broken until Nov 5"}` → `200 {note}`. A note about the person that reviewers see on all their ships. `""` clears it.
