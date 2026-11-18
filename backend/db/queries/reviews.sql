@@ -179,8 +179,24 @@ where projects.user_id = $1 and submissions.status = 'approved';
 insert into boxes (user_id, box_type_id, milestone_id)
 select $1, milestones.box_type_id, milestones.id
 from milestones
-where milestones.approved_seconds <= sqlc.arg(approved_seconds)::integer
-on conflict (user_id, milestone_id) do nothing
+where not milestones.per_project and milestones.approved_seconds <= sqlc.arg(approved_seconds)::integer
+on conflict (user_id, milestone_id) where project_id is null do nothing
+returning *;
+
+-- name: ApprovedSecondsForProject :one
+-- Only signed-off ships count.
+select coalesce(sum(approved_seconds), 0)::bigint
+from submissions
+where project_id = $1 and status = 'approved';
+
+-- name: GrantProjectMilestoneBoxes :many
+-- Grants a box with the project for every per-project milestone at or under
+-- approved_seconds that it doesn't already have one for.
+insert into boxes (user_id, box_type_id, milestone_id, project_id)
+select sqlc.arg(user_id), milestones.box_type_id, milestones.id, sqlc.arg(project_id)::bigint
+from milestones
+where milestones.per_project and milestones.approved_seconds <= sqlc.arg(approved_seconds)::integer
+on conflict (project_id, milestone_id) where project_id is not null do nothing
 returning *;
 
 -- name: ListProjectsSharingLinks :many

@@ -1,8 +1,9 @@
 package api
 
-// Boxes come from milestones (see review.go) or from admins. Opening one rolls
-// a special stamp from its box type's drops, skipping stamp types whose supply
-// has run out.
+// Boxes come from milestones (see payOut in stages.go) or from admins. A
+// per-project milestone's box comes with the project that passed it. Opening
+// one rolls a special stamp from its box type's drops, skipping stamp types
+// whose supply has run out.
 
 import (
 	"crypto/rand"
@@ -24,6 +25,7 @@ type boxJSON struct {
 	ID             int64      `json:"id"`
 	BoxTypeID      int64      `json:"box_type_id"`
 	MilestoneID    *int64     `json:"milestone_id"` // null if an admin gave it
+	ProjectID      *int64     `json:"project_id"`   // the project it came with, if any
 	GrantedAt      time.Time  `json:"granted_at"`
 	OpenedAt       *time.Time `json:"opened_at"`
 	SpecialStampID *int64     `json:"special_stamp_id"` // what it dropped, once opened
@@ -34,6 +36,7 @@ func toBoxJSON(b db.Box, specialStampID *int64) boxJSON {
 		ID:             b.ID,
 		BoxTypeID:      b.BoxTypeID,
 		MilestoneID:    b.MilestoneID,
+		ProjectID:      b.ProjectID,
 		GrantedAt:      b.GrantedAt,
 		OpenedAt:       b.OpenedAt,
 		SpecialStampID: specialStampID,
@@ -96,6 +99,7 @@ func (a *API) listBoxes(w http.ResponseWriter, r *http.Request) {
 			MilestoneID: row.MilestoneID,
 			GrantedAt:   row.GrantedAt,
 			OpenedAt:    row.OpenedAt,
+			ProjectID:   row.ProjectID,
 		}, row.SpecialStampID))
 	}
 	respond.JSON(w, http.StatusOK, out)

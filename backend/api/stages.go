@@ -456,7 +456,8 @@ func checkClaim(ctx context.Context, q *db.Queries, s db.Submission, reviewer *d
 }
 
 // payOut pays stamps for a signed-off ship and grants a box for every
-// milestone its owner has now reached. The owner's row has to be locked.
+// milestone its owner has now reached, and for every per-project milestone
+// its project has. The owner's row has to be locked.
 func (a *API) payOut(ctx context.Context, q *db.Queries, ownerID int64, s db.Submission) (int64, []db.Box, error) {
 	after, err := q.ApprovedSecondsForUser(ctx, ownerID)
 	if err != nil {
@@ -488,7 +489,17 @@ func (a *API) payOut(ctx context.Context, q *db.Queries, ownerID int64, s db.Sub
 		}
 	}
 	boxes, err := q.GrantMilestoneBoxes(ctx, db.GrantMilestoneBoxesParams{UserID: ownerID, ApprovedSeconds: int32(after)})
-	return paid, boxes, err
+	if err != nil {
+		return 0, nil, err
+	}
+	project, err := q.ApprovedSecondsForProject(ctx, s.ProjectID)
+	if err != nil {
+		return 0, nil, err
+	}
+	projectBoxes, err := q.GrantProjectMilestoneBoxes(ctx, db.GrantProjectMilestoneBoxesParams{
+		UserID: ownerID, ProjectID: s.ProjectID, ApprovedSeconds: int32(project),
+	})
+	return paid, append(boxes, projectBoxes...), err
 }
 
 // addComment adds a comment to a ship: for the participant, or internal for

@@ -102,7 +102,8 @@ insert into special_stamp_types (name, description, rarity, effect, supply_cap) 
 
 insert into box_types (name, description) values
     ('Station Box', 'Given at 10 and 30 approved hours.'),
-    ('Terminus Box', 'Given at 50 approved hours, with better odds.');
+    ('Terminus Box', 'Given at 50 approved hours, with better odds.'),
+    ('Project Box', 'Comes with each project that gets 10 hours approved.');
 
 insert into box_drops (box_type_id, special_stamp_type_id, weight) values
     (pg_temp.box_type('Station Box'), pg_temp.stamp_type('Ticket Punch'), 50),
@@ -113,12 +114,20 @@ insert into box_drops (box_type_id, special_stamp_type_id, weight) values
     (pg_temp.box_type('Terminus Box'), pg_temp.stamp_type('Sleeper Car'), 30),
     (pg_temp.box_type('Terminus Box'), pg_temp.stamp_type('Express Lane'), 25),
     (pg_temp.box_type('Terminus Box'), pg_temp.stamp_type('Golden Rail'), 12),
-    (pg_temp.box_type('Terminus Box'), pg_temp.stamp_type('Last Train Home'), 3);
+    (pg_temp.box_type('Terminus Box'), pg_temp.stamp_type('Last Train Home'), 3),
+    (pg_temp.box_type('Project Box'), pg_temp.stamp_type('Window Seat'), 35),
+    (pg_temp.box_type('Project Box'), pg_temp.stamp_type('Sleeper Car'), 30),
+    (pg_temp.box_type('Project Box'), pg_temp.stamp_type('Express Lane'), 22),
+    (pg_temp.box_type('Project Box'), pg_temp.stamp_type('Golden Rail'), 10),
+    (pg_temp.box_type('Project Box'), pg_temp.stamp_type('Last Train Home'), 3);
 
 insert into milestones (name, approved_seconds, box_type_id) values
     ('First stop', 10 * 3600, pg_temp.box_type('Station Box')),
     ('Halfway', 30 * 3600, pg_temp.box_type('Station Box')),
     ('Almost there', 50 * 3600, pg_temp.box_type('Terminus Box'));
+
+insert into milestones (name, approved_seconds, box_type_id, per_project) values
+    ('Project past 10 hours', 10 * 3600, pg_temp.box_type('Project Box'), true);
 
 -- Stock is what's left after the orders below; the ones not cancelled took one each.
 insert into shop_items (kind, name, description, price, stipend_cents, stock, max_per_user, active) values
@@ -260,8 +269,23 @@ from (
     join users on users.id = projects.user_id
     where submissions.status = 'approved' and users.hca_id like 'dev-%'
 ) as totals
-join milestones on milestones.approved_seconds <= totals.total
+join milestones on not milestones.per_project and milestones.approved_seconds <= totals.total
 order by totals.user_id, milestones.id, totals.reviewed_at, totals.id;
+
+-- And a box with every project past a per-project milestone. They're left
+-- closed, so each of those people's Home opens with one.
+insert into boxes (user_id, box_type_id, milestone_id, project_id, granted_at)
+select distinct on (totals.project_id, milestones.id) totals.user_id, milestones.box_type_id, milestones.id, totals.project_id, totals.reviewed_at
+from (
+    select projects.user_id, submissions.project_id, submissions.id, submissions.reviewed_at,
+        sum(submissions.approved_seconds) over (partition by submissions.project_id order by submissions.reviewed_at, submissions.id) as total
+    from submissions
+    join projects on projects.id = submissions.project_id
+    join users on users.id = projects.user_id
+    where submissions.status = 'approved' and users.hca_id like 'dev-%'
+) as totals
+join milestones on milestones.per_project and milestones.approved_seconds <= totals.total
+order by totals.project_id, milestones.id, totals.reviewed_at, totals.id;
 
 insert into boxes (user_id, box_type_id, granted_by, granted_at)
 values (pg_temp.uid('alice'), pg_temp.box_type('Station Box'), pg_temp.uid('adam'), pg_temp.ago(5));

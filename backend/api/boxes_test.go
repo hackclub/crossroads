@@ -270,6 +270,48 @@ func TestNewMilestonesReachPeopleAlreadyPastThem(t *testing.T) {
 		map[string]any{"name": "Also 10 hours", "approved_seconds": 36000, "box_type_id": boxTypeID}, nil)
 }
 
+func TestNewProjectMilestonesReachProjectsAlreadyPastThem(t *testing.T) {
+	e := newEnv(t)
+	admin := e.newAdmin(t)
+	reviewer := e.newReviewer(t)
+	_, _, boxTypeID := e.setUpBox(t, admin, 1)
+	e.mustCall(t, admin, http.StatusCreated, "POST", "/api/admin/milestones",
+		map[string]any{"name": "10 hours", "approved_seconds": 36000, "box_type_id": boxTypeID}, nil)
+
+	user := e.newUser(t, "U1")
+	ahead := e.createProject(t, user, completeProject("racer"))
+	id := e.submitHours(t, user, "U1", ahead, "racer", 12*3600)
+	e.decide(t, reviewer, id, map[string]any{"action": "approve"})
+	second := completeProject("puzzler")
+	second["repo_url"], second["demo_url"] = "https://github.com/example/puzzler", "https://example.github.io/puzzler"
+	behind := e.createProject(t, user, second)
+	id = e.submitHours(t, user, "U1", behind, "puzzler", 3*3600)
+	e.decide(t, reviewer, id, map[string]any{"action": "approve"})
+
+	var created struct {
+		Milestone struct {
+			PerProject bool `json:"per_project"`
+		} `json:"milestone"`
+		BoxesGranted int `json:"boxes_granted"`
+	}
+	// The person already has the 10 hour box: a per-project milestone at
+	// the same hours is a different one.
+	e.mustCall(t, admin, http.StatusCreated, "POST", "/api/admin/milestones",
+		map[string]any{"name": "10 hours on a project", "approved_seconds": 36000, "box_type_id": boxTypeID, "per_project": true}, &created)
+	if !created.Milestone.PerProject || created.BoxesGranted != 1 {
+		t.Errorf("got %+v, want a per-project milestone that gave the project past 10 hours its box", created)
+	}
+	var boxes []struct {
+		ProjectID *int64 `json:"project_id"`
+	}
+	e.mustCall(t, user, http.StatusOK, "GET", "/api/boxes", nil, &boxes)
+	if len(boxes) != 2 || boxes[0].ProjectID == nil || *boxes[0].ProjectID != ahead.ID || boxes[1].ProjectID != nil {
+		t.Errorf("got boxes %+v, want the project's box and the person's", boxes)
+	}
+	e.mustCall(t, admin, http.StatusConflict, "POST", "/api/admin/milestones",
+		map[string]any{"name": "Also 10 hours on a project", "approved_seconds": 36000, "box_type_id": boxTypeID, "per_project": true}, nil)
+}
+
 func TestAdminRoutesAndRoles(t *testing.T) {
 	e := newEnv(t)
 	admin := e.newAdmin(t)

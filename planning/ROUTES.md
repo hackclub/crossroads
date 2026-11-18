@@ -130,6 +130,7 @@ interface Box {
   id: number;
   box_type_id: number;
   milestone_id: number | null;      // null if an admin gave it
+  project_id: number | null;        // the project it came with, from a per-project milestone
   granted_at: string;
   opened_at: string | null;         // null until opened
   special_stamp_id: number | null;  // what it dropped, once opened
@@ -266,7 +267,7 @@ Reviewer and admin shapes are listed with their routes below.
 | PATCH | `/api/admin/box-types/{id}` | admin | Edit a box type |
 | PUT | `/api/admin/box-types/{id}/drops` | admin | Replace a box type's drop table |
 | GET | `/api/admin/milestones` | admin | Milestones |
-| POST | `/api/admin/milestones` | admin | Create a milestone |
+| POST | `/api/admin/milestones` | admin | Create a milestone (`per_project: true` counts each project's own hours) |
 | GET | `/api/admin/shop-items` | admin | Every shop item, including inactive |
 | POST | `/api/admin/shop-items` | admin | Create a shop item |
 | PATCH | `/api/admin/shop-items/{id}` | admin | Edit a shop item |
