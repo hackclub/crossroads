@@ -171,10 +171,22 @@ func (a *API) signedInRoutes(r chi.Router) {
 // me is auth.Me plus the stamps paid per approved hour, so prices can be
 // shown in hours.
 func (a *API) me(w http.ResponseWriter, r *http.Request) {
+	user := auth.User(r.Context())
+	// Whether the review pages show AI pre-reviews (prereview.go).
+	canPrereview := false
+	if p := permissionsOf(user); p.Review || p.FraudReview || p.HQReview {
+		settings, err := a.Queries.GetReviewSettings(r.Context())
+		if err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		canPrereview = canSeePrereviews(user, settings)
+	}
 	respond.JSON(w, http.StatusOK, struct {
 		auth.MeJSON
-		StampsPerHour int `json:"stamps_per_hour"`
-	}{auth.ToMeJSON(auth.User(r.Context())), a.StampsPerHour})
+		StampsPerHour int  `json:"stamps_per_hour"`
+		CanPrereview  bool `json:"can_prereview"`
+	}{auth.ToMeJSON(user), a.StampsPerHour, canPrereview})
 }
 
 // decode reads a JSON request body into v and rejects fields v doesn't have.

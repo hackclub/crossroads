@@ -775,12 +775,15 @@ type reviewSettingsJSON struct {
 	// Ships claiming more than this always get a fraud check.
 	LargeShipSeconds int32 `json:"large_ship_seconds"`
 	// So do ships whose project has a UTC day with more than this.
-	LongDaySeconds int32     `json:"long_day_seconds"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	LongDaySeconds int32 `json:"long_day_seconds"`
+	// Reviewers with only the Review permission see AI pre-reviews; the
+	// fraud check, HQ and admins always do (prereview.go).
+	PrereviewsForReviewers bool      `json:"prereviews_for_reviewers"`
+	UpdatedAt              time.Time `json:"updated_at"`
 }
 
 func toReviewSettingsJSON(s db.ReviewSetting) reviewSettingsJSON {
-	return reviewSettingsJSON{s.FraudCheckEverything, s.LargeShipSeconds, s.LongDaySeconds, s.UpdatedAt}
+	return reviewSettingsJSON{s.FraudCheckEverything, s.LargeShipSeconds, s.LongDaySeconds, s.PrereviewsForReviewers, s.UpdatedAt}
 }
 
 func (a *API) adminGetReviewSettings(w http.ResponseWriter, r *http.Request) {
@@ -797,9 +800,10 @@ func (a *API) adminGetReviewSettings(w http.ResponseWriter, r *http.Request) {
 // past the first stage stay where they are.
 func (a *API) adminUpdateReviewSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		FraudCheckEverything *bool  `json:"fraud_check_everything"`
-		LargeShipSeconds     *int32 `json:"large_ship_seconds"`
-		LongDaySeconds       *int32 `json:"long_day_seconds"`
+		FraudCheckEverything   *bool  `json:"fraud_check_everything"`
+		LargeShipSeconds       *int32 `json:"large_ship_seconds"`
+		LongDaySeconds         *int32 `json:"long_day_seconds"`
+		PrereviewsForReviewers *bool  `json:"prereviews_for_reviewers"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -818,12 +822,16 @@ func (a *API) adminUpdateReviewSettings(w http.ResponseWriter, r *http.Request) 
 	if body.LongDaySeconds != nil {
 		settings.LongDaySeconds = *body.LongDaySeconds
 	}
+	if body.PrereviewsForReviewers != nil {
+		settings.PrereviewsForReviewers = *body.PrereviewsForReviewers
+	}
 	if settings.LargeShipSeconds < 1 || settings.LongDaySeconds < 1 || settings.LongDaySeconds > 86400 {
 		respond.Error(w, http.StatusUnprocessableEntity, "large_ship_seconds has to be over 0, and long_day_seconds between 1 and 86,400 (a day).")
 		return
 	}
 	settings, err = a.Queries.UpdateReviewSettings(r.Context(), db.UpdateReviewSettingsParams{
 		FraudCheckEverything: settings.FraudCheckEverything, LargeShipSeconds: settings.LargeShipSeconds, LongDaySeconds: settings.LongDaySeconds,
+		PrereviewsForReviewers: settings.PrereviewsForReviewers,
 	})
 	if err != nil {
 		respond.ServerError(w, r, err)

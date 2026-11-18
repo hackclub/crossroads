@@ -30,8 +30,9 @@ export const canDecideStage = (me, stage) => !!me?.[STAGES[stage]?.perm];
 // a project be shipped again, and can undo a rejection.
 export const canHardReject = (me) => !!(me?.can_fraud_review || me?.can_hq_review);
 export const canManageRejections = (me) => !!me?.can_hq_review;
-// AI pre-reviews (backend/api/prereview.go): anyone with a review permission.
-export const canPrereview = (me) => !!(me?.can_review || me?.can_fraud_review || me?.can_hq_review);
+// AI pre-reviews (backend/api/prereview.go): the fraud check, HQ and admins,
+// and base reviewers when an admin turns that on. /api/me works it out.
+export const canPrereview = (me) => !!me?.can_prereview;
 
 // Why a ship went to the fraud check (submission.fraud_reasons).
 const REASONS = {

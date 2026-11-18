@@ -170,7 +170,9 @@
 
 	// The details under the summary, in tabs: the checks and notes first,
 	// then the AI pre-review, GitHub and Hackatime. Each ship opens on the first.
-	const TABS = [['checks', 'Checks & notes'], ['ai', 'AI pre-review'], ['github', 'GitHub'], ['hackatime', 'Hackatime']];
+	// The AI pre-review tab only for those an admin lets see them.
+	const ALL_TABS = [['checks', 'Checks & notes'], ['ai', 'AI pre-review'], ['github', 'GitHub'], ['hackatime', 'Hackatime']];
+	const TABS = $derived(d?.prereviews_visible ? ALL_TABS : ALL_TABS.filter(([key]) => key !== 'ai'));
 	const AI_COUNTS = { none: 'no AI seen', low: 'a little AI', medium: 'some AI', high: 'mostly AI' };
 	let tab = $state('checks');
 	// Arrow keys move between tabs, as tablists do.
@@ -566,7 +568,7 @@
 							{/if}
 						</section>
 					</div>
-				{:else if tab === 'ai'}
+				{:else if tab === 'ai' && d.prereviews_visible}
 					<div class="tab-panel part" role="tabpanel" id="panel-ai" aria-labelledby="tab-ai">
 						<PrereviewPanel prereview={d.prereview} />
 					</div>

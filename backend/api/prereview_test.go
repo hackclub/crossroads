@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/scherepi/crossroads-backend/db"
 )
 
 type prereviewPrompt struct {
@@ -30,7 +32,7 @@ type prereviewSaved struct {
 
 func TestPrereviewsByPasting(t *testing.T) {
 	e := newEnv(t)
-	reviewer := e.newStageReviewer(t, "UREV", true, false, false)
+	reviewer := e.newStageReviewer(t, "UREV", true, true, false) // with the fraud check, so it can see them
 	user, first := e.shipFor(t, "U1", 3)
 	_, second := e.shipFor(t, "U2", 2)
 	_, decided := e.shipFor(t, "U3", 2)
@@ -107,6 +109,57 @@ func TestPrereviewsByPasting(t *testing.T) {
 	// A pre-review is never a review: nobody's paid for it.
 	if n := countEvents() - eventsBefore; n != 0 {
 		t.Errorf("pasting a pre-review wrote %d ship events", n)
+	}
+}
+
+// Reviewers with only the Review permission see nothing of pre-reviews
+// until an admin turns that on; the fraud check, HQ and admins always do.
+func TestPrereviewsHiddenFromBaseReviewers(t *testing.T) {
+	e := newEnv(t)
+	base := e.newStageReviewer(t, "UBASE", true, false, false)
+	hq := e.newStageReviewer(t, "UHQ", false, false, true)
+	admin := e.newAdmin(t)
+	_, ship := e.shipFor(t, "U1", 3)
+	e.mustCall(t, hq, http.StatusOK, "POST", "/api/review/prereviews",
+		map[string]any{"prereviews": []map[string]any{{"ship_id": ship, "summary": "a cli", "ai_usage": map[string]any{"level": "low"}}}}, nil)
+
+	type sees struct {
+		me, prompt, batch, save int
+		visible, has            bool
+	}
+	look := func(u *db.User) sees {
+		t.Helper()
+		var me struct {
+			CanPrereview bool `json:"can_prereview"`
+		}
+		e.mustCall(t, u, http.StatusOK, "GET", "/api/me", nil, &me)
+		var detail struct {
+			Prereview         *struct{} `json:"prereview"`
+			PrereviewsVisible bool      `json:"prereviews_visible"`
+		}
+		e.mustCall(t, u, http.StatusOK, "GET", "/api/review/submissions/"+itoa(ship), nil, &detail)
+		meOK := 0
+		if me.CanPrereview {
+			meOK = 1
+		}
+		return sees{
+			me:      meOK,
+			prompt:  e.call(t, u, "GET", "/api/review/prereviews/prompt", nil, nil),
+			batch:   e.call(t, u, "GET", "/api/review/prereviews/batch", nil, nil),
+			save:    e.call(t, u, "POST", "/api/review/prereviews", map[string]any{"text": `{"ship_id": 1, "summary": "x"}`}, nil),
+			visible: detail.PrereviewsVisible,
+			has:     detail.Prereview != nil,
+		}
+	}
+	if got, want := look(base), (sees{0, 403, 403, 403, false, false}); got != want {
+		t.Errorf("a base reviewer, turned off: %+v, want %+v", got, want)
+	}
+	if got := look(hq); got.me != 1 || got.prompt != 200 || !got.visible || !got.has {
+		t.Errorf("HQ: %+v", got)
+	}
+	e.mustCall(t, admin, http.StatusOK, "PATCH", "/api/admin/review-settings", map[string]any{"prereviews_for_reviewers": true}, nil)
+	if got := look(base); got.me != 1 || got.prompt != 200 || got.batch != 200 || got.save != 200 || !got.visible || !got.has {
+		t.Errorf("a base reviewer, turned on: %+v", got)
 	}
 }
 

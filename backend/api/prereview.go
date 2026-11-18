@@ -231,16 +231,37 @@ func prereviewLimit(r *http.Request) int {
 	return min(n, prereviewMaxShips)
 }
 
-func canPrereview(u *db.User) bool {
+// canSeePrereviews: the fraud check, HQ and admins always; reviewers with
+// only the Review permission when an admin turns that on (review settings).
+// Everything about pre-reviews (the tabs, the prompt, saving) follows it.
+func canSeePrereviews(u *db.User, settings db.ReviewSetting) bool {
 	p := permissionsOf(u)
-	return p.Review || p.FraudReview || p.HQReview
+	return p.FraudReview || p.HQReview || (p.Review && settings.PrereviewsForReviewers)
+}
+
+// canPrereview checks canSeePrereviews for the signed-in reviewer. If it
+// returns false, it has already responded.
+func (a *API) canPrereview(w http.ResponseWriter, r *http.Request) bool {
+	u := auth.User(r.Context())
+	if u == nil {
+		return true // the script, with PREREVIEW_TOKEN
+	}
+	settings, err := a.Queries.GetReviewSettings(r.Context())
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return false
+	}
+	if !canSeePrereviews(u, settings) {
+		respond.Error(w, http.StatusForbidden, "AI pre-reviews are off for you.")
+		return false
+	}
+	return true
 }
 
 // prereviewPrompt: GET /review/prereviews/prompt?limit=10. One prompt for
 // the reviewer's own Claude: the instructions, then each ship.
 func (a *API) prereviewPrompt(w http.ResponseWriter, r *http.Request) {
-	if !canPrereview(auth.User(r.Context())) {
-		respond.Error(w, http.StatusForbidden, "You need a review permission for AI pre-reviews.")
+	if !a.canPrereview(w, r) {
 		return
 	}
 	ships, err := a.prereviewShips(r.Context(), prereviewLimit(r), r.URL.Query().Get("all") == "1")
@@ -267,8 +288,7 @@ func (a *API) prereviewPrompt(w http.ResponseWriter, r *http.Request) {
 // token. What scripts/prereview.mjs needs: the instructions for one ship
 // with its repo cloned, and each ship's details.
 func (a *API) prereviewBatch(w http.ResponseWriter, r *http.Request) {
-	if u := auth.User(r.Context()); u != nil && !canPrereview(u) {
-		respond.Error(w, http.StatusForbidden, "You need a review permission for AI pre-reviews.")
+	if !a.canPrereview(w, r) {
 		return
 	}
 	ships, err := a.prereviewShips(r.Context(), prereviewLimit(r), r.URL.Query().Get("all") == "1")
@@ -288,8 +308,7 @@ func (a *API) prereviewBatch(w http.ResponseWriter, r *http.Request) {
 // on its own.
 func (a *API) savePrereviews(w http.ResponseWriter, r *http.Request) {
 	user := auth.User(r.Context())
-	if user != nil && !canPrereview(user) {
-		respond.Error(w, http.StatusForbidden, "You need a review permission for AI pre-reviews.")
+	if !a.canPrereview(w, r) {
 		return
 	}
 	var body struct {

@@ -59,6 +59,9 @@ interface Me {
   can_review: boolean;
   can_fraud_review: boolean;
   can_hq_review: boolean;
+  // Whether the review pages show AI pre-reviews: the fraud check, HQ and
+  // admins, and base reviewers when prereviews_for_reviewers is on.
+  can_prereview: boolean;
 }
 
 interface Project {
@@ -704,7 +707,7 @@ interface ReviewResult {
 - **`POST /api/review/submissions/{id}/comments`** `{"message": "Can you add a README?", "internal": false}` → `201 ShipEvent`. Not internal: the participant sees it on their project. `422` for an empty or 5,000+ character message, `403` on their own project.
 - **`POST /api/review/submissions/{id}`** with `"action": "reject", "block_resubmit": true` is a hard reject: the project can't be shipped again (`403` from `POST /api/projects/{id}/submissions`, `409` for changing its Hackatime projects) until HQ or an admin allows it. Needs `internal_notes`; `403` unless the reviewer can do the fraud check or HQ sign-off. Projects say `resubmit_blocked`; the review page says who blocked it and why (`resubmit_block: {at, by, reason}`), and the event `blocks_resubmit`.
 - **`GET /api/review/past?scope=mine|all&status=approved|rejected`** → `200 {all, items}`: decided ships, the latest decided first, at most 200. Each item: `{id, project_id, project_name, user_id, user_name, status, new_seconds, approved_seconds, submitted_at, decided_at, decided_by, feedback, resubmit_blocked, shipped_again}`. Reviewers get the ships they made a decision on whatever `scope` says; HQ and admins get everyone's unless `scope=mine`.
-- **`GET /api/review/prereviews/prompt?limit=10&all=1`** → `200 {prompt, ship_ids, waiting}`: the instructions and up to `limit` (default 10, at most 25) ships in review without a pre-review, oldest first (`all=1`: with one too). `waiting` is how many have none. Anyone with a review permission.
+- **`GET /api/review/prereviews/prompt?limit=10&all=1`** → `200 {prompt, ship_ids, waiting}`: the instructions and up to `limit` (default 10, at most 25) ships in review without a pre-review, oldest first (`all=1`: with one too). `waiting` is how many have none. The fraud check, HQ and admins; reviewers with only Review when `prereviews_for_reviewers` is on (`403` otherwise, for all three of these). The ship detail's `prereviews_visible` says the same, and `prereview` is null when it's false.
 - **`GET /api/review/prereviews/batch`** (or `GET /api/prereviews` with `Authorization: Bearer $PREREVIEW_TOKEN`) → `200 {instructions, ships: [{id, name, repo_url, demo_url, context}]}`: the same ships, with instructions for one cloned repo, for `scripts/prereview.mjs`.
 - **`POST /api/review/prereviews`** (or `POST /api/prereviews` with the token) `{"text": "<Claude's answer as pasted>"}` or `{"prereviews": [{ship_id, summary, scale, features, ai_usage: {level, evidence}, readme, demo, contributions: [{name, commits, areas}], notes}], "model": "sonnet", "source": "script"}` → `200 {saved: [ids], failed: [{ship_id, error}]}`. Each is saved or refused on its own: no ship_id, a level that isn't none/low/medium/high, a ship that's been decided. `422` if there's no JSON or no pre-reviews in it. The review page's ship detail has it as `prereview` (null without one), with `source`, `model`, `by` and `created_at`. Never a ship event, never paid.
 - **`PATCH /api/review/projects/{id}`** `{"demo_url": "https://...", "screenshot_url": "https://..."}` → `200 Project`: anyone who can review fixes a shipped project's demo link or screenshot, even while it's in review, instead of rejecting it for a wrong one. Fields left out aren't changed and neither can be emptied (`422`). Each change is a comment on the latest ship that the maker sees ("A reviewer changed the demo link to … (it was …)"); comments aren't reviews, so it isn't paid. `403` on their own project, `409` if it was never shipped.
@@ -754,6 +757,7 @@ interface ReviewSettings {
   fraud_check_everything: boolean; // every approved ship goes through the fraud check
   large_ship_seconds: number;      // ships claiming more than this get a fraud check (default 20h)
   long_day_seconds: number;        // so do ships with a UTC day over this on the project (default 14h)
+  prereviews_for_reviewers: boolean; // reviewers with only Review see AI pre-reviews (default off)
   updated_at: string;
 }
 ```

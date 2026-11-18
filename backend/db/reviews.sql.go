@@ -310,7 +310,7 @@ func (q *Queries) EditShipEvent(ctx context.Context, arg EditShipEventParams) (S
 }
 
 const getReviewSettings = `-- name: GetReviewSettings :one
-select id, fraud_check_everything, large_ship_seconds, long_day_seconds, updated_at from review_settings
+select id, fraud_check_everything, large_ship_seconds, long_day_seconds, updated_at, prereviews_for_reviewers from review_settings
 `
 
 func (q *Queries) GetReviewSettings(ctx context.Context) (ReviewSetting, error) {
@@ -322,6 +322,7 @@ func (q *Queries) GetReviewSettings(ctx context.Context) (ReviewSetting, error) 
 		&i.LargeShipSeconds,
 		&i.LongDaySeconds,
 		&i.UpdatedAt,
+		&i.PrereviewsForReviewers,
 	)
 	return i, err
 }
@@ -1271,18 +1272,25 @@ const updateReviewSettings = `-- name: UpdateReviewSettings :one
 update review_settings set
     fraud_check_everything = $1,
     large_ship_seconds = $2,
-    long_day_seconds = $3
-returning id, fraud_check_everything, large_ship_seconds, long_day_seconds, updated_at
+    long_day_seconds = $3,
+    prereviews_for_reviewers = $4
+returning id, fraud_check_everything, large_ship_seconds, long_day_seconds, updated_at, prereviews_for_reviewers
 `
 
 type UpdateReviewSettingsParams struct {
-	FraudCheckEverything bool
-	LargeShipSeconds     int32
-	LongDaySeconds       int32
+	FraudCheckEverything   bool
+	LargeShipSeconds       int32
+	LongDaySeconds         int32
+	PrereviewsForReviewers bool
 }
 
 func (q *Queries) UpdateReviewSettings(ctx context.Context, arg UpdateReviewSettingsParams) (ReviewSetting, error) {
-	row := q.db.QueryRow(ctx, updateReviewSettings, arg.FraudCheckEverything, arg.LargeShipSeconds, arg.LongDaySeconds)
+	row := q.db.QueryRow(ctx, updateReviewSettings,
+		arg.FraudCheckEverything,
+		arg.LargeShipSeconds,
+		arg.LongDaySeconds,
+		arg.PrereviewsForReviewers,
+	)
 	var i ReviewSetting
 	err := row.Scan(
 		&i.ID,
@@ -1290,6 +1298,7 @@ func (q *Queries) UpdateReviewSettings(ctx context.Context, arg UpdateReviewSett
 		&i.LargeShipSeconds,
 		&i.LongDaySeconds,
 		&i.UpdatedAt,
+		&i.PrereviewsForReviewers,
 	)
 	return i, err
 }

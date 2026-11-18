@@ -665,11 +665,12 @@ type ProjectHackatimeProject struct {
 }
 
 type ReviewSetting struct {
-	ID                   bool
-	FraudCheckEverything bool
-	LargeShipSeconds     int32
-	LongDaySeconds       int32
-	UpdatedAt            time.Time
+	ID                     bool
+	FraudCheckEverything   bool
+	LargeShipSeconds       int32
+	LongDaySeconds         int32
+	UpdatedAt              time.Time
+	PrereviewsForReviewers bool
 }
 
 type ReviewSkip struct {

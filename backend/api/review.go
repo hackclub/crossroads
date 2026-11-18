@@ -425,10 +425,14 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
-	pre, err := a.shipPrereview(r.Context(), row.Submission.ID)
-	if err != nil {
-		respond.ServerError(w, r, err)
-		return
+	// The AI pre-review, for those who can see them (prereview.go).
+	var pre *prereviewJSON
+	seePrereviews := canSeePrereviews(viewer, settings)
+	if seePrereviews {
+		if pre, err = a.shipPrereview(r.Context(), row.Submission.ID); err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
 	}
 	eventRows, err := a.Queries.ListProjectShipEvents(r.Context(), row.Project.ID)
 	if err != nil {
@@ -513,6 +517,7 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		// and their time on this ship's Hackatime projects.
 		TelescreenURL          string         `json:"telescreen_url,omitempty"`
 		Prereview              *prereviewJSON `json:"prereview"` // the AI pre-review (prereview.go), or null
+		PrereviewsVisible      bool           `json:"prereviews_visible"`
 		TelescreenHackatimeURL string         `json:"telescreen_hackatime_url,omitempty"`
 		// What the Airtable sync will send to the Unified YSWS DB; null until
 		// a reviewer approves it.
@@ -547,6 +552,7 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		WindowStart:            report.WindowStart,
 		TelescreenURL:          telescreenSubjectURL(row.User.SlackID),
 		Prereview:              pre,
+		PrereviewsVisible:      seePrereviews,
 		TelescreenHackatimeURL: telescreenHackatimeURL(report.HackatimeUserID, s.HackatimeProjects),
 		UnifiedPreview:         preview,
 		Claim:                  claim,
