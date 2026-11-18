@@ -401,7 +401,26 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
+	// Their history in the Unified YSWS DB, while the checks run.
+	var (
+		person    *unified.Person
+		personErr string
+		personed  = make(chan struct{})
+	)
+	go func() {
+		defer close(personed)
+		if a.Unified == nil {
+			return
+		}
+		p, err := a.Unified.FindByPerson(r.Context(), row.User.Email, deref(row.User.SlackID))
+		if err != nil {
+			personErr = "Couldn't search the Unified YSWS DB: " + err.Error()
+			return
+		}
+		person = &p
+	}()
 	report, err := a.runChecks(r.Context(), row, settings)
+	<-personed
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return
@@ -471,6 +490,11 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		// This project in the Unified YSWS DB under other programs; null when
 		// the Unified YSWS DB isn't being searched.
 		UnifiedRecords []unified.Record `json:"unified_records"`
+		// The person's own history in the Unified YSWS DB: their YSWS
+		// Authors row and every project a program approved for them. Null
+		// when the Unified YSWS DB isn't being searched.
+		UnifiedPerson      *unified.Person `json:"unified_person"`
+		UnifiedPersonError string          `json:"unified_person_error,omitempty"`
 		// Hackatime time and commits per day since WindowStart: the last
 		// approved ship, or the event's start. Daily totals, never heartbeats.
 		Days []dayJSON `json:"days"`
@@ -505,6 +529,8 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		GitHub:               report.GitHub,
 		GitHubError:          report.GitHubError,
 		UnifiedRecords:       report.Unified,
+		UnifiedPerson:        person,
+		UnifiedPersonError:   personErr,
 		Days:                 report.Days,
 		CommitSeconds:        report.CommitSeconds,
 		AfterLastCommit:      report.AfterLastCommit,

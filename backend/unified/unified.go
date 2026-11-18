@@ -143,18 +143,37 @@ type Record struct {
 	ApprovedAt  string  `json:"approved_at,omitempty"`
 	CodeURL     string  `json:"code_url,omitempty"`
 	PlayableURL string  `json:"playable_url,omitempty"`
+	// The start of the project's description; only from FindByPerson.
+	Description string `json:"description,omitempty"`
 }
 
-// A Lookup finds Unified YSWS records with the same repo or demo link.
+// Person is someone's history in the Unified YSWS DB: their row in YSWS
+// Authors (trust level and weighted grants, when they have one) and the
+// projects every program approved for them, newest first.
+type Person struct {
+	Found          bool     `json:"found"` // they're in YSWS Authors
+	TrustLevel     string   `json:"trust_level,omitempty"`
+	WeightedGrants float64  `json:"weighted_grants"`
+	Projects       []Record `json:"projects"`
+}
+
+// A Lookup searches the Unified YSWS DB: for projects with the same repo or
+// demo link, and for everything one person has had approved.
 type Lookup interface {
 	FindByLinks(ctx context.Context, links ...string) ([]Record, error)
+	FindByPerson(ctx context.Context, email, slackID string) (Person, error)
 }
 
-// The Unified YSWS DB's approved projects table (the same one Sidekick reads).
+// The Unified YSWS DB's approved projects table (the same one Sidekick reads),
+// and its YSWS Authors table: one row per person, linked to their projects.
 const (
-	BaseID  = "app3A5kJwYqxMLOgh"
-	TableID = "tblzWWGUYHVH7Zyqf"
+	BaseID         = "app3A5kJwYqxMLOgh"
+	TableID        = "tblzWWGUYHVH7Zyqf"
+	AuthorsTableID = "tblRf1BQs5H8298gW"
 )
+
+// maxPersonProjects is the most of someone's approved projects kept.
+const maxPersonProjects = 50
 
 // Airtable reads the Unified YSWS DB. It only ever reads.
 type Airtable struct{ client *airtable.Client }
@@ -188,26 +207,79 @@ func (a *Airtable) FindByLinks(ctx context.Context, links ...string) ([]Record, 
 	}
 	var records []Record
 	for _, row := range rows {
-		r := Record{CodeURL: text(row.Fields["Code URL"]), PlayableURL: text(row.Fields["Playable URL"]), ApprovedAt: text(row.Fields["Approved At"])}
+		r := toRecord(row)
 		// FIND matches inside longer links too: keep only the same project.
 		if !slices.ContainsFunc(wanted, func(w string) bool { return sameProject(w, r.CodeURL) || sameProject(w, r.PlayableURL) }) {
 			continue
 		}
-		r.Hours = number(row.Fields["Hours Spent"])
-		if override, ok := row.Fields["Override Hours Spent"].(float64); ok {
-			r.Hours = override
-		}
-		switch program := row.Fields["YSWS–Name"].(type) {
-		case []any:
-			if len(program) > 0 {
-				r.Program = text(program[0])
-			}
-		default:
-			r.Program = text(program)
-		}
 		records = append(records, r)
 	}
 	return records, nil
+}
+
+// FindByPerson finds everything a person has had approved, by the email on
+// their projects, and their YSWS Authors row, by Slack ID or Hack Club email.
+func (a *Airtable) FindByPerson(ctx context.Context, email, slackID string) (Person, error) {
+	person := Person{Projects: []Record{}}
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email != "" {
+		rows, err := a.client.List(ctx, TableID, fmt.Sprintf(`LOWER(TRIM({Email})) = "%s"`, formulaString(email)),
+			"Code URL", "Playable URL", "Hours Spent", "Override Hours Spent", "YSWS–Name", "Approved At", "Description")
+		if err != nil {
+			return person, err
+		}
+		for _, row := range rows {
+			person.Projects = append(person.Projects, toRecord(row))
+		}
+		slices.SortStableFunc(person.Projects, func(x, y Record) int { return strings.Compare(y.ApprovedAt, x.ApprovedAt) })
+		if len(person.Projects) > maxPersonProjects {
+			person.Projects = person.Projects[:maxPersonProjects]
+		}
+	}
+	var who []string
+	if slackID != "" {
+		who = append(who, fmt.Sprintf(`{Slack ID} = "%s"`, formulaString(slackID)))
+	}
+	if email != "" {
+		who = append(who, fmt.Sprintf(`LOWER(TRIM({Hack Club Auth Email})) = "%s"`, formulaString(email)))
+	}
+	if len(who) == 0 {
+		return person, nil
+	}
+	rows, err := a.client.List(ctx, AuthorsTableID, "OR("+strings.Join(who, ",")+")", "Unified Trust Level", "Weighted Grants–Total")
+	if err != nil {
+		return person, err
+	}
+	if len(rows) > 0 {
+		person.Found = true
+		person.TrustLevel = text(rows[0].Fields["Unified Trust Level"])
+		person.WeightedGrants = number(rows[0].Fields["Weighted Grants–Total"])
+	}
+	return person, nil
+}
+
+// toRecord reads an Approved Projects row.
+func toRecord(row airtable.Record) Record {
+	r := Record{CodeURL: text(row.Fields["Code URL"]), PlayableURL: text(row.Fields["Playable URL"]), ApprovedAt: text(row.Fields["Approved At"])}
+	r.Hours = number(row.Fields["Hours Spent"])
+	if override, ok := row.Fields["Override Hours Spent"].(float64); ok {
+		r.Hours = override
+	}
+	switch program := row.Fields["YSWS–Name"].(type) {
+	case []any:
+		if len(program) > 0 {
+			r.Program = text(program[0])
+		}
+	default:
+		r.Program = text(program)
+	}
+	if d := strings.Join(strings.Fields(text(row.Fields["Description"])), " "); d != "" {
+		if runes := []rune(d); len(runes) > 200 {
+			d = string(runes[:200]) + "…"
+		}
+		r.Description = d
+	}
+	return r
 }
 
 // formulaString makes a link safe inside an Airtable formula's string
@@ -273,4 +345,19 @@ func (Dev) FindByLinks(ctx context.Context, links ...string) ([]Record, error) {
 		}
 	}
 	return nil, nil
+}
+
+// FindByPerson in dev mode: someone whose email has "sana" or "maya" in it has
+// a history from other programs; nobody else has one.
+func (Dev) FindByPerson(ctx context.Context, email, slackID string) (Person, error) {
+	e := strings.ToLower(email)
+	if !strings.Contains(e, "sana") && !strings.Contains(e, "maya") {
+		return Person{Projects: []Record{}}, nil
+	}
+	return Person{Found: true, TrustLevel: "YSWS Resident", WeightedGrants: 3.5, Projects: []Record{
+		{Program: "Summer of Making (dev mode example)", Hours: 12, ApprovedAt: "2026-08-14", CodeURL: "https://github.com/dev/flashcards-double-dip",
+			Description: "Spaced-repetition flashcards for learning vocabulary."},
+		{Program: "Athena (dev mode example)", Hours: 6.5, ApprovedAt: "2026-03-02", CodeURL: "https://github.com/dev/weather-cli",
+			PlayableURL: "https://dev.github.io/weather-cli", Description: "A command-line weather app with ASCII-art forecasts."},
+	}}, nil
 }

@@ -12,6 +12,7 @@
 	import { STAGES, canDecideStage, canHardReject, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, eventLabel, time, toSeconds, toHours, fromHours, cutText } from '#lib/review.js';
 	import RejectionControls from '#lib/review/RejectionControls.svelte';
 	import FixLinks from '#lib/review/FixLinks.svelte';
+	import UnifiedHistory from '#lib/review/UnifiedHistory.svelte';
 	import GitHubPanel from '#lib/review/GitHubPanel.svelte';
 	import HackatimePanel from '#lib/review/HackatimePanel.svelte';
 
@@ -477,6 +478,7 @@
 										</div>
 										{#if noteError}<p class="callout warn small">{noteError}</p>{/if}
 									{/if}
+									<UnifiedHistory person={d.unified_person} error={d.unified_person_error} />
 									{#if p.submissions.length > 1}
 										<h2 style="margin-top: 12px">Ships</h2>
 										<ul class="ships small">
