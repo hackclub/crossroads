@@ -130,8 +130,8 @@ type prereviewShip struct {
 // prereviewShips gathers the details of up to limit ships without a
 // pre-review (or any in review, with all). The checks run a few at a time:
 // they ask GitHub and Hackatime, and their answers are cached.
-func (a *API) prereviewShips(ctx context.Context, limit int, all bool) ([]prereviewShip, error) {
-	ids, err := a.Queries.ListShipsForPrereview(ctx, db.ListShipsForPrereviewParams{IncludeDone: all, MaxShips: int32(limit)})
+func (a *API) prereviewShips(ctx context.Context, limit int32, all bool) ([]prereviewShip, error) {
+	ids, err := a.Queries.ListShipsForPrereview(ctx, db.ListShipsForPrereviewParams{IncludeDone: all, MaxShips: limit})
 	if err != nil {
 		return nil, err
 	}
@@ -223,12 +223,14 @@ func cut(s string, n int) string {
 	return string([]rune(s)[:n]) + "\n[… cut short]"
 }
 
-func prereviewLimit(r *http.Request) int {
-	n, err := strconv.Atoi(r.URL.Query().Get("limit"))
+// prereviewLimit is ?limit=, from 1 to prereviewMaxShips. It's parsed as
+// 32 bits to begin with: the query takes an int32.
+func prereviewLimit(r *http.Request) int32 {
+	n, err := strconv.ParseInt(r.URL.Query().Get("limit"), 10, 32)
 	if err != nil || n <= 0 {
 		return prereviewDefaultShips
 	}
-	return min(n, prereviewMaxShips)
+	return int32(min(n, prereviewMaxShips))
 }
 
 // canSeePrereviews: the fraud check, HQ and admins always; reviewers with
