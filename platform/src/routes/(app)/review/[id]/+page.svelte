@@ -38,6 +38,19 @@
 
 	let claimError = $state('');
 	let comment = $state({ message: '', internal: true });
+	// The description shows three lines; a longer one opens in full.
+	let descEl = $state();
+	let descClipped = $state(false);
+	let descDialog;
+	$effect(() => {
+		d?.project.description;
+		if (!descEl) return;
+		const check = () => (descClipped = descEl.scrollHeight > descEl.clientHeight + 1);
+		check();
+		const watch = new ResizeObserver(check);
+		watch.observe(descEl);
+		return () => watch.disconnect();
+	});
 	let commentError = $state('');
 	let noteDraft = $state(null); // null when not editing the reviewer note
 	let noteError = $state('');
@@ -363,7 +376,13 @@
 						<span class="badge {statusTone(sub.status)}">{STATUS_LABELS[sub.status] ?? sub.status}</span>
 						{#if reship}<span class="badge">Update</span>{/if}
 					</div>
-					<p class="description" title={p.description}>{p.description}</p>
+					<button class="description" class:clipped={descClipped} bind:this={descEl} onclick={() => descClipped && descDialog.showModal()} tabindex={descClipped ? 0 : -1} aria-label={descClipped ? 'Read the whole description' : undefined}>{p.description}</button>
+					{#if descClipped}<button class="link-btn small read-all" onclick={() => descDialog.showModal()}>Read it all</button>{/if}
+					<dialog class="desc-dialog" bind:this={descDialog} aria-labelledby="desc-title">
+						<h2 id="desc-title">{p.name}</h2>
+						<p class="desc-full">{p.description}</p>
+						<div class="row"><button class="btn small" onclick={() => descDialog.close()}>Close</button></div>
+					</dialog>
 					<div class="links">
 						{#if p.demo_url}<a class="btn small primary" href={p.demo_url} target="_blank" rel="noreferrer">Try the demo</a>{/if}
 						{#if p.repo_url}<a class="btn small ghost" href={p.repo_url} target="_blank" rel="noreferrer">Repo</a>{/if}
@@ -790,7 +809,26 @@
 	.summary { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 	.title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 	.title-row h1 { font-size: 34px; line-height: 1.05; overflow-wrap: anywhere; }
-	.description { margin: 0; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+	.description {
+		margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: default;
+		display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+	}
+	.description.clipped { cursor: pointer; }
+	.description.clipped:hover { text-decoration: underline; }
+	.read-all { align-self: flex-start; }
+	.desc-dialog {
+		width: min(640px, calc(100vw - 32px));
+		padding: 24px 28px;
+		color: var(--text);
+		background: var(--row-bg);
+		border: 0;
+		border-radius: var(--radius);
+		box-shadow: 0 24px 60px rgb(0 0 0 / 0.6);
+		font-family: 'Crimson Pro', Georgia, serif;
+	}
+	.desc-dialog::backdrop { background: rgb(0 0 0 / 0.7); }
+	.desc-dialog h2 { font-size: 30px; margin: 0 0 12px; }
+	.desc-full { margin: 0 0 16px; max-height: 65vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 	.links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 	.maker { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
 	.note { margin: 0; padding: 4px 10px; border-radius: 8px; background: var(--rv-sunk); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
