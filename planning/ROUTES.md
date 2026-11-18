@@ -124,12 +124,14 @@ interface SpecialStamp {
   box_id: number | null;        // null if an admin gave it or it was claimed
   submission_id: number | null; // set once it's been used
   acquired_at: string;
+  seen_at: string | null;       // null for one an admin gave that its owner hasn't opened on Home yet
 }
 
 interface Box {
   id: number;
   box_type_id: number;
   milestone_id: number | null;      // null if an admin gave it
+  project_id: number | null;        // the project it came with, from a per-project milestone
   granted_at: string;
   opened_at: string | null;         // null until opened
   special_stamp_id: number | null;  // what it dropped, once opened
@@ -226,6 +228,7 @@ Reviewer and admin shapes are listed with their routes below.
 | GET | `/api/box-types` | signed in | Box types and their current odds |
 | GET | `/api/special-stamps` | signed in | Their special stamps |
 | POST | `/api/special-stamps/{id}/placement` | owner | Stick a special stamp on a project, or move it there |
+| POST | `/api/special-stamps/{id}/seen` | owner | Mark a stamp an admin gave as seen, once it's opened on Home |
 | POST | `/api/special-stamps/claims` | signed in | Claim a stamp with a claim link's code |
 | GET | `/api/shop/items` | signed in | What's in the shop |
 | POST | `/api/shop/items/{id}/orders` | signed in, verified | Buy something |
@@ -266,7 +269,7 @@ Reviewer and admin shapes are listed with their routes below.
 | PATCH | `/api/admin/box-types/{id}` | admin | Edit a box type |
 | PUT | `/api/admin/box-types/{id}/drops` | admin | Replace a box type's drop table |
 | GET | `/api/admin/milestones` | admin | Milestones |
-| POST | `/api/admin/milestones` | admin | Create a milestone |
+| POST | `/api/admin/milestones` | admin | Create a milestone (`per_project: true` counts each project's own hours) |
 | GET | `/api/admin/shop-items` | admin | Every shop item, including inactive |
 | POST | `/api/admin/shop-items` | admin | Create a shop item |
 | PATCH | `/api/admin/shop-items/{id}` | admin | Edit a shop item |
@@ -451,6 +454,10 @@ Rolls a special stamp from the box's type, among the stamp types that still have
 ### `GET /api/special-stamps`
 
 `200` → `SpecialStamp[]`, newest first. Ones they can use on a submission have `type.effect !== "none"` and `submission_id === null`.
+
+### `POST /api/special-stamps/{id}/seen`
+
+A stamp an admin gave comes with `seen_at: null`, and Home opens with it in a box until it's opened there. Opening it calls this. `200` → `SpecialStamp` with `seen_at` set; calling it again changes nothing. `404` if it isn't theirs. Stamps from a box or a claim link are seen as they're made.
 
 ### `POST /api/special-stamps/claims`
 
@@ -748,7 +755,7 @@ interface ReviewSettings {
 
 **`POST /api/admin/users/{id}/boxes`** with `{"box_type_id": 1}` → `201 Box`. `404` for no such user, `422` for no such box type.
 
-**`POST /api/admin/users/{id}/special-stamps`** with `{"special_stamp_type_id": 1}` → `201 SpecialStamp`. Comes out of the type's supply: `409` if it's run out. `404` for no such user, `422` for no such type.
+**`POST /api/admin/users/{id}/special-stamps`** with `{"special_stamp_type_id": 1}` → `201 SpecialStamp`. Comes out of the type's supply: `409` if it's run out. It takes over their Home until they've opened it (`seen_at` is null until then). `404` for no such user, `422` for no such type.
 
 ### Role invites
 

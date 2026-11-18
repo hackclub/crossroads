@@ -1,8 +1,9 @@
 package api
 
-// Boxes come from milestones (see review.go) or from admins. Opening one rolls
-// a special stamp from its box type's drops, skipping stamp types whose supply
-// has run out.
+// Boxes come from milestones (see payOut in stages.go) or from admins. A
+// per-project milestone's box comes with the project that passed it. Opening
+// one rolls a special stamp from its box type's drops, skipping stamp types
+// whose supply has run out.
 
 import (
 	"crypto/rand"
@@ -24,6 +25,7 @@ type boxJSON struct {
 	ID             int64      `json:"id"`
 	BoxTypeID      int64      `json:"box_type_id"`
 	MilestoneID    *int64     `json:"milestone_id"` // null if an admin gave it
+	ProjectID      *int64     `json:"project_id"`   // the project it came with, if any
 	GrantedAt      time.Time  `json:"granted_at"`
 	OpenedAt       *time.Time `json:"opened_at"`
 	SpecialStampID *int64     `json:"special_stamp_id"` // what it dropped, once opened
@@ -34,6 +36,7 @@ func toBoxJSON(b db.Box, specialStampID *int64) boxJSON {
 		ID:             b.ID,
 		BoxTypeID:      b.BoxTypeID,
 		MilestoneID:    b.MilestoneID,
+		ProjectID:      b.ProjectID,
 		GrantedAt:      b.GrantedAt,
 		OpenedAt:       b.OpenedAt,
 		SpecialStampID: specialStampID,
@@ -68,6 +71,9 @@ type specialStampJSON struct {
 	AcquiredAt   time.Time            `json:"acquired_at"`
 	// Set once it's stuck on a project; it's in the stamp box until then.
 	ProjectID *int64 `json:"project_id"`
+	// Null for one an admin gave that its owner hasn't seen come out yet:
+	// Home opens with it until they have.
+	SeenAt *time.Time `json:"seen_at"`
 }
 
 func toSpecialStampJSON(s db.SpecialStamp, t db.SpecialStampType) specialStampJSON {
@@ -78,6 +84,7 @@ func toSpecialStampJSON(s db.SpecialStamp, t db.SpecialStampType) specialStampJS
 		SubmissionID: s.SubmissionID,
 		AcquiredAt:   s.AcquiredAt,
 		ProjectID:    s.ProjectID,
+		SeenAt:       s.SeenAt,
 	}
 }
 
@@ -96,6 +103,7 @@ func (a *API) listBoxes(w http.ResponseWriter, r *http.Request) {
 			MilestoneID: row.MilestoneID,
 			GrantedAt:   row.GrantedAt,
 			OpenedAt:    row.OpenedAt,
+			ProjectID:   row.ProjectID,
 		}, row.SpecialStampID))
 	}
 	respond.JSON(w, http.StatusOK, out)
@@ -272,4 +280,30 @@ func (a *API) listSpecialStamps(w http.ResponseWriter, r *http.Request) {
 		out = append(out, toSpecialStampJSON(row.SpecialStamp, row.SpecialStampType))
 	}
 	respond.JSON(w, http.StatusOK, out)
+}
+
+// seeSpecialStamp is POST /special-stamps/{stampID}/seen, once a stamp an
+// admin gave has come out on Home. Seeing it again changes nothing.
+// → 200 SpecialStamp.
+func (a *API) seeSpecialStamp(w http.ResponseWriter, r *http.Request) {
+	user := auth.User(r.Context())
+	id, ok := idParam(w, r, "stampID")
+	if !ok {
+		return
+	}
+	stamp, err := a.Queries.MarkSpecialStampSeen(r.Context(), db.MarkSpecialStampSeenParams{ID: id, UserID: user.ID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		respond.Error(w, http.StatusNotFound, "That stamp doesn't exist.")
+		return
+	}
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	stampType, err := a.Queries.GetSpecialStampType(r.Context(), stamp.SpecialStampTypeID)
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	respond.JSON(w, http.StatusOK, toSpecialStampJSON(stamp, stampType))
 }

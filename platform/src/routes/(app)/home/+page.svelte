@@ -4,11 +4,13 @@
 	import { session } from '#lib/session.svelte.js';
 	import Station from '#lib/Station.svelte';
 	import StampIcon from '#lib/StampIcon.svelte';
+	import BoxTakeover from '#lib/BoxTakeover.svelte';
 	import { hours, approvedSeconds, projectStatus, inReview, GOAL_HOURS } from '#lib/format.js';
 
 	let projects = $state(null);
 	let details = $state({}); // project id → GET /projects/{id}, for unshipped time
 	let boxes = $state([]);
+	let specialStamps = $state([]);
 	let ticket = $state(null);
 	let hackatimeError = $state('');
 	let error = $state('');
@@ -16,7 +18,7 @@
 
 	onMount(async () => {
 		try {
-			[projects, boxes] = await Promise.all([get('/projects'), get('/boxes')]);
+			[projects, boxes, specialStamps] = await Promise.all([get('/projects'), get('/boxes'), get('/special-stamps')]);
 		} catch (e) {
 			error = e.message;
 			return;
@@ -32,6 +34,13 @@
 			if (p.hackatime_projects.length) get(`/projects/${p.id}`).then((d) => (details[p.id] = d)).catch(() => {});
 		}
 	});
+
+	// Once the takeover opens something, so it and the box count catch up.
+	function reloadGifts() {
+		Promise.all([get('/boxes'), get('/special-stamps')])
+			.then(([b, s]) => ([boxes, specialStamps] = [b, s]))
+			.catch(() => {});
+	}
 
 	const first = $derived(session.me.name.replace(/\s*\(dev\)$/, '').split(' ')[0]);
 	const stamps = $derived(session.me.stamps);
@@ -57,6 +66,8 @@
 </script>
 
 <svelte:window bind:innerWidth />
+
+{#if projects}<BoxTakeover {boxes} stamps={specialStamps} {projects} onopened={reloadGifts} />{/if}
 
 <div class="stack-lg">
 	{#if error}<p class="callout warn">{error}</p>{/if}

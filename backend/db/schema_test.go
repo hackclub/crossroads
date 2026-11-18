@@ -231,6 +231,23 @@ func TestOneBoxPerMilestone(t *testing.T) {
 	wantViolation(t, err, "boxes_user_id_milestone_id_key")
 }
 
+func TestOneBoxPerProjectPerMilestone(t *testing.T) {
+	pool := dbtest.New(t)
+	user := insertUser(t, pool, db.UserRoleParticipant)
+	boxType := insert(t, pool, `insert into box_types (name) values ('Project box')`)
+	milestone := insert(t, pool, `insert into milestones (name, approved_seconds, box_type_id, per_project)
+		values ('10 hours on a project', 36000, $1, true)`, boxType)
+	first := insert(t, pool, `insert into projects (user_id, name) values ($1, 'first')`, user)
+	second := insert(t, pool, `insert into projects (user_id, name) values ($1, 'second')`, user)
+
+	// Each of someone's projects gets its own box from the milestone.
+	grant := `insert into boxes (user_id, box_type_id, milestone_id, project_id) values ($1, $2, $3, $4)`
+	insert(t, pool, grant, user, boxType, milestone, first)
+	insert(t, pool, grant, user, boxType, milestone, second)
+	_, err := pool.Exec(context.Background(), grant, user, boxType, milestone, first)
+	wantViolation(t, err, "boxes_project_id_milestone_id_key")
+}
+
 func TestNoStackingSpecialStamps(t *testing.T) {
 	pool := dbtest.New(t)
 	ctx := context.Background()

@@ -426,6 +426,14 @@ type milestoneJSON struct {
 	Name            string `json:"name"`
 	ApprovedSeconds int32  `json:"approved_seconds"`
 	BoxTypeID       int64  `json:"box_type_id"`
+	// Counts one project's approved hours, and gives each project that
+	// passes it a box, instead of counting everything its owner has had
+	// approved.
+	PerProject bool `json:"per_project"`
+}
+
+func toMilestoneJSON(m db.Milestone) milestoneJSON {
+	return milestoneJSON{ID: m.ID, Name: m.Name, ApprovedSeconds: m.ApprovedSeconds, BoxTypeID: m.BoxTypeID, PerProject: m.PerProject}
 }
 
 func (a *API) adminListMilestones(w http.ResponseWriter, r *http.Request) {
@@ -436,13 +444,14 @@ func (a *API) adminListMilestones(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []milestoneJSON{}
 	for _, m := range milestones {
-		out = append(out, milestoneJSON{ID: m.ID, Name: m.Name, ApprovedSeconds: m.ApprovedSeconds, BoxTypeID: m.BoxTypeID})
+		out = append(out, toMilestoneJSON(m))
 	}
 	respond.JSON(w, http.StatusOK, out)
 }
 
 // adminCreateMilestone adds a milestone and gives its box straight away to
-// everyone who's already past it.
+// everyone who's already past it, or for a per-project milestone, to every
+// project that is.
 func (a *API) adminCreateMilestone(w http.ResponseWriter, r *http.Request) {
 	var body milestoneJSON
 	if !decode(w, r, &body) {
@@ -472,18 +481,27 @@ func (a *API) adminCreateMilestone(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
-	m, err := q.CreateMilestone(r.Context(), db.CreateMilestoneParams{Name: body.Name, ApprovedSeconds: body.ApprovedSeconds, BoxTypeID: body.BoxTypeID})
+	m, err := q.CreateMilestone(r.Context(), db.CreateMilestoneParams{
+		Name: body.Name, ApprovedSeconds: body.ApprovedSeconds, BoxTypeID: body.BoxTypeID, PerProject: body.PerProject,
+	})
 	if db.IsViolation(err, "milestones_approved_seconds_key") {
-		respond.Error(w, http.StatusConflict, "There's already a milestone at that many hours.")
+		respond.Error(w, http.StatusConflict, "There's already a milestone like that at that many hours.")
 		return
 	}
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return
 	}
-	granted, err := q.GrantMilestoneToQualifiedUsers(r.Context(), db.GrantMilestoneToQualifiedUsersParams{
-		BoxTypeID: m.BoxTypeID, MilestoneID: m.ID, ApprovedSeconds: m.ApprovedSeconds,
-	})
+	var granted []db.Box
+	if m.PerProject {
+		granted, err = q.GrantProjectMilestoneToQualifiedProjects(r.Context(), db.GrantProjectMilestoneToQualifiedProjectsParams{
+			BoxTypeID: m.BoxTypeID, MilestoneID: m.ID, ApprovedSeconds: m.ApprovedSeconds,
+		})
+	} else {
+		granted, err = q.GrantMilestoneToQualifiedUsers(r.Context(), db.GrantMilestoneToQualifiedUsersParams{
+			BoxTypeID: m.BoxTypeID, MilestoneID: m.ID, ApprovedSeconds: m.ApprovedSeconds,
+		})
+	}
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return
@@ -495,7 +513,7 @@ func (a *API) adminCreateMilestone(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusCreated, struct {
 		Milestone    milestoneJSON `json:"milestone"`
 		BoxesGranted int           `json:"boxes_granted"`
-	}{milestoneJSON{ID: m.ID, Name: m.Name, ApprovedSeconds: m.ApprovedSeconds, BoxTypeID: m.BoxTypeID}, len(granted)})
+	}{toMilestoneJSON(m), len(granted)})
 }
 
 func (a *API) adminGrantBox(w http.ResponseWriter, r *http.Request) {
@@ -577,7 +595,7 @@ func (a *API) adminGrantSpecialStamp(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
-	stamp, err := q.CreateSpecialStamp(r.Context(), db.CreateSpecialStampParams{UserID: userID, SpecialStampTypeID: t.ID, GrantedBy: &admin.ID})
+	stamp, err := q.GiveSpecialStamp(r.Context(), db.GiveSpecialStampParams{UserID: userID, SpecialStampTypeID: t.ID, GrantedBy: &admin.ID})
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return

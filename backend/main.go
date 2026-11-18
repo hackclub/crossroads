@@ -244,6 +244,7 @@ func main() {
 		r.Mount("/dev/github", (&devgithub.Fake{Created: hoursStart.AddDate(0, 0, -30), HoursStart: hoursStart}).Routes())
 		r.Mount("/dev/hackatime", devhackatime.New(cmp.Or(os.Getenv("DEV_HACKATIME_FILE"), "data/devhackatime.json")).Routes())
 		r.With(auth.RequireUser).Post("/dev/box", apiRoutes.DevGrantBox)
+		r.With(auth.RequireUser).Post("/dev/stamp", apiRoutes.DevGiveStamp)
 	}
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {

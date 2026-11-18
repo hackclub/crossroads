@@ -12,7 +12,7 @@ select * from boxes where id = $1 and user_id = $2 for update;
 update boxes set opened_at = now() where id = $1;
 
 -- name: GrantBox :one
-insert into boxes (user_id, box_type_id, granted_by) values ($1, $2, $3)
+insert into boxes (user_id, box_type_id, granted_by, project_id) values ($1, $2, $3, $4)
 returning *;
 
 -- name: ListBoxTypes :many
@@ -62,7 +62,7 @@ where box_drops.special_stamp_type_id = $1
 select * from milestones order by approved_seconds;
 
 -- name: CreateMilestone :one
-insert into milestones (name, approved_seconds, box_type_id) values ($1, $2, $3)
+insert into milestones (name, approved_seconds, box_type_id, per_project) values ($1, $2, $3, $4)
 returning *;
 
 -- name: GrantMilestoneToQualifiedUsers :many
@@ -74,5 +74,17 @@ join projects on projects.id = submissions.project_id
 where submissions.status = 'approved'
 group by projects.user_id
 having sum(submissions.approved_seconds) >= sqlc.arg(approved_seconds)::integer
-on conflict (user_id, milestone_id) do nothing
+on conflict (user_id, milestone_id) where project_id is null do nothing
+returning *;
+
+-- name: GrantProjectMilestoneToQualifiedProjects :many
+-- Grants a new per-project milestone's box to every project already past it.
+insert into boxes (user_id, box_type_id, milestone_id, project_id)
+select projects.user_id, sqlc.arg(box_type_id)::bigint, sqlc.arg(milestone_id)::bigint, projects.id
+from submissions
+join projects on projects.id = submissions.project_id
+where submissions.status = 'approved'
+group by projects.id
+having sum(submissions.approved_seconds) >= sqlc.arg(approved_seconds)::integer
+on conflict (project_id, milestone_id) where project_id is not null do nothing
 returning *;

@@ -8,6 +8,7 @@
 	let boxes = $state([]);
 	let types = $state([]);
 	let stamps = $state([]);
+	let projects = $state([]);
 	let error = $state('');
 	let dropped = $state(null);
 	let opening = $state(null);
@@ -18,7 +19,7 @@
 
 	async function load() {
 		try {
-			[boxes, types, stamps] = await Promise.all([get('/boxes'), get('/box-types'), get('/special-stamps')]);
+			[boxes, types, stamps, projects] = await Promise.all([get('/boxes'), get('/box-types'), get('/special-stamps'), get('/projects')]);
 		} catch (e) {
 			error = e.message;
 		}
@@ -29,6 +30,9 @@
 	const unopened = $derived(boxes.filter((b) => !b.opened_at));
 	const opened = $derived(boxes.filter((b) => b.opened_at));
 	const stampName = (id) => stamps.find((s) => s.id === id)?.type.name ?? '?';
+	const projectName = (id) => projects.find((p) => p.id === id)?.name ?? 'a project';
+	// Where a box came from, after when they got it.
+	const source = (box) => (box.project_id ? ` · came with ${projectName(box.project_id)}` : box.milestone_id ? '' : ' · gift from an admin');
 
 	async function open(box) {
 		error = '';
@@ -58,7 +62,7 @@
 	<div class="page-head">
 		<div class="stack-sm">
 			<h1>Boxes</h1>
-			<p class="muted">Hitting certain milestones in approved hours gets you stamp boxes! Stamps can be collected or applied to your projects for special effects when you ship.</p>
+			<p class="muted">Hitting certain milestones in approved hours gets you stamp boxes, and so does each project that gets enough hours approved! Stamps can be collected or applied to your projects for special effects when you ship.</p>
 		</div>
 	</div>
 
@@ -98,7 +102,7 @@
 		<h2>Unopened ({unopened.length})</h2>
 		{#each unopened as box}
 			<div class="card"><div class="row between">
-				<span><strong>{typeName(box.box_type_id)}</strong> <span class="small muted">· got {date(box.granted_at)}{box.milestone_id ? '' : ' · gift from an admin'}</span></span>
+				<span><strong>{typeName(box.box_type_id)}</strong> <span class="small muted">· got {date(box.granted_at)}{source(box)}</span></span>
 				<button class="btn primary" disabled={opening === box.id} onclick={() => open(box)}>{opening === box.id ? 'Opening…' : 'Open'}</button>
 			</div></div>
 		{:else}

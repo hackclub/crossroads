@@ -80,7 +80,7 @@
 			case 'special_stamp.used':
 				return `${d.special_stamp_type} used on ${d.project} (ship #${d.submission_id})`;
 			case 'box.granted':
-				return `${d.box_type} (box #${d.box_id}) ${d.milestone ? `for the ${d.milestone} milestone` : 'from an admin'}`;
+				return `${d.box_type} (box #${d.box_id}) ${d.milestone ? `for the ${d.milestone} milestone` : 'from an admin'}${d.project ? `, with ${d.project}` : ''}`;
 			case 'role.changed':
 				return `${d.from} → ${d.to}`;
 		}

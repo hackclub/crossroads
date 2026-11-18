@@ -168,6 +168,8 @@ There are no image uploads: `screenshot_url` is a link (for example to the Hack 
 ### Boxes and the collection
 
 - Unopened boxes are the ones in `GET /api/boxes` with `opened_at === null`.
+- A box with a `project_id` came with that project, from a per-project milestone. Home opens with it (`BoxTakeover.svelte`) until it's opened; "Later" puts it off until a new tab.
+- So does a special stamp an admin gave (`seen_at === null` in `GET /api/special-stamps`), in a box of its own. Opening it there calls `POST /api/special-stamps/{id}/seen` instead of opening a box.
 - `GET /api/box-types` has each box's art and its **current odds**. Show them before opening; participants are minors, and showing the odds is part of keeping boxes clearly away from gambling.
 - `POST /api/boxes/{id}/open` returns the `SpecialStamp` that dropped. Animate the reveal from that.
 - The collection is `GET /api/special-stamps`.
@@ -196,7 +198,7 @@ Everything under `/api/admin` (ROUTES.md has the details). Before launch, an adm
 1. **Roles:** `PATCH /api/admin/users/{id}` to make reviewers and other admins. The very first admin has to be set in the database (see DEVELOPMENT.md).
 2. **Special stamp types:** at least one unlimited collectible, plus capped ones like a priority-review stamp.
 3. **Box types:** create one, then `PUT .../drops`. At least one drop has to be unlimited.
-4. **Milestones:** for example `{"name": "First 10 hours", "approved_seconds": 36000, "box_type_id": 1}`. People already past it get the box immediately.
+4. **Milestones:** for example `{"name": "First 10 hours", "approved_seconds": 36000, "box_type_id": 1}`. People already past it get the box immediately. Add `"per_project": true` to count each project's own approved hours instead: every project past it comes with its own box, including projects already past it.
 5. **Shop items:** the ticket (`kind: "ticket"`, price 1,800 at 30 stamps an hour for 60 hours; stock 30 in batches of 6, each 150 more, so 60 hours up to 80), the price lock (`kind: "price_lock"`, price 150, 5 hours' worth), physical items (set `stock` if limited), and stipends (`stipend_cents`).
 
 Orders can be fulfilled from the admin API or by ticking **Fulfilled** in Airtable's Shop Orders table. Cancel through the API so stamps are refunded.

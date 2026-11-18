@@ -84,18 +84,24 @@ func (q *Queries) CreateBoxType(ctx context.Context, arg CreateBoxTypeParams) (B
 }
 
 const createMilestone = `-- name: CreateMilestone :one
-insert into milestones (name, approved_seconds, box_type_id) values ($1, $2, $3)
-returning id, name, approved_seconds, box_type_id, created_at
+insert into milestones (name, approved_seconds, box_type_id, per_project) values ($1, $2, $3, $4)
+returning id, name, approved_seconds, box_type_id, created_at, per_project
 `
 
 type CreateMilestoneParams struct {
 	Name            string
 	ApprovedSeconds int32
 	BoxTypeID       int64
+	PerProject      bool
 }
 
 func (q *Queries) CreateMilestone(ctx context.Context, arg CreateMilestoneParams) (Milestone, error) {
-	row := q.db.QueryRow(ctx, createMilestone, arg.Name, arg.ApprovedSeconds, arg.BoxTypeID)
+	row := q.db.QueryRow(ctx, createMilestone,
+		arg.Name,
+		arg.ApprovedSeconds,
+		arg.BoxTypeID,
+		arg.PerProject,
+	)
 	var i Milestone
 	err := row.Scan(
 		&i.ID,
@@ -103,6 +109,7 @@ func (q *Queries) CreateMilestone(ctx context.Context, arg CreateMilestoneParams
 		&i.ApprovedSeconds,
 		&i.BoxTypeID,
 		&i.CreatedAt,
+		&i.PerProject,
 	)
 	return i, err
 }
@@ -135,18 +142,24 @@ func (q *Queries) GetBoxType(ctx context.Context, id int64) (BoxType, error) {
 }
 
 const grantBox = `-- name: GrantBox :one
-insert into boxes (user_id, box_type_id, granted_by) values ($1, $2, $3)
-returning id, user_id, box_type_id, milestone_id, granted_by, granted_at, opened_at
+insert into boxes (user_id, box_type_id, granted_by, project_id) values ($1, $2, $3, $4)
+returning id, user_id, box_type_id, milestone_id, granted_by, granted_at, opened_at, project_id
 `
 
 type GrantBoxParams struct {
 	UserID    int64
 	BoxTypeID int64
 	GrantedBy *int64
+	ProjectID *int64
 }
 
 func (q *Queries) GrantBox(ctx context.Context, arg GrantBoxParams) (Box, error) {
-	row := q.db.QueryRow(ctx, grantBox, arg.UserID, arg.BoxTypeID, arg.GrantedBy)
+	row := q.db.QueryRow(ctx, grantBox,
+		arg.UserID,
+		arg.BoxTypeID,
+		arg.GrantedBy,
+		arg.ProjectID,
+	)
 	var i Box
 	err := row.Scan(
 		&i.ID,
@@ -156,6 +169,7 @@ func (q *Queries) GrantBox(ctx context.Context, arg GrantBoxParams) (Box, error)
 		&i.GrantedBy,
 		&i.GrantedAt,
 		&i.OpenedAt,
+		&i.ProjectID,
 	)
 	return i, err
 }
@@ -168,8 +182,8 @@ join projects on projects.id = submissions.project_id
 where submissions.status = 'approved'
 group by projects.user_id
 having sum(submissions.approved_seconds) >= $3::integer
-on conflict (user_id, milestone_id) do nothing
-returning id, user_id, box_type_id, milestone_id, granted_by, granted_at, opened_at
+on conflict (user_id, milestone_id) where project_id is null do nothing
+returning id, user_id, box_type_id, milestone_id, granted_by, granted_at, opened_at, project_id
 `
 
 type GrantMilestoneToQualifiedUsersParams struct {
@@ -196,6 +210,55 @@ func (q *Queries) GrantMilestoneToQualifiedUsers(ctx context.Context, arg GrantM
 			&i.GrantedBy,
 			&i.GrantedAt,
 			&i.OpenedAt,
+			&i.ProjectID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const grantProjectMilestoneToQualifiedProjects = `-- name: GrantProjectMilestoneToQualifiedProjects :many
+insert into boxes (user_id, box_type_id, milestone_id, project_id)
+select projects.user_id, $1::bigint, $2::bigint, projects.id
+from submissions
+join projects on projects.id = submissions.project_id
+where submissions.status = 'approved'
+group by projects.id
+having sum(submissions.approved_seconds) >= $3::integer
+on conflict (project_id, milestone_id) where project_id is not null do nothing
+returning id, user_id, box_type_id, milestone_id, granted_by, granted_at, opened_at, project_id
+`
+
+type GrantProjectMilestoneToQualifiedProjectsParams struct {
+	BoxTypeID       int64
+	MilestoneID     int64
+	ApprovedSeconds int32
+}
+
+// Grants a new per-project milestone's box to every project already past it.
+func (q *Queries) GrantProjectMilestoneToQualifiedProjects(ctx context.Context, arg GrantProjectMilestoneToQualifiedProjectsParams) ([]Box, error) {
+	rows, err := q.db.Query(ctx, grantProjectMilestoneToQualifiedProjects, arg.BoxTypeID, arg.MilestoneID, arg.ApprovedSeconds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Box
+	for rows.Next() {
+		var i Box
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.BoxTypeID,
+			&i.MilestoneID,
+			&i.GrantedBy,
+			&i.GrantedAt,
+			&i.OpenedAt,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -312,7 +375,7 @@ func (q *Queries) ListBoxTypes(ctx context.Context) ([]BoxType, error) {
 }
 
 const listBoxes = `-- name: ListBoxes :many
-select boxes.id, boxes.user_id, boxes.box_type_id, boxes.milestone_id, boxes.granted_by, boxes.granted_at, boxes.opened_at, special_stamps.id as special_stamp_id
+select boxes.id, boxes.user_id, boxes.box_type_id, boxes.milestone_id, boxes.granted_by, boxes.granted_at, boxes.opened_at, boxes.project_id, special_stamps.id as special_stamp_id
 from boxes
 left join special_stamps on special_stamps.box_id = boxes.id
 where boxes.user_id = $1
@@ -327,6 +390,7 @@ type ListBoxesRow struct {
 	GrantedBy      *int64
 	GrantedAt      time.Time
 	OpenedAt       *time.Time
+	ProjectID      *int64
 	SpecialStampID *int64
 }
 
@@ -347,6 +411,7 @@ func (q *Queries) ListBoxes(ctx context.Context, userID int64) ([]ListBoxesRow, 
 			&i.GrantedBy,
 			&i.GrantedAt,
 			&i.OpenedAt,
+			&i.ProjectID,
 			&i.SpecialStampID,
 		); err != nil {
 			return nil, err
@@ -360,7 +425,7 @@ func (q *Queries) ListBoxes(ctx context.Context, userID int64) ([]ListBoxesRow, 
 }
 
 const listMilestones = `-- name: ListMilestones :many
-select id, name, approved_seconds, box_type_id, created_at from milestones order by approved_seconds
+select id, name, approved_seconds, box_type_id, created_at, per_project from milestones order by approved_seconds
 `
 
 func (q *Queries) ListMilestones(ctx context.Context) ([]Milestone, error) {
@@ -378,6 +443,7 @@ func (q *Queries) ListMilestones(ctx context.Context) ([]Milestone, error) {
 			&i.ApprovedSeconds,
 			&i.BoxTypeID,
 			&i.CreatedAt,
+			&i.PerProject,
 		); err != nil {
 			return nil, err
 		}
@@ -390,7 +456,7 @@ func (q *Queries) ListMilestones(ctx context.Context) ([]Milestone, error) {
 }
 
 const lockBox = `-- name: LockBox :one
-select id, user_id, box_type_id, milestone_id, granted_by, granted_at, opened_at from boxes where id = $1 and user_id = $2 for update
+select id, user_id, box_type_id, milestone_id, granted_by, granted_at, opened_at, project_id from boxes where id = $1 and user_id = $2 for update
 `
 
 type LockBoxParams struct {
@@ -409,6 +475,7 @@ func (q *Queries) LockBox(ctx context.Context, arg LockBoxParams) (Box, error) {
 		&i.GrantedBy,
 		&i.GrantedAt,
 		&i.OpenedAt,
+		&i.ProjectID,
 	)
 	return i, err
 }

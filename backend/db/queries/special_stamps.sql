@@ -30,8 +30,20 @@ where id = $1 and (supply_cap is null or issued_count < supply_cap)
 returning *;
 
 -- name: CreateSpecialStamp :one
-insert into special_stamps (user_id, special_stamp_type_id, box_id, granted_by)
-values ($1, $2, $3, $4)
+-- What a box dropped.
+insert into special_stamps (user_id, special_stamp_type_id, box_id)
+values ($1, $2, $3)
+returning *;
+
+-- name: GiveSpecialStamp :one
+-- From an admin. It waits to be seen: Home opens with it until it is.
+insert into special_stamps (user_id, special_stamp_type_id, granted_by, seen_at)
+values ($1, $2, $3, null)
+returning *;
+
+-- name: MarkSpecialStampSeen :one
+update special_stamps set seen_at = coalesce(seen_at, now())
+where id = $1 and user_id = $2
 returning *;
 
 -- name: CreateClaimedSpecialStamp :one

@@ -79,7 +79,7 @@
 		run(() => api('POST', `/admin/users/${selected.id}/stamp-adjustments`, { amount: Number(adjust.amount), note: adjust.note }), (r) => `${r.name} now has ${r.stamps} tickets.`).then(() => (adjust = { amount: 0, note: '' }));
 	};
 	const giveBox = () => run(() => api('POST', `/admin/users/${selected.id}/boxes`, { box_type_id: Number(boxTypeId) }), () => `Gave ${selected.name} a box.`);
-	const giveStamp = () => run(() => api('POST', `/admin/users/${selected.id}/special-stamps`, { special_stamp_type_id: Number(stampTypeId) }), (s) => `Gave ${selected.name} a ${s.type.name}.`);
+	const giveStamp = () => run(() => api('POST', `/admin/users/${selected.id}/special-stamps`, { special_stamp_type_id: Number(stampTypeId) }), (s) => `Gave ${selected.name} a ${s.type.name}. It opens on their Home next time they're there.`);
 
 	// A role by Hack Club Auth email: changes now if they've signed in, or
 	// waits for their first sign-in (PUT /admin/roles-by-email).

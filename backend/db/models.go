@@ -578,6 +578,7 @@ type Box struct {
 	GrantedBy   *int64
 	GrantedAt   time.Time
 	OpenedAt    *time.Time
+	ProjectID   *int64
 }
 
 type BoxDrop struct {
@@ -610,6 +611,7 @@ type Milestone struct {
 	ApprovedSeconds int32
 	BoxTypeID       int64
 	CreatedAt       time.Time
+	PerProject      bool
 }
 
 type Order struct {
@@ -750,6 +752,7 @@ type SpecialStamp struct {
 	Rotation           float32
 	PlacedAt           *time.Time
 	Claimed            bool
+	SeenAt             *time.Time
 }
 
 type SpecialStampType struct {

@@ -79,9 +79,9 @@ Responses always use explicit JSON structs with `snake_case` tags. Never return 
 | `stamp_ledger` | Every stamp change ever: `payout` (a submission), `purchase` and `refund` (an order), `adjustment` (an admin, with a note). Append-only. |
 | `special_stamp_types` | Collectible kinds: `rarity`, `effect` (`none` or `priority_review`), optional `supply_cap`, `issued_count`. |
 | `box_types`, `box_drops` | Box kinds, and their loot tables (a weight per stamp type). |
-| `milestones` | Approved seconds → box type. |
-| `boxes` | Boxes people have, from a milestone or an admin; `opened_at`. |
-| `special_stamps` | Stamps people have, from a box or an admin; `submission_id` once used. |
+| `milestones` | Approved seconds → box type. `per_project` ones count one project's hours, not the person's total. |
+| `boxes` | Boxes people have, from a milestone or an admin; `opened_at`, and `project_id` for one that came with a project. |
+| `special_stamps` | Stamps people have, from a box, an admin or a claim link; `submission_id` once used, and `seen_at` null for one an admin gave that hasn't been opened on Home yet. |
 | `shop_items` | `kind` (`ticket`, `price_lock`, `physical`, `stipend`), `price`, optional `stock` and `max_per_user`, `stipend_cents`, `active`. Tickets can have `batch_size` and `batch_step`. |
 | `project_activity` | Each project's Hackatime `seconds` per UTC `day`, written by the activity poller. Only days with time have rows. |
 | `platform_activity` | `(user_id, day)` for each UTC day a person made a signed-in request, written by `activity.Visits`. |
@@ -112,7 +112,7 @@ Rules live in the database wherever possible, so a bug in Go can't break them. S
 | Superadmins are exactly the list in `main.go` | `SyncSuperadmins` at startup and every sign-in; Go: `adminUpdateUser` and `adminInviteRole` refuse to grant or remove it |
 | `users.stamps` always equals the ledger's sum | trigger `stamp_ledger_apply` (function `apply_stamp_entry`) |
 | A purchase can't take a balance below zero | the same trigger raises `stamps_not_negative`; Go checks with `db.IsNotEnoughStamps` |
-| One box per milestone per person | unique `(user_id, milestone_id)` on `boxes` |
+| One box per milestone per person, or per project for a per-project milestone | partial unique indexes `boxes_user_id_milestone_id_key` and `boxes_project_id_milestone_id_key` on `boxes` |
 | No stacking: at most one special stamp per submission | unique `special_stamps.submission_id` |
 | A box drops exactly one stamp | unique `special_stamps.box_id`, and the box row is locked while opening |
 | Supply caps hold | the conditional update in `ClaimSpecialStampSupply` |
@@ -164,7 +164,7 @@ The stages, the checks and Sidekick are explained in [REVIEW_FLOW.md](REVIEW_FLO
 2. Lock the owner's `users` row, then the submission. Decisions for one person go one at a time, so running totals are right.
 3. Refuse it if the ship isn't in review, has moved on from the `stage` the reviewer saw, is a stage they can't decide (`permissions`), or someone else holds it (`checkClaim`).
 4. Work out the ship's new state in Go, then write it all with `SaveSubmissionReview`, which also drops the claim. Add the `ship_events` row for the decision (and a `flagged` one if the checks sent it to the fraud check).
-5. If it's now `approved`, `payOut`: read the new running total, pay the difference in stamps plus any Golden Spike bonus, and grant a box for every milestone at or below the new total.
+5. If it's now `approved`, `payOut`: read the new running total, pay the difference in stamps plus any Golden Spike bonus, and grant a box for every milestone at or below the new total, and one with the project for every per-project milestone at or below the project's own total.
 
 Sidekick passes its own `permissions`: it vouches for its reviewers, so `isHq` decides whether an approval signs off. Everything else is the same code.
 
@@ -178,7 +178,7 @@ The queues put submissions with a priority-review special stamp first, then olde
 - **Odds** (`GET /api/box-types`) use the same availability rule, so what's shown is what happens.
 - **Supply caps** count issued stamps, not used ones, so a stamp someone holds always works. Admin grants come out of supply too. Lowering a cap below what's issued just stops new drops.
 - **Every box type must keep at least one unlimited stamp type**, so a box can never come up empty. This is enforced when setting drops and when capping a type.
-- **New milestones** are granted straight away to everyone already past them (`GrantMilestoneToQualifiedUsers`).
+- **New milestones** are granted straight away to everyone already past them (`GrantMilestoneToQualifiedUsers`), or for a per-project one, to every project already past it (`GrantProjectMilestoneToQualifiedProjects`).
 - **Claim links**: a stamp type with a `claim_code` can be claimed at `/claim/{code}` on the platform, for handing out a stamp with an announcement. Claims come out of supply like everything else. A claimed stamp has `claimed` set instead of a `box_id` or `granted_by` (the `special_stamps_source` check), and the partial unique index `special_stamps_one_claim_per_type` keeps it to one per person per type, even with simultaneous requests.
 - **Using a stamp** happens when submitting. It has to be theirs, unused, and have an effect. It's used up whatever the outcome.
 - **Adding an effect** (say, the stamp multiplier, deferred for budget reasons):

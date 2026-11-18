@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/scherepi/crossroads-backend/auth"
 	"github.com/scherepi/crossroads-backend/db"
@@ -41,9 +42,10 @@ type stampType struct {
 }
 
 type specialStamp struct {
-	ID           int64     `json:"id"`
-	Type         stampType `json:"type"`
-	SubmissionID *int64    `json:"submission_id"`
+	ID           int64      `json:"id"`
+	Type         stampType  `json:"type"`
+	SubmissionID *int64     `json:"submission_id"`
+	SeenAt       *time.Time `json:"seen_at"`
 }
 
 // setUpBox makes two stamp types, a capped priority review stamp that's
@@ -238,6 +240,43 @@ func TestAdminGrantsComeOutOfSupply(t *testing.T) {
 	e.mustCall(t, admin, http.StatusConflict, "POST", path, map[string]any{"special_stamp_type_id": express.ID}, nil)
 }
 
+func TestGivenStampsWaitToBeSeen(t *testing.T) {
+	e := newEnv(t)
+	admin := e.newAdmin(t)
+	user := e.newUser(t, "U1")
+	_, plain, boxTypeID := e.setUpBox(t, admin, 10)
+
+	var given specialStamp
+	e.mustCall(t, admin, http.StatusCreated, "POST", "/api/admin/users/"+itoa(user.ID)+"/special-stamps", map[string]any{"special_stamp_type_id": plain.ID}, &given)
+	if given.SeenAt != nil {
+		t.Fatalf("a given stamp is seen at %v, want not yet", given.SeenAt)
+	}
+	// What a box drops comes out in front of them.
+	var dropped specialStamp
+	box := e.grantBoxes(t, admin, user, boxTypeID, 1)[0]
+	e.mustCall(t, user, http.StatusOK, "POST", "/api/boxes/"+itoa(box)+"/open", nil, &dropped)
+	if dropped.SeenAt == nil {
+		t.Errorf("a stamp from a box isn't seen")
+	}
+
+	seen := "/api/special-stamps/" + itoa(given.ID) + "/seen"
+	e.mustCall(t, e.newUser(t, "U2"), http.StatusNotFound, "POST", seen, nil, nil)
+	var first, again specialStamp
+	e.mustCall(t, user, http.StatusOK, "POST", seen, nil, &first)
+	e.mustCall(t, user, http.StatusOK, "POST", seen, nil, &again)
+	if first.SeenAt == nil || first.Type.ID != plain.ID || !again.SeenAt.Equal(*first.SeenAt) {
+		t.Errorf("seen twice: %+v then %+v, want the same time both times", first, again)
+	}
+
+	var mine []specialStamp
+	e.mustCall(t, user, http.StatusOK, "GET", "/api/special-stamps", nil, &mine)
+	for _, s := range mine {
+		if s.SeenAt == nil {
+			t.Errorf("stamp %d still isn't seen", s.ID)
+		}
+	}
+}
+
 func TestNewMilestonesReachPeopleAlreadyPastThem(t *testing.T) {
 	e := newEnv(t)
 	admin := e.newAdmin(t)
@@ -268,6 +307,48 @@ func TestNewMilestonesReachPeopleAlreadyPastThem(t *testing.T) {
 	}
 	e.mustCall(t, admin, http.StatusConflict, "POST", "/api/admin/milestones",
 		map[string]any{"name": "Also 10 hours", "approved_seconds": 36000, "box_type_id": boxTypeID}, nil)
+}
+
+func TestNewProjectMilestonesReachProjectsAlreadyPastThem(t *testing.T) {
+	e := newEnv(t)
+	admin := e.newAdmin(t)
+	reviewer := e.newReviewer(t)
+	_, _, boxTypeID := e.setUpBox(t, admin, 1)
+	e.mustCall(t, admin, http.StatusCreated, "POST", "/api/admin/milestones",
+		map[string]any{"name": "10 hours", "approved_seconds": 36000, "box_type_id": boxTypeID}, nil)
+
+	user := e.newUser(t, "U1")
+	ahead := e.createProject(t, user, completeProject("racer"))
+	id := e.submitHours(t, user, "U1", ahead, "racer", 12*3600)
+	e.decide(t, reviewer, id, map[string]any{"action": "approve"})
+	second := completeProject("puzzler")
+	second["repo_url"], second["demo_url"] = "https://github.com/example/puzzler", "https://example.github.io/puzzler"
+	behind := e.createProject(t, user, second)
+	id = e.submitHours(t, user, "U1", behind, "puzzler", 3*3600)
+	e.decide(t, reviewer, id, map[string]any{"action": "approve"})
+
+	var created struct {
+		Milestone struct {
+			PerProject bool `json:"per_project"`
+		} `json:"milestone"`
+		BoxesGranted int `json:"boxes_granted"`
+	}
+	// The person already has the 10 hour box: a per-project milestone at
+	// the same hours is a different one.
+	e.mustCall(t, admin, http.StatusCreated, "POST", "/api/admin/milestones",
+		map[string]any{"name": "10 hours on a project", "approved_seconds": 36000, "box_type_id": boxTypeID, "per_project": true}, &created)
+	if !created.Milestone.PerProject || created.BoxesGranted != 1 {
+		t.Errorf("got %+v, want a per-project milestone that gave the project past 10 hours its box", created)
+	}
+	var boxes []struct {
+		ProjectID *int64 `json:"project_id"`
+	}
+	e.mustCall(t, user, http.StatusOK, "GET", "/api/boxes", nil, &boxes)
+	if len(boxes) != 2 || boxes[0].ProjectID == nil || *boxes[0].ProjectID != ahead.ID || boxes[1].ProjectID != nil {
+		t.Errorf("got boxes %+v, want the project's box and the person's", boxes)
+	}
+	e.mustCall(t, admin, http.StatusConflict, "POST", "/api/admin/milestones",
+		map[string]any{"name": "Also 10 hours on a project", "approved_seconds": 36000, "box_type_id": boxTypeID, "per_project": true}, nil)
 }
 
 func TestAdminRoutesAndRoles(t *testing.T) {

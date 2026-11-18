@@ -57,6 +57,7 @@ type decisionResult struct {
 	StampsPaid   int `json:"stamps_paid"`
 	BoxesGranted []struct {
 		MilestoneID *int64 `json:"milestone_id"`
+		ProjectID   *int64 `json:"project_id"`
 	} `json:"boxes_granted"`
 	Error string `json:"error"`
 }
@@ -289,6 +290,58 @@ func TestMilestoneBoxes(t *testing.T) {
 	_, result = e.decide(t, reviewer, id, map[string]any{"action": "approve", "approved_seconds": 9 * 3600})
 	if len(result.BoxesGranted) != 0 {
 		t.Errorf("at 9 approved hours got %+v, want no boxes", result.BoxesGranted)
+	}
+}
+
+func TestProjectMilestoneBoxes(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	var boxType, ten, perProject int64
+	e.pool.QueryRow(ctx, "insert into box_types (name) values ('Starter') returning id").Scan(&boxType)
+	e.pool.QueryRow(ctx, "insert into milestones (name, approved_seconds, box_type_id) values ('10 hours', 36000, $1) returning id", boxType).Scan(&ten)
+	e.pool.QueryRow(ctx, "insert into milestones (name, approved_seconds, box_type_id, per_project) values ('10 hours on a project', 36000, $1, true) returning id", boxType).Scan(&perProject)
+
+	reviewer := e.newReviewer(t)
+	user := e.newUser(t, "U1")
+	racer := e.createProject(t, user, completeProject("racer"))
+	second := completeProject("puzzler")
+	second["repo_url"], second["demo_url"] = "https://github.com/example/puzzler", "https://example.github.io/puzzler"
+	puzzler := e.createProject(t, user, second)
+
+	// 12 hours across two projects is past the person's milestone, but
+	// neither project's.
+	id := e.submitHours(t, user, "U1", racer, "racer", 6*3600)
+	e.decide(t, reviewer, id, map[string]any{"action": "approve"})
+	id = e.submitHours(t, user, "U1", puzzler, "puzzler", 6*3600)
+	_, result := e.decide(t, reviewer, id, map[string]any{"action": "approve"})
+	if len(result.BoxesGranted) != 1 || *result.BoxesGranted[0].MilestoneID != ten || result.BoxesGranted[0].ProjectID != nil {
+		t.Errorf("at 6 hours on each project got %+v, want just the person's 10 hour box", result.BoxesGranted)
+	}
+
+	// Shipping the racer again takes it to 12 hours: its box.
+	id = e.submitHours(t, user, "U1", racer, "racer", 12*3600)
+	_, result = e.decide(t, reviewer, id, map[string]any{"action": "approve"})
+	if len(result.BoxesGranted) != 1 || *result.BoxesGranted[0].MilestoneID != perProject || *result.BoxesGranted[0].ProjectID != racer.ID {
+		t.Errorf("at 12 hours on the racer got %+v, want the racer's box", result.BoxesGranted)
+	}
+	// A project gets one.
+	id = e.submitHours(t, user, "U1", racer, "racer", 20*3600)
+	if _, result = e.decide(t, reviewer, id, map[string]any{"action": "approve"}); len(result.BoxesGranted) != 0 {
+		t.Errorf("at 20 hours on the racer got %+v, want no more boxes", result.BoxesGranted)
+	}
+	// Another project past it gets its own.
+	id = e.submitHours(t, user, "U1", puzzler, "puzzler", 11*3600)
+	_, result = e.decide(t, reviewer, id, map[string]any{"action": "approve"})
+	if len(result.BoxesGranted) != 1 || *result.BoxesGranted[0].ProjectID != puzzler.ID {
+		t.Errorf("at 11 hours on the puzzler got %+v, want the puzzler's box", result.BoxesGranted)
+	}
+
+	var boxes []struct {
+		ProjectID *int64 `json:"project_id"`
+	}
+	e.mustCall(t, user, http.StatusOK, "GET", "/api/boxes", nil, &boxes)
+	if len(boxes) != 3 {
+		t.Errorf("has %d boxes, want 3: their own and one with each project", len(boxes))
 	}
 }
 

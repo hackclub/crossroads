@@ -68,13 +68,13 @@ Removing dev mode means deleting or reverting each of these. The ✂ items exist
 **Backend**
 - ✂ `backend/auth/dev.go`: `DevLogin`, the `/dev/login` handler.
 - ✂ `backend/devhackatime/`: the fake Hackatime server, mounted at `/dev/hackatime`.
-- ✂ `backend/api/dev.go`: `POST /dev/box`, which gives the signed-in person a box (the dev panel's "Add a box" button, via `devGiveBox` in `platform/src/lib/api.js`).
+- ✂ `backend/api/dev.go`: `POST /dev/box`, which gives the signed-in person a box (the dev panel's "Add a box" button, via `devGiveBox` in `platform/src/lib/api.js`), or with `{"project": true}` one that comes with their newest project and takes over Home ("Add a project's box"); and `POST /dev/stamp`, which gives them a stamp the way an admin does, so it takes over Home too ("Get a stamp from an admin", via `devGiveStamp`).
 - `backend/main.go`: the `DEV_MODE` block, which points the Hackatime client at the fake and mounts both `/dev` routes. It refuses to start unless `HCA_REDIRECT_URL` is plain `http://` on localhost or a loopback IP, and it refuses inside Kubernetes (any pod has `KUBERNETES_SERVICE_HOST` set).
 - `backend/.env.example`: the `DEV_MODE` entry.
 
 **Frontend** (`platform/`)
 - ✂ `src/lib/DevPanel.svelte`, and its use in `src/routes/(app)/+layout.svelte`.
-- `src/lib/api.js`: `isDevMode`, `devLoginUrl` and `devHackatime`.
+- `src/lib/api.js`: `isDevMode`, `devLoginUrl`, `devHackatime`, `devGiveBox` and `devGiveStamp`.
 - `src/routes/signin/+page.svelte`: the Dev sign-in form.
 - `src/app.css`: the `.devpanel` styles.
 - `vite.config.js`: the `/dev` proxy entry. Keep `/api`, `/auth` and `/uploads`.

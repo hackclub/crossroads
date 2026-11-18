@@ -38,7 +38,7 @@ Reviewers and admins only.
 - `GET /api/review/submissions/{id}`: the submission, its project with every earlier submission and its internal notes, who made it, and what Hackatime says now.
 - `POST /api/review/submissions/{id}` with `{"status": "approved" | "rejected", "approved_seconds", "feedback", "internal_notes"}`. `approved_seconds` defaults to all the new time. Rejections need feedback, which the participant sees; internal notes they don't. Nobody can review their own project.
 
-Approving pays `STAMPS_PER_HOUR` for each approved hour and grants a box for every milestone the person's approved total has now reached. Stamps are worked out on the running total, so splitting time across submissions never rounds anyone out of a stamp.
+Approving pays `STAMPS_PER_HOUR` for each approved hour and grants a box for every milestone the person's approved total has now reached, plus one with the project for every per-project milestone the project's own total has. Stamps are worked out on the running total, so splitting time across submissions never rounds anyone out of a stamp.
 
 ### Boxes and special stamps
 
@@ -60,7 +60,7 @@ Buying needs a verified identity that's eligible for YSWS programs. If what was 
 Admins only, under `/api/admin`:
 
 - `users` (`?q=` searches name, email or Slack ID), `PATCH users/{id}` to set `role`, `POST users/{id}/stamp-adjustments` (`{"amount", "note"}`, can go negative for clawbacks), and `POST users/{id}/boxes` or `users/{id}/special-stamps` to give them directly. Given special stamps still come out of the supply.
-- `special-stamp-types`, `box-types`, `PUT box-types/{id}/drops` (`[{"special_stamp_type_id", "weight"}]`), `milestones`. A new milestone's box goes straight to everyone already past it.
+- `special-stamp-types`, `box-types`, `PUT box-types/{id}/drops` (`[{"special_stamp_type_id", "weight"}]`), `milestones` (`per_project` to count each project's own hours). A new milestone's box goes straight to everyone (or every project) already past it.
 - `shop-items`, `orders` (`?status=pending`), and `PATCH orders/{id}` with `{"status": "fulfilled" | "cancelled", "notes"}`. Cancelling refunds the stamps and restocks the item.
 
 ### Hackatime
@@ -87,4 +87,4 @@ Leave `AIRTABLE_TOKEN` empty in development unless the base ID points at a test 
 
 - **Stamps** are the currency, called tickets everywhere people see it (and the `ticket` shop item is called the rail pass). `stamp_ledger` is append-only, and every insert updates `users.stamps`. A purchase that would take someone below zero fails. Admin adjustments can go negative, so stamps already spent can be clawed back from a fraudulent project.
 - **Submissions** pay out once, and only for time added since the project's last approved submission. A project has at most one pending submission, and each Hackatime project counts toward only one of its owner's projects.
-- **Special stamps** come from boxes, one box per milestone per person. Each type has an optional `supply_cap`. A submission takes at most one special stamp, so effects don't stack.
+- **Special stamps** come from boxes, one box per milestone per person, or per project for a per-project milestone. Each type has an optional `supply_cap`. A submission takes at most one special stamp, so effects don't stack.

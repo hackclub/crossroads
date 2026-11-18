@@ -58,6 +58,20 @@ func (q *Queries) AddShipEvent(ctx context.Context, arg AddShipEventParams) (Shi
 	return i, err
 }
 
+const approvedSecondsForProject = `-- name: ApprovedSecondsForProject :one
+select coalesce(sum(approved_seconds), 0)::bigint
+from submissions
+where project_id = $1 and status = 'approved'
+`
+
+// Only signed-off ships count.
+func (q *Queries) ApprovedSecondsForProject(ctx context.Context, projectID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, approvedSecondsForProject, projectID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const approvedSecondsForUser = `-- name: ApprovedSecondsForUser :one
 select coalesce(sum(submissions.approved_seconds), 0)::bigint
 from submissions
@@ -439,9 +453,9 @@ const grantMilestoneBoxes = `-- name: GrantMilestoneBoxes :many
 insert into boxes (user_id, box_type_id, milestone_id)
 select $1, milestones.box_type_id, milestones.id
 from milestones
-where milestones.approved_seconds <= $2::integer
-on conflict (user_id, milestone_id) do nothing
-returning id, user_id, box_type_id, milestone_id, granted_by, granted_at, opened_at
+where not milestones.per_project and milestones.approved_seconds <= $2::integer
+on conflict (user_id, milestone_id) where project_id is null do nothing
+returning id, user_id, box_type_id, milestone_id, granted_by, granted_at, opened_at, project_id
 `
 
 type GrantMilestoneBoxesParams struct {
@@ -468,6 +482,53 @@ func (q *Queries) GrantMilestoneBoxes(ctx context.Context, arg GrantMilestoneBox
 			&i.GrantedBy,
 			&i.GrantedAt,
 			&i.OpenedAt,
+			&i.ProjectID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const grantProjectMilestoneBoxes = `-- name: GrantProjectMilestoneBoxes :many
+insert into boxes (user_id, box_type_id, milestone_id, project_id)
+select $1, milestones.box_type_id, milestones.id, $2::bigint
+from milestones
+where milestones.per_project and milestones.approved_seconds <= $3::integer
+on conflict (project_id, milestone_id) where project_id is not null do nothing
+returning id, user_id, box_type_id, milestone_id, granted_by, granted_at, opened_at, project_id
+`
+
+type GrantProjectMilestoneBoxesParams struct {
+	UserID          int64
+	ProjectID       int64
+	ApprovedSeconds int32
+}
+
+// Grants a box with the project for every per-project milestone at or under
+// approved_seconds that it doesn't already have one for.
+func (q *Queries) GrantProjectMilestoneBoxes(ctx context.Context, arg GrantProjectMilestoneBoxesParams) ([]Box, error) {
+	rows, err := q.db.Query(ctx, grantProjectMilestoneBoxes, arg.UserID, arg.ProjectID, arg.ApprovedSeconds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Box
+	for rows.Next() {
+		var i Box
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.BoxTypeID,
+			&i.MilestoneID,
+			&i.GrantedBy,
+			&i.GrantedAt,
+			&i.OpenedAt,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}

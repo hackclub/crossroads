@@ -66,10 +66,24 @@ export async function devHackatime(add) {
 	return data;
 }
 
-// Dev mode: give the signed-in person a box to open (POST /dev/box).
-export async function devGiveBox() {
-	const res = await fetch('/dev/box', { method: 'POST' });
+// Dev mode: give the signed-in person a box to open (POST /dev/box). With
+// { project: true } it comes with their newest project and takes over Home.
+export async function devGiveBox(body) {
+	const res = await fetch('/dev/box', {
+		method: 'POST',
+		headers: body ? { 'Content-Type': 'application/json' } : undefined,
+		body: body ? JSON.stringify(body) : undefined
+	});
 	const data = await res.json().catch(() => null);
 	if (!res.ok) throw new ApiError(res.status, data?.error ?? `Couldn't add a box (${res.status}).`);
+	return data;
+}
+
+// Dev mode: give the signed-in person a stamp the way an admin does (POST
+// /dev/stamp). It takes over Home until they've seen it.
+export async function devGiveStamp() {
+	const res = await fetch('/dev/stamp', { method: 'POST' });
+	const data = await res.json().catch(() => null);
+	if (!res.ok) throw new ApiError(res.status, data?.error ?? `Couldn't add a stamp (${res.status}).`);
 	return data;
 }
