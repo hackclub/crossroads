@@ -595,7 +595,7 @@ func (a *API) adminGrantSpecialStamp(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
-	stamp, err := q.CreateSpecialStamp(r.Context(), db.CreateSpecialStampParams{UserID: userID, SpecialStampTypeID: t.ID, GrantedBy: &admin.ID})
+	stamp, err := q.GiveSpecialStamp(r.Context(), db.GiveSpecialStampParams{UserID: userID, SpecialStampTypeID: t.ID, GrantedBy: &admin.ID})
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/scherepi/crossroads-backend/auth"
 	"github.com/scherepi/crossroads-backend/db"
@@ -41,9 +42,10 @@ type stampType struct {
 }
 
 type specialStamp struct {
-	ID           int64     `json:"id"`
-	Type         stampType `json:"type"`
-	SubmissionID *int64    `json:"submission_id"`
+	ID           int64      `json:"id"`
+	Type         stampType  `json:"type"`
+	SubmissionID *int64     `json:"submission_id"`
+	SeenAt       *time.Time `json:"seen_at"`
 }
 
 // setUpBox makes two stamp types, a capped priority review stamp that's
@@ -236,6 +238,43 @@ func TestAdminGrantsComeOutOfSupply(t *testing.T) {
 	path := "/api/admin/users/" + itoa(user.ID) + "/special-stamps"
 	e.mustCall(t, admin, http.StatusCreated, "POST", path, map[string]any{"special_stamp_type_id": express.ID}, nil)
 	e.mustCall(t, admin, http.StatusConflict, "POST", path, map[string]any{"special_stamp_type_id": express.ID}, nil)
+}
+
+func TestGivenStampsWaitToBeSeen(t *testing.T) {
+	e := newEnv(t)
+	admin := e.newAdmin(t)
+	user := e.newUser(t, "U1")
+	_, plain, boxTypeID := e.setUpBox(t, admin, 10)
+
+	var given specialStamp
+	e.mustCall(t, admin, http.StatusCreated, "POST", "/api/admin/users/"+itoa(user.ID)+"/special-stamps", map[string]any{"special_stamp_type_id": plain.ID}, &given)
+	if given.SeenAt != nil {
+		t.Fatalf("a given stamp is seen at %v, want not yet", given.SeenAt)
+	}
+	// What a box drops comes out in front of them.
+	var dropped specialStamp
+	box := e.grantBoxes(t, admin, user, boxTypeID, 1)[0]
+	e.mustCall(t, user, http.StatusOK, "POST", "/api/boxes/"+itoa(box)+"/open", nil, &dropped)
+	if dropped.SeenAt == nil {
+		t.Errorf("a stamp from a box isn't seen")
+	}
+
+	seen := "/api/special-stamps/" + itoa(given.ID) + "/seen"
+	e.mustCall(t, e.newUser(t, "U2"), http.StatusNotFound, "POST", seen, nil, nil)
+	var first, again specialStamp
+	e.mustCall(t, user, http.StatusOK, "POST", seen, nil, &first)
+	e.mustCall(t, user, http.StatusOK, "POST", seen, nil, &again)
+	if first.SeenAt == nil || first.Type.ID != plain.ID || !again.SeenAt.Equal(*first.SeenAt) {
+		t.Errorf("seen twice: %+v then %+v, want the same time both times", first, again)
+	}
+
+	var mine []specialStamp
+	e.mustCall(t, user, http.StatusOK, "GET", "/api/special-stamps", nil, &mine)
+	for _, s := range mine {
+		if s.SeenAt == nil {
+			t.Errorf("stamp %d still isn't seen", s.ID)
+		}
+	}
 }
 
 func TestNewMilestonesReachPeopleAlreadyPastThem(t *testing.T) {

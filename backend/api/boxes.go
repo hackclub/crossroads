@@ -71,6 +71,9 @@ type specialStampJSON struct {
 	AcquiredAt   time.Time            `json:"acquired_at"`
 	// Set once it's stuck on a project; it's in the stamp box until then.
 	ProjectID *int64 `json:"project_id"`
+	// Null for one an admin gave that its owner hasn't seen come out yet:
+	// Home opens with it until they have.
+	SeenAt *time.Time `json:"seen_at"`
 }
 
 func toSpecialStampJSON(s db.SpecialStamp, t db.SpecialStampType) specialStampJSON {
@@ -81,6 +84,7 @@ func toSpecialStampJSON(s db.SpecialStamp, t db.SpecialStampType) specialStampJS
 		SubmissionID: s.SubmissionID,
 		AcquiredAt:   s.AcquiredAt,
 		ProjectID:    s.ProjectID,
+		SeenAt:       s.SeenAt,
 	}
 }
 
@@ -276,4 +280,30 @@ func (a *API) listSpecialStamps(w http.ResponseWriter, r *http.Request) {
 		out = append(out, toSpecialStampJSON(row.SpecialStamp, row.SpecialStampType))
 	}
 	respond.JSON(w, http.StatusOK, out)
+}
+
+// seeSpecialStamp is POST /special-stamps/{stampID}/seen, once a stamp an
+// admin gave has come out on Home. Seeing it again changes nothing.
+// → 200 SpecialStamp.
+func (a *API) seeSpecialStamp(w http.ResponseWriter, r *http.Request) {
+	user := auth.User(r.Context())
+	id, ok := idParam(w, r, "stampID")
+	if !ok {
+		return
+	}
+	stamp, err := a.Queries.MarkSpecialStampSeen(r.Context(), db.MarkSpecialStampSeenParams{ID: id, UserID: user.ID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		respond.Error(w, http.StatusNotFound, "That stamp doesn't exist.")
+		return
+	}
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	stampType, err := a.Queries.GetSpecialStampType(r.Context(), stamp.SpecialStampTypeID)
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	respond.JSON(w, http.StatusOK, toSpecialStampJSON(stamp, stampType))
 }

@@ -81,7 +81,7 @@ Responses always use explicit JSON structs with `snake_case` tags. Never return 
 | `box_types`, `box_drops` | Box kinds, and their loot tables (a weight per stamp type). |
 | `milestones` | Approved seconds → box type. `per_project` ones count one project's hours, not the person's total. |
 | `boxes` | Boxes people have, from a milestone or an admin; `opened_at`, and `project_id` for one that came with a project. |
-| `special_stamps` | Stamps people have, from a box or an admin; `submission_id` once used. |
+| `special_stamps` | Stamps people have, from a box, an admin or a claim link; `submission_id` once used, and `seen_at` null for one an admin gave that hasn't been opened on Home yet. |
 | `shop_items` | `kind` (`ticket`, `price_lock`, `physical`, `stipend`), `price`, optional `stock` and `max_per_user`, `stipend_cents`, `active`. Tickets can have `batch_size` and `batch_step`. |
 | `project_activity` | Each project's Hackatime `seconds` per UTC `day`, written by the activity poller. Only days with time have rows. |
 | `platform_activity` | `(user_id, day)` for each UTC day a person made a signed-in request, written by `activity.Visits`. |

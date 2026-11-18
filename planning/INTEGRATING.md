@@ -169,6 +169,7 @@ There are no image uploads: `screenshot_url` is a link (for example to the Hack 
 
 - Unopened boxes are the ones in `GET /api/boxes` with `opened_at === null`.
 - A box with a `project_id` came with that project, from a per-project milestone. Home opens with it (`BoxTakeover.svelte`) until it's opened; "Later" puts it off until a new tab.
+- So does a special stamp an admin gave (`seen_at === null` in `GET /api/special-stamps`), in a box of its own. Opening it there calls `POST /api/special-stamps/{id}/seen` instead of opening a box.
 - `GET /api/box-types` has each box's art and its **current odds**. Show them before opening; participants are minors, and showing the odds is part of keeping boxes clearly away from gambling.
 - `POST /api/boxes/{id}/open` returns the `SpecialStamp` that dropped. Animate the reveal from that.
 - The collection is `GET /api/special-stamps`.

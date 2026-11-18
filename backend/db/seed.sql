@@ -309,8 +309,9 @@ with opened (owner, milestone, stamp_type) as (values
 insert into special_stamps (user_id, special_stamp_type_id, box_id, acquired_at)
 select user_id, pg_temp.stamp_type(stamp_type), id, opened_at from marked;
 
-insert into special_stamps (user_id, special_stamp_type_id, granted_by, acquired_at)
-values (pg_temp.uid('ines'), pg_temp.stamp_type('Window Seat'), pg_temp.uid('adam'), pg_temp.ago(2));
+-- Adam gave Ines a Window Seat she hasn't seen yet: it takes over her Home.
+insert into special_stamps (user_id, special_stamp_type_id, granted_by, acquired_at, seen_at)
+values (pg_temp.uid('ines'), pg_temp.stamp_type('Window Seat'), pg_temp.uid('adam'), pg_temp.ago(2), null);
 
 -- Sana used her Express Lane on the submission waiting for review.
 update special_stamps set submission_id = (

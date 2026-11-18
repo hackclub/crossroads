@@ -4,8 +4,12 @@ package api
 // dev mode (planning/DEV_MODE.md).
 
 import (
+	"errors"
+	"math/rand/v2"
 	"net/http"
 	"slices"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/scherepi/crossroads-backend/auth"
 	"github.com/scherepi/crossroads-backend/db"
@@ -61,4 +65,35 @@ func (a *API) DevGrantBox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond.JSON(w, http.StatusCreated, toBoxJSON(box, nil))
+}
+
+// DevGiveStamp is POST /dev/stamp: gives the signed-in person a special stamp
+// of a random type with supply left, the way an admin does (recorded as given
+// by themselves), so it takes over Home until they've seen it.
+// → 201 SpecialStamp.
+func (a *API) DevGiveStamp(w http.ResponseWriter, r *http.Request) {
+	user := auth.User(r.Context())
+	types, err := a.Queries.ListSpecialStampTypes(r.Context())
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	for _, i := range rand.Perm(len(types)) {
+		t, err := a.Queries.ClaimSpecialStampSupply(r.Context(), types[i].ID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue // run out
+		}
+		if err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		stamp, err := a.Queries.GiveSpecialStamp(r.Context(), db.GiveSpecialStampParams{UserID: user.ID, SpecialStampTypeID: t.ID, GrantedBy: &user.ID})
+		if err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		respond.JSON(w, http.StatusCreated, toSpecialStampJSON(stamp, t))
+		return
+	}
+	respond.Error(w, http.StatusConflict, "There are no special stamp types with any left. Make one in Admin first.")
 }

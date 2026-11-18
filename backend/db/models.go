@@ -752,6 +752,7 @@ type SpecialStamp struct {
 	Rotation           float32
 	PlacedAt           *time.Time
 	Claimed            bool
+	SeenAt             *time.Time
 }
 
 type SpecialStampType struct {
