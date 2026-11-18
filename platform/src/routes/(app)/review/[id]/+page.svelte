@@ -9,7 +9,7 @@
 	import { api, get } from '#lib/api.js';
 	import { session, isAdmin } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
-	import { STAGES, canDecideStage, canHardReject, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, eventLabel, time, toSeconds, toHours, fromHours } from '#lib/review.js';
+	import { STAGES, canDecideStage, canHardReject, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, eventLabel, time, toSeconds, toHours, fromHours, cutText } from '#lib/review.js';
 	import RejectionControls from '#lib/review/RejectionControls.svelte';
 	import FixLinks from '#lib/review/FixLinks.svelte';
 	import GitHubPanel from '#lib/review/GitHubPanel.svelte';
@@ -222,7 +222,7 @@
 				return;
 			}
 			if (deflatedBy > 0 && !deflationReason.trim()) {
-				formError = `Say why you're cutting ${hours(deflatedBy)}.`;
+				formError = `Say why you're cutting ${cutText(deflatedBy)}.`;
 				return;
 			}
 			if (overriding && asked > sub.new_seconds && !overrideReason.trim()) {
@@ -633,7 +633,7 @@
 									<label class="field">
 										<span>Hours</span>
 										<input type="number" min="0" step="0.01" max={overriding ? undefined : toHours(maxSeconds)} bind:value={approvedHours} />
-										<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}; more needs a reason.` : `Up to ${hours(maxSeconds)}.`} {deflatedBy > 0 ? `Deflated by ${hours(deflatedBy)}: cut time can't be shipped again.` : "Cut time can't be shipped again."}</small>
+										<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}; more needs a reason.` : `Up to ${hours(maxSeconds)}.`} {deflatedBy > 0 ? `Deflated by ${cutText(deflatedBy)}: cut time can't be shipped again.` : "Cut time can't be shipped again."}</small>
 									</label>
 									{#if deflatedBy > 0}
 										<label class="field grow">
@@ -911,12 +911,15 @@
 		}
 		.base { max-height: 42dvh; overflow-y: auto; scrollbar-width: thin; }
 		.evidence { overflow-y: auto; min-height: 0; scrollbar-width: thin; }
-		.rail { border-bottom: 0; border-left: 1px solid var(--rv-line); min-height: 0; overflow-y: auto; scrollbar-width: none; }
-		.decision .form-b { flex: 1; min-height: 0; }
-		.decision .form-cols { flex: 1; min-height: 0; }
+		/* When the window's too short for every box at its smallest, the
+		   rail scrolls rather than squashing them into each other. */
+		.rail { border-bottom: 0; border-left: 1px solid var(--rv-line); min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+		.decision { min-height: auto; }
+		.decision .form-b { flex: 1; }
+		.decision .form-cols { flex: 1; }
 		/* Only the lower text boxes share the leftover height; the reason
 		   boxes above them (deflation, going over) keep their own size. */
-		.decision .form-b .grow { flex: 1 1 0; min-height: 0; }
+		.decision .form-b .grow { flex: 1 1 0; }
 		.decision .form-b .grow textarea { flex: 1; min-height: 44px; resize: none; }
 		.decision .form-a .grow textarea { min-height: 52px; height: 52px; }
 		.decision .grow :global(small) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }

@@ -76,10 +76,16 @@ export const time = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour:
 // Hours typed by a reviewer → whole seconds, capped at max.
 // The hours field works in hundredths of an hour, so a number that rounds to
 // one of the exact amounts given (the claim, or what the last stage approved)
-// means all of it, not a few seconds more or less.
+// means all of it, not a few seconds more or less. So does a number typed to
+// a tenth that matches one shown to a tenth: "3.7" for Hackatime's "3.7h" is
+// all of 3.72h, not a cut of a minute.
 export const fromHours = (h, ...exact) => {
 	const hundredths = Math.round(Number(h) * 100);
-	return exact.find((s) => s != null && Math.round(s / 36) === hundredths) ?? Math.round(Number(h) * 3600);
+	const tenths = hundredths % 10 === 0 ? hundredths / 10 : null;
+	const means = (s) => Math.round(s / 36) === hundredths || (tenths != null && Math.round(s / 360) === tenths);
+	return exact.find((s) => s != null && means(s)) ?? Math.round(Number(h) * 3600);
 };
+// A cut too small to show in tenths of an hour, in minutes: "2 min", not "0.0h".
+export const cutText = (s) => (s < 360 ? `${Math.max(1, Math.round(s / 60))} min` : `${Math.round(s / 360) / 10}h`);
 export const toSeconds = (h, max) => Math.max(0, Math.min(fromHours(h, max), max));
 export const toHours = (s) => Math.round(s / 36) / 100;
