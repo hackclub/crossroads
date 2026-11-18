@@ -16,6 +16,7 @@
 	import StampCar from './cars/StampCar.svelte';
 	import HomePreview from './cars/HomePreview.svelte';
 	import ShopPreview from './cars/ShopPreview.svelte';
+	import DocsPreview from './cars/DocsPreview.svelte';
 	import wood from './assets/rail/wood.webp';
 
 	let { at } = $props(); // the current path: one of STATIONS
@@ -42,10 +43,8 @@
 	});
 
 	// A two-finger sideways scroll (a trackpad swipe) goes to the next car:
-	// scrolling right goes toward the front (Boxes → Shop → Home), left toward
-	// the back. One swipe moves one car, however long the scroll's momentum
-	// keeps going, and it doesn't steal sideways scrolls from things that
-	// scroll sideways themselves, like the stamp tray.
+	// scrolling right goes toward the next car (Home -> Shop -> Boxes -> Docs),
+	// scrolling left goes toward the previous car.
 	const SWIPE = 80; // px of sideways scroll that count as a swipe
 	let swiped = 0;
 	let locked = false;
@@ -73,15 +72,32 @@
 		if (locked) return;
 		swiped += e.deltaX * (e.deltaMode === 1 ? 16 : 1);
 		if (Math.abs(swiped) < SWIPE) return;
+		// Scrolling right on trackpad (positive deltaX) moves forward along STATIONS:
+		// Home(0) -> Shop(1) -> Boxes(2) -> Docs(3)
 		const next = STATIONS.indexOf(at) + Math.sign(swiped);
 		locked = true;
 		if (next >= 0 && next < STATIONS.length) goto(STATIONS[next]);
 	}
 
+	function onKeydown(e) {
+		if (!['ArrowLeft', 'ArrowRight'].includes(e.key) || document.querySelector('dialog[open]')) return;
+		if (e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(e.target.tagName))) return;
+		const cur = STATIONS.indexOf(at);
+		if (cur === -1) return;
+		// ArrowRight moves forward to next station: Home(0) -> Shop(1) -> Boxes(2) -> Docs(3)
+		// ArrowLeft moves back to previous station: Docs(3) -> Boxes(2) -> Shop(1) -> Home(0)
+		const next = cur + (e.key === 'ArrowRight' ? 1 : -1);
+		if (next < 0 || next >= STATIONS.length) return;
+		e.preventDefault();
+		goto(STATIONS[next]);
+	}
+
 	$effect(() => {
 		window.addEventListener('wheel', onWheel, { passive: false });
+		window.addEventListener('keydown', onKeydown);
 		return () => {
 			window.removeEventListener('wheel', onWheel);
+			window.removeEventListener('keydown', onKeydown);
 			clearTimeout(quiet);
 		};
 	});
@@ -93,13 +109,15 @@
 		<div class="strip" style="transition-duration: {duration}s; transition-delay: {delay}s">
 			<div class="end rear" aria-hidden="true"><span class="coupler"><i class="knob"></i><i class="bar"></i><i class="block"></i></span></div>
 
-			<section class="car station" aria-label="Your stamps" inert={at !== '/boxes'}>
-				<StampCar />
+			<!-- Station 0: Home -->
+			<section class="car station" aria-label="Your progress" inert={at !== '/home'}>
+				{#if at === '/home' && rail.home}{@render rail.home()}{:else}<HomePreview />{/if}
 			</section>
 			<div class="joint" aria-hidden="true"><span class="coupler"><i class="block"></i><i class="bar"></i><i class="knob"></i><i class="bar"></i><i class="block"></i></span></div>
 			<div class="car cargo" aria-hidden="true"><span class="door"></span></div>
 			<div class="joint" aria-hidden="true"><span class="coupler"><i class="block"></i><i class="bar"></i><i class="knob"></i><i class="bar"></i><i class="block"></i></span></div>
 
+			<!-- Station 1: Shop -->
 			<section class="car station" aria-label="Your rail pass" inert={at !== '/shop'}>
 				{#if at === '/shop' && rail.shop}{@render rail.shop()}{:else}<ShopPreview />{/if}
 			</section>
@@ -107,8 +125,17 @@
 			<div class="car cargo" aria-hidden="true"><span class="door"></span></div>
 			<div class="joint" aria-hidden="true"><span class="coupler"><i class="block"></i><i class="bar"></i><i class="knob"></i><i class="bar"></i><i class="block"></i></span></div>
 
-			<section class="car station front" aria-label="Your progress" inert={at !== '/home'}>
-				{#if at === '/home' && rail.home}{@render rail.home()}{:else}<HomePreview />{/if}
+			<!-- Station 2: Boxes -->
+			<section class="car station" aria-label="Your stamps" inert={at !== '/boxes'}>
+				<StampCar />
+			</section>
+			<div class="joint" aria-hidden="true"><span class="coupler"><i class="block"></i><i class="bar"></i><i class="knob"></i><i class="bar"></i><i class="block"></i></span></div>
+			<div class="car cargo" aria-hidden="true"><span class="door"></span></div>
+			<div class="joint" aria-hidden="true"><span class="coupler"><i class="block"></i><i class="bar"></i><i class="knob"></i><i class="bar"></i><i class="block"></i></span></div>
+
+			<!-- Station 3: Docs -->
+			<section class="car station front" aria-label="Documentation" inert={at !== '/guides'}>
+				<DocsPreview />
 			</section>
 			<div class="end front" aria-hidden="true"><span class="coupler"><i class="block"></i><i class="bar"></i><i class="knob"></i></span></div>
 		</div>

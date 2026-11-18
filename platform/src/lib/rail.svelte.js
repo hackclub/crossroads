@@ -21,4 +21,5 @@ export const rail = $state({
 export const BRIDGE_FOLD_MS = 800;
 
 // Front of the train on the right; it moves right to reach cars further back.
-export const STATIONS = ['/boxes', '/shop', '/home'];
+// Order: Home (0) -> Shop (1) -> Boxes (2) -> Docs (3)
+export const STATIONS = ['/home', '/shop', '/boxes', '/guides'];
