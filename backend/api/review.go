@@ -401,10 +401,38 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
+	// Their history in the Unified YSWS DB, while the checks run.
+	var (
+		person    *unified.Person
+		personErr string
+		personed  = make(chan struct{})
+	)
+	go func() {
+		defer close(personed)
+		if a.Unified == nil {
+			return
+		}
+		p, err := a.Unified.FindByPerson(r.Context(), row.User.Email, deref(row.User.SlackID))
+		if err != nil {
+			personErr = "Couldn't search the Unified YSWS DB: " + err.Error()
+			return
+		}
+		person = &p
+	}()
 	report, err := a.runChecks(r.Context(), row, settings)
+	<-personed
 	if err != nil {
 		respond.ServerError(w, r, err)
 		return
+	}
+	// The AI pre-review, for those who can see them (prereview.go).
+	var pre *prereviewJSON
+	seePrereviews := canSeePrereviews(viewer, settings)
+	if seePrereviews {
+		if pre, err = a.shipPrereview(r.Context(), row.Submission.ID); err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
 	}
 	eventRows, err := a.Queries.ListProjectShipEvents(r.Context(), row.Project.ID)
 	if err != nil {
@@ -471,11 +499,26 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		// This project in the Unified YSWS DB under other programs; null when
 		// the Unified YSWS DB isn't being searched.
 		UnifiedRecords []unified.Record `json:"unified_records"`
+		// The person's own history in the Unified YSWS DB: their YSWS
+		// Authors row and every project a program approved for them. Null
+		// when the Unified YSWS DB isn't being searched.
+		UnifiedPerson      *unified.Person `json:"unified_person"`
+		UnifiedPersonError string          `json:"unified_person_error,omitempty"`
 		// Hackatime time and commits per day since WindowStart: the last
 		// approved ship, or the event's start. Daily totals, never heartbeats.
-		Days          []dayJSON `json:"days"`
-		WindowStart   time.Time `json:"window_start"`
-		TelescreenURL string    `json:"telescreen_url,omitempty"`
+		Days []dayJSON `json:"days"`
+		// Hackatime's time between commits, by SHA, and after the last one
+		// (checkReport.CommitSeconds); null when unknown.
+		CommitSeconds   map[string]int `json:"commit_seconds"`
+		AfterLastCommit *int           `json:"after_last_commit_seconds"`
+		CommitTimeError string         `json:"commit_time_error,omitempty"`
+		WindowStart     time.Time      `json:"window_start"`
+		// Telescreen (telescreen.hackclub.com, HQ's fraud tool): the person,
+		// and their time on this ship's Hackatime projects.
+		TelescreenURL          string         `json:"telescreen_url,omitempty"`
+		Prereview              *prereviewJSON `json:"prereview"` // the AI pre-review (prereview.go), or null
+		PrereviewsVisible      bool           `json:"prereviews_visible"`
+		TelescreenHackatimeURL string         `json:"telescreen_hackatime_url,omitempty"`
 		// What the Airtable sync will send to the Unified YSWS DB; null until
 		// a reviewer approves it.
 		UnifiedPreview   *unifiedPreviewJSON `json:"unified_preview"`
@@ -492,21 +535,29 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 			VerificationStatus: row.User.VerificationStatus, YSWSEligible: row.User.YswsEligible, ReviewerNote: row.User.ReviewerNote,
 			InEmporium: row.User.InEmporium(), EmporiumNote: row.User.EmporiumNote,
 		},
-		Events:               events,
-		Checks:               report.Checks,
-		ProjectsSharingLinks: report.SharedLinks,
-		Hackatime:            report.Hackatime,
-		HackatimeError:       report.HackatimeError,
-		GitHub:               report.GitHub,
-		GitHubError:          report.GitHubError,
-		UnifiedRecords:       report.Unified,
-		Days:                 report.Days,
-		WindowStart:          report.WindowStart,
-		TelescreenURL:        a.telescreenURL(row.User.SlackID),
-		UnifiedPreview:       preview,
-		Claim:                claim,
-		CanDecide:            cantDecide == "",
-		CantDecideReason:     cantDecide,
+		Events:                 events,
+		Checks:                 report.Checks,
+		ProjectsSharingLinks:   report.SharedLinks,
+		Hackatime:              report.Hackatime,
+		HackatimeError:         report.HackatimeError,
+		GitHub:                 report.GitHub,
+		GitHubError:            report.GitHubError,
+		UnifiedRecords:         report.Unified,
+		UnifiedPerson:          person,
+		UnifiedPersonError:     personErr,
+		Days:                   report.Days,
+		CommitSeconds:          report.CommitSeconds,
+		AfterLastCommit:        report.AfterLastCommit,
+		CommitTimeError:        report.CommitTimeError,
+		WindowStart:            report.WindowStart,
+		TelescreenURL:          telescreenSubjectURL(row.User.SlackID),
+		Prereview:              pre,
+		PrereviewsVisible:      seePrereviews,
+		TelescreenHackatimeURL: telescreenHackatimeURL(report.HackatimeUserID, s.HackatimeProjects),
+		UnifiedPreview:         preview,
+		Claim:                  claim,
+		CanDecide:              cantDecide == "",
+		CantDecideReason:       cantDecide,
 	})
 }
 
@@ -605,10 +656,26 @@ func nonEmpty(s string) *string {
 	return &s
 }
 
-// telescreenURL is the person's Telescreen profile, for fraud reviewers.
-func (a *API) telescreenURL(slackID *string) string {
-	if a.TelescreenProfileURL == "" || slackID == nil {
+const telescreen = "https://telescreen.hackclub.com"
+
+// telescreenSubjectURL is the person's page on Telescreen, by Slack ID.
+func telescreenSubjectURL(slackID *string) string {
+	if slackID == nil || *slackID == "" {
 		return ""
 	}
-	return strings.ReplaceAll(a.TelescreenProfileURL, "{slack_id}", url.PathEscape(*slackID))
+	return telescreen + "/subjects/" + url.PathEscape(*slackID)
+}
+
+// telescreenHackatimeURL opens Telescreen's Hackatime overview on the
+// given projects, by Hackatime account number, like Ari's "Audit in
+// Telescreen". Project names can't contain commas (hackatime.Stats).
+func telescreenHackatimeURL(userID string, projects []string) string {
+	if userID == "" || len(projects) == 0 {
+		return ""
+	}
+	escaped := make([]string, len(projects))
+	for i, p := range projects {
+		escaped[i] = strings.ReplaceAll(url.QueryEscape(p), "+", "%20")
+	}
+	return telescreen + "/workbench/hackatime/overview?u=" + url.QueryEscape(userID) + "&p=" + strings.Join(escaped, ",")
 }

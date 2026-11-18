@@ -104,7 +104,7 @@ func (f *fakeHackatime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		trust = "red"
 	}
 	json.NewEncoder(w).Encode(map[string]any{
-		"data":         map[string]any{"total_seconds": float64(total), "projects": list},
+		"data":         map[string]any{"total_seconds": float64(total), "projects": list, "user_id": "id-" + slackID},
 		"trust_factor": map[string]any{"trust_level": trust},
 	})
 }

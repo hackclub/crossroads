@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -130,6 +131,7 @@ func (f *Fake) stats(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Data struct {
 			TotalSeconds float64   `json:"total_seconds"`
+			UserID       string    `json:"user_id"`
 			Projects     []project `json:"projects"`
 		} `json:"data"`
 		TrustFactor struct {
@@ -138,16 +140,21 @@ func (f *Fake) stats(w http.ResponseWriter, r *http.Request) {
 	}
 	body.Data.TotalSeconds = float64(total)
 	body.Data.Projects = list
+	body.Data.UserID = fakeUserID(slackID)
 	body.TrustFactor.TrustLevel = "green"
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(body)
 }
 
 // spans has no record of when the time happened, so each project's time is
-// one span that ends now. Only filter_by_project is honored.
+// spread over start_date to end_date: one session in the middle of each of up
+// to 30 equal stretches, so commits in between get some of it (the review
+// page's time per commit). Without a window, it's one span that ends now.
 func (f *Fake) spans(w http.ResponseWriter, r *http.Request) {
 	slackID := chi.URLParam(r, "slackID")
 	filter := strings.Split(r.URL.Query().Get("filter_by_project"), ",")
+	start, startErr := time.Parse(time.RFC3339, r.URL.Query().Get("start_date"))
+	end, endErr := time.Parse(time.RFC3339, r.URL.Query().Get("end_date"))
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	type span struct {
@@ -155,11 +162,22 @@ func (f *Fake) spans(w http.ResponseWriter, r *http.Request) {
 		EndTime   float64 `json:"end_time"`
 		Duration  float64 `json:"duration"`
 	}
-	now := float64(time.Now().Unix())
 	out := []span{}
 	for name, s := range f.projects(slackID) {
-		if slices.Contains(filter, name) {
+		if !slices.Contains(filter, name) || s <= 0 {
+			continue
+		}
+		if startErr != nil || endErr != nil || !end.After(start) {
+			now := float64(time.Now().Unix())
 			out = append(out, span{now - float64(s), now, float64(s)})
+			continue
+		}
+		n := min(30, max(1, int(end.Sub(start).Hours()/24)))
+		stretch := end.Sub(start) / time.Duration(n)
+		each := min(time.Duration(s)*time.Second/time.Duration(n), stretch)
+		for i := range n {
+			from := start.Add(stretch*time.Duration(i) + (stretch-each)/2)
+			out = append(out, span{float64(from.Unix()), float64(from.Add(each).Unix()), each.Seconds()})
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -210,4 +228,14 @@ func (f *Fake) add(w http.ResponseWriter, r *http.Request) {
 	f.save()
 	f.mu.Unlock()
 	f.mine(w, r)
+}
+
+// fakeUserID makes up a Hackatime account number for a Slack ID, the same
+// one every time, so dev Telescreen links have something in them.
+func fakeUserID(slackID string) string {
+	n := 0
+	for _, c := range slackID {
+		n = (n*31 + int(c)) % 90000
+	}
+	return strconv.Itoa(10000 + n)
 }

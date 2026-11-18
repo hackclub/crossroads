@@ -39,14 +39,14 @@ type API struct {
 	// turns the endpoint off.
 	SidekickSecret string
 	PublicURL      string // the site, for links Sidekick shows reviewers
+	// The token scripts/prereview.mjs sends to /api/prereviews (prereview.go).
+	// Empty turns those off; reviewers can still use the script signed in.
+	PrereviewToken string
 	// For the review checks (checks.go). Any of them can be nil, and the
 	// checks that need it say they couldn't run.
 	GitHub  *github.Client
 	Links   linkcheck.Checker
 	Unified unified.Lookup // reads the Unified YSWS DB; nil when no token is set
-	// A person's Telescreen profile, with {slack_id} for their Slack ID, shown
-	// to fraud reviewers. Empty hides the link.
-	TelescreenProfileURL string
 	// Announcements (announcements.go) post to AnnounceChannel with the Slack
 	// app's bot. A nil Slack still lets superadmins write drafts.
 	Slack           *slack.Client
@@ -58,6 +58,10 @@ func (a *API) Routes() chi.Router {
 	// Sidekick signs its requests with a shared secret instead of a session.
 	if a.SidekickSecret != "" {
 		r.Post("/sidekick", a.sidekick)
+	}
+	if a.PrereviewToken != "" {
+		r.With(a.prereviewToken).Get("/prereviews", a.prereviewBatch)
+		r.With(a.prereviewToken).Post("/prereviews", a.savePrereviews)
 	}
 	r.Group(func(r chi.Router) { a.signedInRoutes(r) })
 	return r
@@ -108,7 +112,11 @@ func (a *API) signedInRoutes(r chi.Router) {
 			r.Post("/reopen", a.reopenSubmission)
 		})
 		r.Get("/past", a.pastReviews)
+		r.Get("/prereviews/prompt", a.prereviewPrompt)
+		r.Get("/prereviews/batch", a.prereviewBatch)
+		r.Post("/prereviews", a.savePrereviews)
 		r.Put("/projects/{projectID}/resubmit-block", a.setResubmitBlock)
+		r.Patch("/projects/{projectID}", a.reviewerEditProject)
 		r.Put("/users/{userID}/note", a.setReviewerNote)
 		r.Get("/templates", a.listFeedbackTemplates)
 		r.Post("/templates", a.createFeedbackTemplate)
@@ -163,10 +171,22 @@ func (a *API) signedInRoutes(r chi.Router) {
 // me is auth.Me plus the stamps paid per approved hour, so prices can be
 // shown in hours.
 func (a *API) me(w http.ResponseWriter, r *http.Request) {
+	user := auth.User(r.Context())
+	// Whether the review pages show AI pre-reviews (prereview.go).
+	canPrereview := false
+	if p := permissionsOf(user); p.Review || p.FraudReview || p.HQReview {
+		settings, err := a.Queries.GetReviewSettings(r.Context())
+		if err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		canPrereview = canSeePrereviews(user, settings)
+	}
 	respond.JSON(w, http.StatusOK, struct {
 		auth.MeJSON
-		StampsPerHour int `json:"stamps_per_hour"`
-	}{auth.ToMeJSON(auth.User(r.Context())), a.StampsPerHour})
+		StampsPerHour int  `json:"stamps_per_hour"`
+		CanPrereview  bool `json:"can_prereview"`
+	}{auth.ToMeJSON(user), a.StampsPerHour, canPrereview})
 }
 
 // decode reads a JSON request body into v and rejects fields v doesn't have.

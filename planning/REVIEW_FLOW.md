@@ -72,6 +72,8 @@ The other checks are for the reviewer to judge and don't send a ship anywhere. M
 
 A link that answers 401, 403 or 429, or takes too long, is "couldn't check" rather than broken: plenty of sites block scripts. The checker only ever connects to public addresses: a link at a loopback, private, link-local or cloud-metadata address (or a name or redirect that leads to one) counts as broken and is never fetched, since the links come from participants and the fetch happens from inside the server's network. Check those by hand. The `readme` and `new_commits` checks need the repo on GitHub.
 
+**Their history in the Unified YSWS DB.** The review page shows, under the person's name, their YSWS Authors row (Unified trust level and weighted grants, found by Slack ID or Hack Club email) and every project another program approved for them (Approved Projects, by email), newest first: program, hours, date, description and links. Needs `UNIFIED_AIRTABLE_TOKEN` (read-only); dev mode fakes a history for anyone whose email has "sana" or "maya" in it.
+
 **What the Unified YSWS DB needs** (`unified.Missing`): a real full name, email, birthday, an address with street, city, postal code and country, a description, a screenshot, a repo on GitHub (it asks for a GitHub username) and a demo link, plus YSWS eligibility. A ship missing any of these can still be approved and signed off; the Airtable sync copies its row but **doesn't tick "Automation - Submit to Unified YSWS" until it's complete**, then sends the whole row again with the box ticked.
 
 ## What reviewers see
@@ -80,9 +82,22 @@ Besides the checks, the review page shows:
 
 - **Code**: the repo on GitHub (language, created, last push, all-time commits), and for this ship (since the last approved ship, or the event's start, until it shipped) the commits, lines added and removed, who made them, and each commit with a link to it. Line counts need `GH_PROXY_API_KEY` (gh-proxy.hackclub.com) or `GITHUB_TOKEN` and cover the newest 60 commits.
 - **Hackatime hours and commits per day** over the same window, as two small charts with a table view. Daily totals only: **reviewers never see heartbeats**.
-- On the fraud check, a link to the person's **Telescreen** profile, when `TELESCREEN_PROFILE_URL` is set.
+- **Telescreen** links at every stage: next to the person's name, their page (`/subjects/{slack_id}`) and their time on this ship's Hackatime projects (`/workbench/hackatime/overview?u={hackatime user id}&p=a,b,c`, like Ari's "Audit in Telescreen"), which is also on the Hackatime tab. The Hackatime user id comes from Hackatime's stats (`data.user_id`), so that link is missing when Hackatime couldn't be asked.
 
 GitHub answers are cached for 10 minutes and link checks for 5, so opening a ship and then approving it doesn't ask twice.
+
+## AI pre-reviews
+
+Like Ari's Jame Gam pre-reviews, but nothing runs Claude on a server (`backend/api/prereview.go`). Claude writes, for each ship in review: what it is, how big, what it does, how AI-written the code and README look (none, low, medium or high, with evidence), the README and the demo link in a line each, who made what, and up to five things worth knowing. It never suggests hours or a decision. Reviewers see it in the ship's **AI pre-review** tab.
+
+**Who sees them:** the fraud check, HQ and admins always. Reviewers with only the Review permission see nothing of them (no tabs, and the API refuses) until an admin ticks **Reviewers see AI pre-reviews** in the admin page's Review settings (`prereviews_for_reviewers`, off to start).
+
+Two ways to make them, from the **AI pre-reviews** tab on the Review page:
+
+- **Copy and paste.** "Copy the prompt" copies one prompt: the instructions, then every ship without a pre-review (up to 5, 10 or 20, oldest first) with its description, README, commits, Hackatime time and the checks that didn't pass. Give it to your own Claude (claude.ai with web search can also open the repos and demos), paste the whole answer back, and save. The site finds the JSON in it and saves each ship's on its own, saying why any were refused.
+- **The laptop script**, `scripts/prereview.mjs`, with Claude Code signed in. It clones each repo and runs `claude -p` in it, read-only, so Claude reads the actual code and git history. "Download the ships" gives it a batch file; its answer file goes in the same paste box. With `PREREVIEW_TOKEN` set on the server, `PREREVIEW_TOKEN=… node scripts/prereview.mjs --base <site>` fetches and uploads by itself.
+
+A ship has one pre-review; a newer one replaces it ("Redo ones that have one"). Pre-reviews write no ship events, so **they're never paid**, and they're only taken for ships still in review. What the maker wrote is in the prompt, so the prompt tells Claude it's data, not instructions; still, a pre-review can be wrong or steered, and the tab says to check what matters.
 
 Admins change the toggle and both limits on the admin page (Review tab), or with `PATCH /api/admin/review-settings`. Changes apply to approvals from then on; ships already past the first stage stay where they are.
 
@@ -157,7 +172,6 @@ Not supported: rewarded hours overrides (refused with 400), and the shop and ful
 
 - **A repo has to be on GitHub to go to the Unified YSWS DB automatically**, because the DB asks for a GitHub username. Projects on GitLab or Codeberg wait for a person. Drop that line from `unified.Missing` if the DB takes them without one.
 - **Broken links and missing READMEs don't send ships to the fraud check**; they're for the reviewer. To make one a fraud signal, set `Fraud: true` on it in `api/checks.go`.
-- **The Telescreen link format** is a guess until someone sets `TELESCREEN_PROFILE_URL` to the real one.
 
 - **HQ reviewers skip HQ sign-off on unflagged ships.** That matches Sidekick's `isHq`. If every ship should get a second person, change the `perms.HQReview` case in `decide` to always go to `awaiting_hq`.
 - **Hackatime being down sends ships to the fraud check.** That's the safe choice, but an outage during a busy day fills the fraud queue.

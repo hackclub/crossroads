@@ -6,15 +6,17 @@
 	import { api, get } from '#lib/api.js';
 	import { session } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
-	import { STAGES, canDecideStage, canManageRejections, reasonLabel, time } from '#lib/review.js';
+	import { STAGES, canDecideStage, canManageRejections, canPrereview, reasonLabel, time } from '#lib/review.js';
 	import ReviewDashboard from '#lib/review/ReviewDashboard.svelte';
 	import PastReviews from '#lib/review/PastReviews.svelte';
+	import Prereviews from '#lib/review/Prereviews.svelte';
 
 	// Besides the three queues: decided ships, and (HQ and admins) every
 	// rejection.
 	const EXTRA = $derived({
 		past: { label: 'Past reviews', blurb: 'Ships that have been decided. Open one to see what happened.' },
-		...(canManageRejections(session.me) ? { rejected: { label: 'Rejected', blurb: 'Every rejected ship. Change a soft reject to hard or back, or undo a rejection.' } } : {})
+		...(canManageRejections(session.me) ? { rejected: { label: 'Rejected', blurb: 'Every rejected ship. Change a soft reject to hard or back, or undo a rejection.' } } : {}),
+		...(canPrereview(session.me) ? { ai: { label: 'AI pre-reviews', blurb: 'Have your own Claude pre-review the ships waiting, with a prompt to copy and an answer to paste back.' } } : {})
 	});
 	const wanted = $derived(page.url.searchParams.get('stage'));
 	const stage = $derived(STAGES[wanted] || EXTRA[wanted] ? wanted : 'review');
@@ -80,7 +82,9 @@
 	{/each}
 </div>
 
-{#if !queue}
+{#if stage === 'ai'}
+	<Prereviews />
+{:else if !queue}
 	{#key stage}<PastReviews mode={stage} />{/key}
 {:else}
 <div class="stack">

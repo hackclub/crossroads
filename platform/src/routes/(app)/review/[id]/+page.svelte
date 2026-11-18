@@ -9,8 +9,11 @@
 	import { api, get } from '#lib/api.js';
 	import { session, isAdmin } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
-	import { STAGES, canDecideStage, canHardReject, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, eventLabel, time, toSeconds, toHours, fromHours } from '#lib/review.js';
+	import { STAGES, canDecideStage, canHardReject, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, eventLabel, time, toSeconds, toHours, fromHours, cutText } from '#lib/review.js';
 	import RejectionControls from '#lib/review/RejectionControls.svelte';
+	import FixLinks from '#lib/review/FixLinks.svelte';
+	import UnifiedHistory from '#lib/review/UnifiedHistory.svelte';
+	import PrereviewPanel from '#lib/review/PrereviewPanel.svelte';
 	import GitHubPanel from '#lib/review/GitHubPanel.svelte';
 	import HackatimePanel from '#lib/review/HackatimePanel.svelte';
 
@@ -37,6 +40,19 @@
 
 	let claimError = $state('');
 	let comment = $state({ message: '', internal: true });
+	// The description shows three lines; a longer one opens in full.
+	let descEl = $state();
+	let descClipped = $state(false);
+	let descDialog;
+	$effect(() => {
+		d?.project.description;
+		if (!descEl) return;
+		const check = () => (descClipped = descEl.scrollHeight > descEl.clientHeight + 1);
+		check();
+		const watch = new ResizeObserver(check);
+		watch.observe(descEl);
+		return () => watch.disconnect();
+	});
 	let commentError = $state('');
 	let noteDraft = $state(null); // null when not editing the reviewer note
 	let noteError = $state('');
@@ -153,8 +169,11 @@
 	}
 
 	// The details under the summary, in tabs: the checks and notes first,
-	// then GitHub, then Hackatime. Each ship opens on the first.
-	const TABS = [['checks', 'Checks & notes'], ['github', 'GitHub'], ['hackatime', 'Hackatime']];
+	// then the AI pre-review, GitHub and Hackatime. Each ship opens on the first.
+	// The AI pre-review tab only for those an admin lets see them.
+	const ALL_TABS = [['checks', 'Checks & notes'], ['ai', 'AI pre-review'], ['github', 'GitHub'], ['hackatime', 'Hackatime']];
+	const TABS = $derived(d?.prereviews_visible ? ALL_TABS : ALL_TABS.filter(([key]) => key !== 'ai'));
+	const AI_COUNTS = { none: 'no AI seen', low: 'a little AI', medium: 'some AI', high: 'mostly AI' };
 	let tab = $state('checks');
 	// Arrow keys move between tabs, as tablists do.
 	function tabKeys(e) {
@@ -208,7 +227,7 @@
 				return;
 			}
 			if (deflatedBy > 0 && !deflationReason.trim()) {
-				formError = `Say why you're cutting ${hours(deflatedBy)}.`;
+				formError = `Say why you're cutting ${cutText(deflatedBy)}.`;
 				return;
 			}
 			if (overriding && asked > sub.new_seconds && !overrideReason.trim()) {
@@ -362,17 +381,27 @@
 						<span class="badge {statusTone(sub.status)}">{STATUS_LABELS[sub.status] ?? sub.status}</span>
 						{#if reship}<span class="badge">Update</span>{/if}
 					</div>
-					<p class="description" title={p.description}>{p.description}</p>
+					<button class="description" class:clipped={descClipped} bind:this={descEl} onclick={() => descClipped && descDialog.showModal()} tabindex={descClipped ? 0 : -1} aria-label={descClipped ? 'Read the whole description' : undefined}>{p.description}</button>
+					{#if descClipped}<button class="link-btn small read-all" onclick={() => descDialog.showModal()}>Read it all</button>{/if}
+					<dialog class="desc-dialog" bind:this={descDialog} aria-labelledby="desc-title">
+						<h2 id="desc-title">{p.name}</h2>
+						<p class="desc-full">{p.description}</p>
+						<div class="row"><button class="btn small" onclick={() => descDialog.close()}>Close</button></div>
+					</dialog>
 					<div class="links">
 						{#if p.demo_url}<a class="btn small primary" href={p.demo_url} target="_blank" rel="noreferrer">Try the demo</a>{/if}
 						{#if p.repo_url}<a class="btn small ghost" href={p.repo_url} target="_blank" rel="noreferrer">Repo</a>{/if}
 						<span class="muted small">shipped {date(sub.submitted_at)}</span>
+						{#if d.user.id !== session.me.id}<FixLinks project={p} onsaved={load} />{/if}
 					</div>
 					<div class="maker small">
 						<strong>{d.user.name}</strong>
 						<span class="muted">{d.user.slack_id ?? 'no Slack'} · {d.user.verification_status}{d.user.ysws_eligible ? ', YSWS-eligible' : ', not YSWS-eligible'}</span>
-						{#if stage === 'fraud' && d.telescreen_url}
-							<a href={d.telescreen_url} target="_blank" rel="noreferrer">Telescreen</a>
+						{#if d.telescreen_url}
+							<a href={d.telescreen_url} target="_blank" rel="noreferrer" title="Their page on Telescreen">Telescreen</a>
+						{/if}
+						{#if d.telescreen_hackatime_url}
+							<a href={d.telescreen_hackatime_url} target="_blank" rel="noreferrer" title="This ship's Hackatime projects in Telescreen">Hackatime in Telescreen</a>
 						{/if}
 						{#if d.user.in_emporium}
 							<span class="badge warn tiny" title={d.user.emporium_note ?? ''}>In the Emporium</span>
@@ -415,6 +444,7 @@
 							onclick={() => (tab = key)} onkeydown={tabKeys}>
 							{label}
 							{#if key === 'checks'}<span class="count" class:bad={failing.length}>{failing.length ? `${failing.length} to look at` : 'all passed'}</span>
+							{:else if key === 'ai'}<span class="count" class:bad={d.prereview?.ai_usage?.level === 'medium' || d.prereview?.ai_usage?.level === 'high'}>{d.prereview ? (AI_COUNTS[d.prereview.ai_usage?.level] ?? 'ready') : 'none yet'}</span>
 							{:else if key === 'github'}<span class="count">{d.github ? `${d.github.commits.length}${d.github.truncated ? '+' : ''} commits` : 'no data'}</span>
 							{:else}<span class="count">{d.hackatime ? hours(d.hackatime.seconds) : 'no data'}</span>{/if}
 						</button>
@@ -456,6 +486,7 @@
 										</div>
 										{#if noteError}<p class="callout warn small">{noteError}</p>{/if}
 									{/if}
+									<UnifiedHistory person={d.unified_person} error={d.unified_person_error} />
 									{#if p.submissions.length > 1}
 										<h2 style="margin-top: 12px">Ships</h2>
 										<ul class="ships small">
@@ -537,14 +568,19 @@
 							{/if}
 						</section>
 					</div>
+				{:else if tab === 'ai' && d.prereviews_visible}
+					<div class="tab-panel part" role="tabpanel" id="panel-ai" aria-labelledby="tab-ai">
+						<PrereviewPanel prereview={d.prereview} />
+					</div>
 				{:else if tab === 'github'}
 					<div class="tab-panel part" role="tabpanel" id="panel-github" aria-labelledby="tab-github">
-						<GitHubPanel github={d.github} githubError={d.github_error} repoUrl={p.repo_url} days={d.days} windowStart={d.window_start} {reship} />
+						<GitHubPanel github={d.github} githubError={d.github_error} repoUrl={p.repo_url} days={d.days} windowStart={d.window_start} {reship}
+							commitSeconds={d.commit_seconds} afterLastCommit={d.after_last_commit_seconds} commitTimeError={d.commit_time_error} />
 					</div>
 				{:else}
 					<div class="tab-panel part" role="tabpanel" id="panel-hackatime" aria-labelledby="tab-hackatime">
 						<HackatimePanel hackatime={d.hackatime} hackatimeError={d.hackatime_error} submission={sub} earlierSeconds={p.approved_seconds}
-							days={d.days} windowStart={d.window_start} {reship} checks={d.checks} />
+							days={d.days} windowStart={d.window_start} {reship} checks={d.checks} telescreenUrl={d.telescreen_hackatime_url} />
 					</div>
 				{/if}
 			</div>
@@ -611,7 +647,7 @@
 									<label class="field">
 										<span>Hours</span>
 										<input type="number" min="0" step="0.01" max={overriding ? undefined : toHours(maxSeconds)} bind:value={approvedHours} />
-										<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}; more needs a reason.` : `Up to ${hours(maxSeconds)}.`} {deflatedBy > 0 ? `Deflated by ${hours(deflatedBy)}: cut time can't be shipped again.` : "Cut time can't be shipped again."}</small>
+										<small>{overriding ? `Hackatime tracked ${hours(sub.new_seconds)}; more needs a reason.` : `Up to ${hours(maxSeconds)}.`} {deflatedBy > 0 ? `Deflated by ${cutText(deflatedBy)}: cut time can't be shipped again.` : "Cut time can't be shipped again."}</small>
 									</label>
 									{#if deflatedBy > 0}
 										<label class="field grow">
@@ -788,7 +824,26 @@
 	.summary { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 	.title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 	.title-row h1 { font-size: 34px; line-height: 1.05; overflow-wrap: anywhere; }
-	.description { margin: 0; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+	.description {
+		margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: default;
+		display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+	}
+	.description.clipped { cursor: pointer; }
+	.description.clipped:hover { text-decoration: underline; }
+	.read-all { align-self: flex-start; }
+	.desc-dialog {
+		width: min(640px, calc(100vw - 32px));
+		padding: 24px 28px;
+		color: var(--text);
+		background: var(--row-bg);
+		border: 0;
+		border-radius: var(--radius);
+		box-shadow: 0 24px 60px rgb(0 0 0 / 0.6);
+		font-family: 'Crimson Pro', Georgia, serif;
+	}
+	.desc-dialog::backdrop { background: rgb(0 0 0 / 0.7); }
+	.desc-dialog h2 { font-size: 30px; margin: 0 0 12px; }
+	.desc-full { margin: 0 0 16px; max-height: 65vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 	.links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 	.maker { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
 	.note { margin: 0; padding: 4px 10px; border-radius: 8px; background: var(--rv-sunk); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -870,12 +925,15 @@
 		}
 		.base { max-height: 42dvh; overflow-y: auto; scrollbar-width: thin; }
 		.evidence { overflow-y: auto; min-height: 0; scrollbar-width: thin; }
-		.rail { border-bottom: 0; border-left: 1px solid var(--rv-line); min-height: 0; overflow-y: auto; scrollbar-width: none; }
-		.decision .form-b { flex: 1; min-height: 0; }
-		.decision .form-cols { flex: 1; min-height: 0; }
+		/* When the window's too short for every box at its smallest, the
+		   rail scrolls rather than squashing them into each other. */
+		.rail { border-bottom: 0; border-left: 1px solid var(--rv-line); min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+		.decision { min-height: auto; }
+		.decision .form-b { flex: 1; }
+		.decision .form-cols { flex: 1; }
 		/* Only the lower text boxes share the leftover height; the reason
 		   boxes above them (deflation, going over) keep their own size. */
-		.decision .form-b .grow { flex: 1 1 0; min-height: 0; }
+		.decision .form-b .grow { flex: 1 1 0; }
 		.decision .form-b .grow textarea { flex: 1; min-height: 44px; resize: none; }
 		.decision .form-a .grow textarea { min-height: 52px; height: 52px; }
 		.decision .grow :global(small) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }

@@ -182,15 +182,14 @@ func main() {
 		SaleEnd:       saleEnd,
 		// Off unless set. Sidekick is Hack Club's review platform; see
 		// api/sidekick.go and planning/REVIEW_FLOW.md.
-		SidekickSecret: sidekickSecret,
-		PublicURL:      publicURL,
-		GitHub:         github.New(githubConfig),
-		Links:          links,
-		Unified:        unifiedLookup,
-		// For example https://telescreen.hackclub.com/.../{slack_id}
-		TelescreenProfileURL: os.Getenv("TELESCREEN_PROFILE_URL"),
-		Slack:                slackClient,
-		AnnounceChannel:      announceChannel,
+		SidekickSecret:  sidekickSecret,
+		PrereviewToken:  os.Getenv("PREREVIEW_TOKEN"),
+		PublicURL:       publicURL,
+		GitHub:          github.New(githubConfig),
+		Links:           links,
+		Unified:         unifiedLookup,
+		Slack:           slackClient,
+		AnnounceChannel: announceChannel,
 	}
 
 	// Price locks are refunded if the tickets sell out before they're used.

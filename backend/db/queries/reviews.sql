@@ -259,7 +259,8 @@ select * from review_settings;
 update review_settings set
     fraud_check_everything = $1,
     large_ship_seconds = $2,
-    long_day_seconds = $3
+    long_day_seconds = $3,
+    prereviews_for_reviewers = $4
 returning *;
 
 -- name: SetReviewerNote :one

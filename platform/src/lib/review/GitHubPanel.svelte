@@ -4,7 +4,16 @@
 	import { dayColumns, shortDate } from './days.js';
 	import DayChart from './DayChart.svelte';
 
-	let { github, githubError, repoUrl, days, windowStart, reship } = $props();
+	// commitSeconds: Hackatime's time since the commit before, by SHA (like
+	// Ari); afterLastCommit: tracked after the last commit, up to shipping.
+	let { github, githubError, repoUrl, days, windowStart, reship, commitSeconds = null, afterLastCommit = null, commitTimeError = '' } = $props();
+	// "2h 13m", "45m", "0m".
+	const span = (s) => {
+		const m = Math.round(s / 60);
+		return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m` : `${m}m`;
+	};
+	// A long stretch of tracked time behind a single commit is worth a look.
+	const LONG = 3 * 3600;
 	const since = $derived(reship ? 'since the last approved ship' : 'since Crossroads started');
 	const columns = $derived(dayColumns(days, windowStart));
 	const onGitHub = $derived(/^https?:\/\/(www\.)?github\.com\/[^/]+\/[^/]+/i.test(repoUrl ?? ''));
@@ -46,10 +55,19 @@
 		</div>
 		<div class="right stack-sm">
 			<h3 class="small">{github.commits.length}{github.truncated ? '+' : ''} commits {since}</h3>
+			{#if commitSeconds}
+				<p class="small muted">Each commit shows the Hackatime time tracked since the commit before it.{afterLastCommit ? ` ${span(afterLastCommit)} was tracked after the last commit, before shipping.` : ''}</p>
+			{:else if commitTimeError}
+				<p class="small muted">Couldn't get the time between commits from Hackatime: {commitTimeError}</p>
+			{/if}
 			{#if github.commits.length}
 				<ul class="commits small">
 					{#each github.commits as c (c.sha)}
 						<li>
+							{#if commitSeconds}
+								{@const s = commitSeconds[c.sha]}
+								<span class="took" class:long={s >= LONG} title={s == null ? "The commit before this one wasn't fetched, so its time isn't known." : `${span(s)} tracked on Hackatime since the commit before`}>{s == null ? '?' : span(s)}</span>
+							{/if}
 							<a href="{github.url}/commit/{c.sha}" target="_blank" rel="noreferrer" class="sha">{c.sha.slice(0, 7)}</a>
 							<span class="message">{c.message}</span>
 							{#if c.has_lines}<span><span class="add">+{c.additions}</span> <span class="del">−{c.deletions}</span></span>{/if}
@@ -86,6 +104,8 @@
 	.commits { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
 	.commits li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 4px 10px; border-radius: 8px; background: var(--rv-sunk, rgb(0 0 0 / 0.25)); }
 	.sha { font-family: ui-monospace, monospace; }
+	.took { min-width: 4.6em; font-variant-numeric: tabular-nums; font-weight: 600; }
+	.took.long { color: var(--warn); }
 	.message { flex: 1 1 200px; overflow-wrap: anywhere; }
 	.add { color: var(--good); }
 	.del { color: var(--danger); }
