@@ -14,7 +14,10 @@ export const rail = $state({
 	// opens only once the train has stopped; the train leaves Home only once
 	// the bridge has folded.
 	settle: 0,
-	foldUntil: 0
+	foldUntil: 0,
+	// Whether the mountains above are showing, so the train can carry their
+	// black on down behind it.
+	mountains: false
 });
 
 // How long the bridge takes to fold away (its closing transitions in
