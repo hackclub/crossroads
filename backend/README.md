@@ -65,7 +65,7 @@ Admins only, under `/api/admin`:
 
 ### Hackatime
 
-Time counts from `hoursStart` in `main.go` (midnight UTC, Oct 30 2026). People are looked up on Hackatime by the Slack ID from Hack Club Auth, so they need Slack linked there and public stats turned on in Hackatime. Anyone Hackatime has flagged as a cheater (trust level red) can't submit.
+Time counts from `hoursStart` in `main.go` (midnight UTC, Aug 1 2026), or from a project's own `hours_start` if it has one: projects with a ship approved or in review when that moved back from Oct 30 kept Oct 30. People are looked up on Hackatime by the Slack ID from Hack Club Auth, so they need Slack linked there and public stats turned on in Hackatime. Anyone Hackatime has flagged as a cheater (trust level red) can't submit.
 
 A submission claims Hackatime time nobody has claimed yet. That's the smaller of two numbers: the project's time minus what its approved submissions covered, and the person's time across every Hackatime project they've linked anywhere (overlaps counted once) minus everything their pending and approved submissions claimed. The second limit stops time that counted toward two projects at once, or moved to a renamed Hackatime project, from being paid twice. Submissions for the same person go one at a time. Once a Hackatime project has been paid out on a project, it can't be unlinked. Reviewers also see any other projects sharing the same repo or demo link.
 

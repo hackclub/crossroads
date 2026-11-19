@@ -153,7 +153,7 @@ func (s *Syncer) submissionFields(row db.ListSubmissionsToSyncRow) airtable.Fiel
 		"Optional - Override Hours Spent":               hours,
 		"Optional - Override Hours Spent Justification": s.justification(row),
 		"Justification - Hackatime Project Name(s) + Date Range(s)": fmt.Sprintf("%s, %s to %s",
-			hackatimeProjects, s.HoursStart.Format(time.DateOnly), sub.SubmittedAt.UTC().Format(time.DateOnly)),
+			hackatimeProjects, project.CountsFrom(s.HoursStart).UTC().Format(time.DateOnly), sub.SubmittedAt.UTC().Format(time.DateOnly)),
 		"Justification - Submitter Hackatime ID": user.SlackID,
 	}
 	if project.ScreenshotUrl != nil {
@@ -192,7 +192,7 @@ func ReviewOf(row db.ListSubmissionsToSyncRow, hoursStart time.Time) unified.Rev
 	sub := row.Submission
 	r := unified.Review{
 		HackatimeProjects: sub.HackatimeProjects, HackatimeSeconds: sub.HackatimeSeconds, NewSeconds: sub.NewSeconds,
-		ApprovedSeconds: *sub.ApprovedSeconds, HoursStart: hoursStart, SubmittedAt: sub.SubmittedAt,
+		ApprovedSeconds: *sub.ApprovedSeconds, HoursStart: row.Project.CountsFrom(hoursStart), SubmittedAt: sub.SubmittedAt,
 		ReviewerName: row.ReviewerName, ReviewerSeconds: *sub.ApprovedSeconds,
 		ReviewerDeflation: deref(row.ReviewerDeflation), TechnicalFeatures: deref(sub.TechnicalFeatures),
 		Notes: deref(sub.InternalNotes), OverrideReason: deref(sub.OverrideReason),

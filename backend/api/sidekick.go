@@ -246,7 +246,7 @@ func (a *API) skProjects(r *http.Request, projects []db.Project, owners []db.Use
 			ID: strconv.FormatInt(p.ID, 10), Title: p.Name, Description: p.Description,
 			CodeURL: *cmpOr(p.RepoUrl, new("")), DemoURL: p.DemoUrl, ScreenshotURL: p.ScreenshotUrl,
 			AuthorID: actorID(owner.SlackID, owner.HcaID), AuthorHcaName: owner.Name, HackatimeID: owner.SlackID,
-			HackatimeProjectKeys: []string{}, HackatimeStartDate: a.HoursStart.UTC().Format(time.DateOnly),
+			HackatimeProjectKeys: []string{}, HackatimeStartDate: p.CountsFrom(a.HoursStart).UTC().Format(time.DateOnly),
 			Tags: []skTag{}, Ships: []skShip{}, Metadata: map[string]any{},
 		}
 		for _, l := range links {

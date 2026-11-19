@@ -16,6 +16,9 @@ func TestAdminActivity(t *testing.T) {
 	lapsed := e.newUser(t, "U2")
 	p := e.createProject(t, participant, completeProject("racer"))
 	today := activity.Day(time.Now())
+	// Days before Hackatime time counts aren't shown, so start well before
+	// the ranges asked for.
+	e.api.HoursStart = today.AddDate(0, 0, -60)
 	for daysAgo, seconds := range map[int]int{0: 1800, 2: 7200, 10: 600} {
 		if _, err := e.pool.Exec(context.Background(), "insert into project_activity (project_id, day, seconds) values ($1, $2, $3)",
 			p.ID, today.AddDate(0, 0, -daysAgo), seconds); err != nil {

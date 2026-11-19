@@ -25,13 +25,22 @@ import (
 
 var hoursStart = time.Date(2026, time.November, 3, 0, 0, 0, 0, time.UTC)
 
+// laterStart is when a project that kept an older, later start (see
+// db.Project.CountsFrom) starts counting.
+var laterStart = time.Date(2026, time.November, 10, 0, 0, 0, 0, time.UTC)
+
 // fakeHackatime stands in for hackatime.hackclub.com's stats endpoint.
 type fakeHackatime struct {
-	mu        sync.Mutex
-	seconds   map[string]map[string]int // Slack ID → Hackatime project → seconds
-	overlaps  []fakeOverlap
-	private   map[string]bool
-	convicted map[string]bool
+	mu sync.Mutex
+	// start is the program's start, which every request has to ask from
+	// unless it asks from laterStart.
+	start   time.Time
+	seconds map[string]map[string]int // Slack ID → Hackatime project → seconds
+	// sinceLater is the same, but only the time since laterStart.
+	sinceLater map[string]map[string]int
+	overlaps   []fakeOverlap
+	private    map[string]bool
+	convicted  map[string]bool
 	// beforeStats, if set, runs at the start of every request.
 	beforeStats func(*http.Request)
 }
@@ -52,6 +61,17 @@ func (f *fakeHackatime) set(slackID, project string, seconds int) {
 	f.seconds[slackID][project] = seconds
 }
 
+// setLater sets the time on a Hackatime project since laterStart, for
+// projects that start counting then.
+func (f *fakeHackatime) setLater(slackID, project string, seconds int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.sinceLater[slackID] == nil {
+		f.sinceLater[slackID] = map[string]int{}
+	}
+	f.sinceLater[slackID][project] = seconds
+}
+
 func (f *fakeHackatime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if f.beforeStats != nil {
 		f.beforeStats(r)
@@ -63,20 +83,25 @@ func (f *fakeHackatime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if got := r.URL.Query().Get("start_date"); got != "2026-11-03T00:00:00Z" {
+	slackID := parts[4]
+	since := f.seconds
+	switch got := r.URL.Query().Get("start_date"); got {
+	case f.start.UTC().Format(time.RFC3339):
+	case laterStart.Format(time.RFC3339):
+		since = f.sinceLater
+	default:
 		http.Error(w, "start_date is "+got, http.StatusUnprocessableEntity)
 		return
 	}
-	slackID := parts[4]
 	if f.private[slackID] {
 		http.Error(w, `{"error":"private"}`, http.StatusForbidden)
 		return
 	}
-	projects, ok := f.seconds[slackID]
-	if !ok {
+	if _, ok := f.seconds[slackID]; !ok {
 		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
 		return
 	}
+	projects := since[slackID]
 	var filter []string
 	if v := r.URL.Query().Get("filter_by_project"); v != "" {
 		filter = strings.Split(v, ",")
@@ -144,7 +169,10 @@ func (f *fakeVerification) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func newEnv(t *testing.T) *env {
 	t.Helper()
 	pool := dbtest.New(t)
-	fake := &fakeHackatime{seconds: map[string]map[string]int{}, private: map[string]bool{}, convicted: map[string]bool{}}
+	fake := &fakeHackatime{
+		start: hoursStart, seconds: map[string]map[string]int{}, sinceLater: map[string]map[string]int{},
+		private: map[string]bool{}, convicted: map[string]bool{},
+	}
 	server := httptest.NewServer(fake)
 	t.Cleanup(server.Close)
 
@@ -155,7 +183,8 @@ func newEnv(t *testing.T) *env {
 	a := &api.API{
 		Pool:           pool,
 		Queries:        db.New(pool),
-		Hackatime:      hackatime.New(hackatime.Config{BaseURL: server.URL, Start: hoursStart}),
+		Hackatime:      hackatime.New(hackatime.Config{BaseURL: server.URL}),
+		HoursStart:     hoursStart,
 		HCA:            hca.New(hca.Config{BaseURL: hcaServer.URL}),
 		StampsPerHour:  10,
 		SidekickSecret: sidekickSecret,
@@ -399,6 +428,43 @@ func TestSubmitAndResubmit(t *testing.T) {
 	e.call(t, user, "GET", "/api/projects/"+itoa(p.ID), nil, &detail)
 	if detail.ApprovedSeconds != 5*3600 || len(detail.Submissions) != 2 {
 		t.Errorf("got %d approved seconds over %d submissions, want 5 hours over 2", detail.ApprovedSeconds, len(detail.Submissions))
+	}
+}
+
+func TestProjectsThatKeptALaterStart(t *testing.T) {
+	e := newEnv(t)
+	user := e.newUser(t, "U1")
+	// The racer had shipped when the program's start moved back to
+	// hoursStart, so it still counts from laterStart.
+	e.hackatime.set("U1", "racer", 8*3600)
+	e.hackatime.setLater("U1", "racer", 3*3600)
+	racer := e.createProject(t, user, completeProject("racer"))
+	if _, err := e.pool.Exec(context.Background(), "update projects set hours_start = $2 where id = $1", racer.ID, laterStart); err != nil {
+		t.Fatal(err)
+	}
+	if status, s, _ := e.submit(t, user, racer.ID); status != http.StatusCreated || s.NewSeconds != 3*3600 {
+		t.Fatalf("shipping the racer: got %d %+v, want the 3 hours since its own start", status, s)
+	}
+	e.review(t, racer.ID, "approved")
+
+	// Its time from before then never becomes shippable.
+	e.hackatime.set("U1", "racer", 10*3600)
+	e.hackatime.setLater("U1", "racer", 5*3600)
+	var detail project
+	e.call(t, user, "GET", "/api/projects/"+itoa(racer.ID), nil, &detail)
+	if detail.UnsubmittedSeconds == nil || *detail.UnsubmittedSeconds != 2*3600 {
+		t.Errorf("the racer's unsubmitted time is %v, want the 2 hours since it shipped", detail.UnsubmittedSeconds)
+	}
+
+	// A project that hadn't shipped counts everything since the program's
+	// start, and the racer's own time doesn't hold it back.
+	second := completeProject("puzzler")
+	second["repo_url"], second["demo_url"] = "https://github.com/example/puzzler", "https://example.github.io/puzzler"
+	e.hackatime.set("U1", "puzzler", 6*3600)
+	e.hackatime.setLater("U1", "puzzler", 1*3600)
+	puzzler := e.createProject(t, user, second)
+	if status, s, _ := e.submit(t, user, puzzler.ID); status != http.StatusCreated || s.NewSeconds != 6*3600 {
+		t.Errorf("shipping the puzzler: got %d %+v, want all 6 hours", status, s)
 	}
 }
 

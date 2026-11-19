@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -305,5 +306,60 @@ func TestMigrationsRoundTrip(t *testing.T) {
 
 	if _, err := provider.Up(ctx); err != nil {
 		t.Fatalf("migrating back up: %v", err)
+	}
+}
+
+// Moving the program's start back to Aug 1 (migration 31) wasn't retroactive:
+// projects with a ship approved or in review kept counting from Oct 30.
+func TestShippedProjectsKeptTheOct30Start(t *testing.T) {
+	pool := dbtest.New(t)
+	ctx := context.Background()
+	provider, closeDB, err := db.Migrator(pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeDB()
+	if _, err := provider.DownTo(ctx, 30); err != nil {
+		t.Fatalf("migrating down: %v", err)
+	}
+
+	user := insertUser(t, pool, db.UserRoleParticipant)
+	reviewer := insertUser(t, pool, db.UserRoleAdmin)
+	shippedAs := func(statuses ...string) int64 {
+		t.Helper()
+		project := insert(t, pool, `insert into projects (user_id, name) values ($1, 'Test')`, user)
+		for _, status := range statuses {
+			insert(t, pool, `insert into submissions (project_id, status, hackatime_projects, hackatime_seconds, new_seconds,
+					approved_seconds, reviewer_id, reviewed_at)
+				values ($1, $2::submission_status, '{}', 3600, 3600,
+					case when $2::submission_status in ('fraud_check', 'awaiting_hq', 'approved') then 3600 end,
+					case when $2::submission_status <> 'pending' then $3::bigint end,
+					case when $2::submission_status <> 'pending' then now() end)`, project, status, reviewer)
+		}
+		return project
+	}
+	keeps := map[int64]bool{
+		shippedAs():                       false,
+		shippedAs("rejected"):             false,
+		shippedAs("rejected", "rejected"): false,
+		shippedAs("pending"):              true,
+		shippedAs("fraud_check"):          true,
+		shippedAs("awaiting_hq"):          true,
+		shippedAs("approved"):             true,
+		shippedAs("rejected", "approved"): true,
+	}
+
+	if _, err := provider.UpTo(ctx, 31); err != nil {
+		t.Fatalf("migrating up: %v", err)
+	}
+	oct30 := time.Date(2026, time.October, 30, 0, 0, 0, 0, time.UTC)
+	for project, want := range keeps {
+		var start *time.Time
+		if err := pool.QueryRow(ctx, "select hours_start from projects where id = $1", project).Scan(&start); err != nil {
+			t.Fatal(err)
+		}
+		if (start != nil) != want || (start != nil && !start.Equal(oct30)) {
+			t.Errorf("project %d starts at %v, want Oct 30: %v", project, start, want)
+		}
 	}
 }

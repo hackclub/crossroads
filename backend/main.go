@@ -35,9 +35,9 @@ import (
 	"github.com/scherepi/crossroads-backend/uploads"
 )
 
-// Only Hackatime time from here on counts toward Crossroads: the day the RSVP
-// page first went up.
-var hoursStart = time.Date(2026, time.October, 30, 0, 0, 0, 0, time.UTC)
+// Only Hackatime time from here on counts toward Crossroads. It was Oct 30,
+// the day the RSVP page first went up, until Nov 19 moved it back to Aug 1.
+var hoursStart = time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC)
 
 // The home page's community goal: 500 hours together by 11:59 PM Eastern on
 // November 18 (EST, UTC-5). It was 200 hours by November 15 until Nov 11.
@@ -107,7 +107,7 @@ func main() {
 	// refuses to run anywhere but a developer's machine.
 	addr := ":" + cmp.Or(os.Getenv("PORT"), "8080")
 	devMode := os.Getenv("DEV_MODE") == "1"
-	hackatimeConfig := hackatime.Config{Start: hoursStart}
+	hackatimeConfig := hackatime.Config{}
 	if devMode {
 		if !runsLocally(redirectURL) {
 			log.Fatal("DEV_MODE only runs locally, outside Kubernetes and with an http://localhost HCA_REDIRECT_URL; it lets anyone sign in as anyone")

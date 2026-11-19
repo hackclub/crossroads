@@ -21,20 +21,17 @@ var (
 )
 
 type Config struct {
-	BaseURL string    // defaults to https://hackatime.hackclub.com
-	Start   time.Time // only time after this counts
+	BaseURL string // defaults to https://hackatime.hackclub.com
 }
 
 type Client struct {
 	baseURL string
-	start   time.Time
 	http    *http.Client
 }
 
 func New(cfg Config) *Client {
 	return &Client{
 		baseURL: cmp.Or(cfg.BaseURL, "https://hackatime.hackclub.com"),
-		start:   cfg.Start,
 		http:    &http.Client{Timeout: 15 * time.Second},
 	}
 }
@@ -55,13 +52,13 @@ type Stats struct {
 	UserID string
 }
 
-// Stats returns someone's time since Start, looking them up by Slack ID. If
+// Stats returns someone's time since start, looking them up by Slack ID. If
 // projects isn't empty, only those Hackatime projects count. Project names
 // can't contain commas.
-func (c *Client) Stats(ctx context.Context, slackID string, projects []string) (Stats, error) {
+func (c *Client) Stats(ctx context.Context, slackID string, projects []string, start time.Time) (Stats, error) {
 	query := url.Values{
 		"features":   {"projects"},
-		"start_date": {c.start.UTC().Format(time.RFC3339)},
+		"start_date": {start.UTC().Format(time.RFC3339)},
 	}
 	if len(projects) > 0 {
 		query.Set("filter_by_project", strings.Join(projects, ","))

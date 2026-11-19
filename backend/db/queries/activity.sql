@@ -1,7 +1,7 @@
 -- name: ListTrackedProjects :many
 -- Projects whose time can be tracked: they have linked Hackatime projects,
 -- and their owner has a Slack ID to look them up by.
-select projects.id, users.slack_id::text as slack_id,
+select projects.id, users.slack_id::text as slack_id, projects.hours_start,
     array_agg(project_hackatime_projects.hackatime_project order by project_hackatime_projects.hackatime_project)::text[] as hackatime_projects
 from projects
 join users on users.id = projects.user_id
