@@ -1,6 +1,6 @@
 package api
 
-// AI pre-reviews, like Ari's for Jame Gam, without running Claude on a
+// Pre-reviews, like Ari's for Jame Gam, without running Claude on a
 // server. The site writes the prompt and reads the answer:
 //
 //   - Paste: GET /review/prereviews/prompt is one prompt with the
@@ -254,7 +254,7 @@ func (a *API) canPrereview(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	if !canSeePrereviews(u, settings) {
-		respond.Error(w, http.StatusForbidden, "AI pre-reviews are off for you.")
+		respond.Error(w, http.StatusForbidden, "Pre-reviews are off for you.")
 		return false
 	}
 	return true

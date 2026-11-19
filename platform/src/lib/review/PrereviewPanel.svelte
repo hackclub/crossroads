@@ -1,6 +1,6 @@
 <script>
-	// A ship's AI pre-review: what Claude made of it before anyone looked,
-	// pasted in from the review queue's AI pre-reviews tab or uploaded by
+	// A ship's pre-review: what Claude made of it before anyone looked,
+	// pasted in from the review queue's Pre-reviews tab or uploaded by
 	// scripts/prereview.mjs (backend/api/prereview.go). It decides nothing.
 	import { date } from '#lib/format.js';
 
@@ -16,7 +16,7 @@
 </script>
 
 {#if !prereview}
-	<p class="small muted">No AI pre-review for this ship yet. Make them on the Review page, in the <a href="/review?stage=ai">AI pre-reviews</a> tab.</p>
+	<p class="small muted">No pre-review for this ship yet. Make them on the Review page, in the <a href="/review?stage=prereviews">Pre-reviews</a> tab.</p>
 {:else}
 	<div class="tab-grid">
 		<div class="left stack">
