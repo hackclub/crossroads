@@ -126,14 +126,17 @@
 		padding-block: 16px;
 		overflow-x: clip;
 	}
-	/* On Home the mountains above (CommunityBridge) run on down behind the
-	   train, from the gap over it, and fade out by its bottom. They fade in
-	   as the mountains finish rising, and out as soon as they start to fold. */
+	/* On Home the mountains above (CommunityBridge) rise out of the train:
+	   their solid black base runs on down to the cars' top edge (over the
+	   margin and padding above them, 24 + 16px) and fades out just past it.
+	   It fades in as the mountains finish rising, and out as soon as they
+	   start to fold. */
 	.rail::before {
 		content: '';
 		position: absolute;
-		inset: -24px 0 0; /* up over the margin above, to the mountains */
-		background: linear-gradient(#000 55%, transparent);
+		inset: -24px 0 auto;
+		height: 88px;
+		background: linear-gradient(#000 40px, transparent);
 		opacity: 0;
 		transition: opacity 0.2s ease-in;
 		pointer-events: none;
