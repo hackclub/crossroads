@@ -59,3 +59,15 @@ export const EFFECTS = {
 	stamp_multiplier: { short: '+10% tickets', long: 'Every ship of this project approved from now on earns 10% more tickets.' }
 };
 export const effectShort = (effect) => EFFECTS[effect]?.short ?? effect;
+
+// The country of someone's Hack Club address, by name ("India"), or null.
+// The shop only lists what can be sent there (backend/api/regions.go).
+export function homeCountry(me) {
+	const code = String(me?.address?.country ?? '').trim().toUpperCase();
+	if (!/^[A-Z]{2}$/.test(code)) return null;
+	try {
+		return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code;
+	} catch {
+		return code;
+	}
+}

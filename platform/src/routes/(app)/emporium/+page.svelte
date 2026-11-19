@@ -5,7 +5,7 @@
 	import { onMount } from 'svelte';
 	import { api, get } from '#lib/api.js';
 	import { session, refresh } from '#lib/session.svelte.js';
-	import { stampHours } from '#lib/format.js';
+	import { stampHours, homeCountry } from '#lib/format.js';
 	import StampIcon from '#lib/StampIcon.svelte';
 
 	let items = $state(null);
@@ -112,6 +112,7 @@
 				{#if session.me.role === 'participant'}You're here because of something you built.{/if}
 			</p>
 			<p class="purse">You have <b>{stamps}</b><StampIcon /> tickets, worth {stampHours(stamps, rate)} of approved time.</p>
+			{#if homeCountry(session.me)}<p class="small muted">Showing what can be sent to {homeCountry(session.me)}, where your Hack Club address is.</p>{/if}
 		</header>
 
 		{#if error}<p class="callout warn">{error}</p>{/if}

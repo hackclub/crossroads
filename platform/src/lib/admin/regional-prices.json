@@ -1,0 +1,1472 @@
+{
+ "about": "Regional price research for the shop, checked 2026-11-06 and 2026-11-19: what each item really costs, delivered, in the USA, India, Brazil and Europe (Germany), with stores, links and notes. The admin page's Shop items shows it per item (regional-prices.js); the shop itself charges everyone the same. Rates: 1 USD = 94.5 INR = 5.50 BRL; 1 EUR = 1.1164 USD. Card grants aren't listed: they're worth the same everywhere. Items are matched by name, ignoring case, accents and punctuation; add aliases for other spellings. planning/shop-price-per-hour-2026-11-19.csv was made from this.",
+ "regions": {
+  "us": "USA",
+  "in": "India",
+  "br": "Brazil",
+  "eu": "Europe (DE)"
+ },
+ "items": [
+  {
+   "name": "Logitech MX Master 3S",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "",
+   "regions": {
+    "us": {
+     "store": "Logitech (official US store)",
+     "currency": "USD",
+     "price_local": 89.99,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 89.99,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.logitech.com/en-us/products/mice/mx-master-3s.910-006557.html",
+     "notes": "Sale price (list $99.99). Free shipping."
+    },
+    "in": {
+     "store": "Flipkart (seller: RetailNet)",
+     "currency": "INR",
+     "price_local": 5795.0,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 61.3,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.flipkart.com/logitech-mx-master-3s-wireless-touch-mouse-bluetooth/p/itm271ade01ff274",
+     "notes": "Graphite buyable; MRP ₹10,995. Bank offers to ₹5,215. Free delivery ₹500+ (small platform fee possible). Reliance Digital ~₹9,499 unverified."
+    },
+    "br": {
+     "store": "KaBuM!",
+     "currency": "BRL",
+     "price_local": 429.99,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 78.13,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.kabum.com.br/produto/989639",
+     "notes": "Pix price in Ninja Friday sale (ends 24 Nov); card R$505.87, normal R$549.99. Bluetooth Edition (no Bolt receiver). 199 in stock."
+    },
+    "eu": {
+     "store": "reichelt.de",
+     "currency": "EUR",
+     "price_local": 79.95,
+     "shipping_local": 5.95,
+     "import_fees_local": null,
+     "total_usd": 95.91,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.reichelt.de/de/de/shop/produkt/maus_mouse_logi_bolt_bluetooth_mx_master_3s-339692",
+     "notes": "Graphite 'For Business' SKU (same mouse, with Bolt receiver). logitech.com/de €99.99 free shipping. Reichelt €5.95 shipping per order (combine with YubiKey, microSD)."
+    }
+   }
+  },
+  {
+   "name": "AULA F75 keyboard",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "Hard to source in Europe and Brazil (US-layout only in DE; Brazil listing has no warranty or Anatel code).",
+   "regions": {
+    "us": {
+     "store": "Epomaker (AULA co-brand, US warehouse)",
+     "currency": "USD",
+     "price_local": 65.99,
+     "shipping_local": 8.0,
+     "import_fees_local": null,
+     "total_usd": 73.99,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "https://epomaker.com/products/epomaker-aula-f75",
+     "notes": "Price from indexed page; stock unconfirmed. AULA's own US store ($71.99) sold out. Shipping estimated (free over $69). Mechlands $79.99 free shipping."
+    },
+    "in": {
+     "store": "Amazon.in",
+     "currency": "INR",
+     "price_local": 5422.0,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 57.35,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://www.amazon.in/dp/B0CQXNQYFP",
+     "notes": "Cedar Green / Reaper linear (F75CGR). Price and stock via pricehistory.app tracker (3 Nov), verify on Amazon. Range ₹5,262–5,999 since Jun. Shipping depends on fulfilment. Flipkart lists at inflated ₹15,999."
+    },
+    "br": {
+     "store": "KaBuM! marketplace (GRUPO JKMA)",
+     "currency": "BRL",
+     "price_local": 503.1,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 91.41,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.kabum.com.br/produto/1086064",
+     "notes": "Pix; card R$585. 'Sem Garantia', no Anatel code; KaBuM itself only sells the wired F75 (R$299.99), so the wireless one may not be Anatel-homologated."
+    },
+    "eu": {
+     "store": "joybuy.de (JD.com Europe)",
+     "currency": "EUR",
+     "price_local": 79.99,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 89.31,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.idealo.de/preisvergleich/OffersOfProduct/213561551_-f75-75-wireless-mechanische-gaming-tastatur-rgb-tri-mode-pbt-keycaps-f75-aulacn.html",
+     "notes": "Verified via idealo only. US-ANSI layout only. No major DE retailer stocks it. AULA Gear US$71.99+$5 ships DDU (+19% VAT)."
+    }
+   }
+  },
+  {
+   "name": "CMF Buds 2 Plus",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "Not sold in Brazil (import only). Official US and DE stores sold out.",
+   "regions": {
+    "us": {
+     "store": "Amazon.com",
+     "currency": "USD",
+     "price_local": 59.0,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 59.0,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "https://www.amazon.com/dp/B0F3D2FTSD",
+     "notes": "Via SoundGuys price tracker (~2 days old). Nothing's US store sold out. Confirm seller is Nothing/CMF."
+    },
+    "in": {
+     "store": "Flipkart (seller: RetailNet)",
+     "currency": "INR",
+     "price_local": 3099.0,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 32.78,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.flipkart.com/cmf-nothing-buds-2-plus-50db-hybrid-anc-hi-res-ldac-spatial-audio-6hd-mic-61-5hrs-bluetooth/p/itm84c02a28ac6b3",
+     "notes": "Flipkart is the official launch channel; MRP ₹3,999; bank offer ₹2,944."
+    },
+    "br": {
+     "store": "None verified (Nothing AliExpress store, import)",
+     "currency": "BRL",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": null,
+     "complete": false,
+     "in_stock": "unknown",
+     "url": "https://www.aliexpress.com/item/1005010659073776.html",
+     "notes": "Not sold by any reachable Brazilian retailer; Nothing has no BR store. AliExpress ~US$31-34 delivered (June, to AU), unverified for BR. +20% II +17% ICMS. Anatel status unknown."
+    },
+    "eu": {
+     "store": "pccomponentes.de (marketplace: LOMIVOX)",
+     "currency": "EUR",
+     "price_local": 38.0,
+     "shipping_local": 5.5,
+     "import_fees_local": null,
+     "total_usd": 48.57,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.pccomponentes.de/nothing-cmf-buds-2-plus-hi-res-ldac-hybrid-noise-cancelling-bluetooth-kopfhoerer-blau",
+     "notes": "Third-party marketplace seller; pick the NEW offer. Official Nothing DE store €59.95 sold out. Otto marketplace €55 free shipping."
+    }
+   }
+  },
+  {
+   "name": "Factorio",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "Shop pays a $35 grant; Steam is cheaper in India (Rs 1,500) and Brazil (R$102).",
+   "regions": {
+    "us": {
+     "store": "factorio.com",
+     "currency": "USD",
+     "price_local": 35.0,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 35.0,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.factorio.com/buy",
+     "notes": "$35 flat, no-sale policy. Steam US $35."
+    },
+    "in": {
+     "store": "factorio.com",
+     "currency": "INR",
+     "price_local": 3309.0,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 35.0,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.factorio.com/buy",
+     "notes": "US$35 flat worldwide. Steam India ₹1,500 (much cheaper; can link to factorio.com account)."
+    },
+    "br": {
+     "store": "factorio.com (BR pricing)",
+     "currency": "BRL",
+     "price_local": 150.0,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 27.25,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.factorio.com/buy",
+     "notes": "Steam Brazil R$101.99 (cheaper)."
+    },
+    "eu": {
+     "store": "factorio.com",
+     "currency": "EUR",
+     "price_local": 32.0,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 35.73,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.factorio.com/buy",
+     "notes": "€32 for DE on factorio.com and Steam. UK factorio.com £26."
+    }
+   }
+  },
+  {
+   "name": "YubiKey 5C NFC",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "Brazil only by import (~2x with taxes).",
+   "regions": {
+    "us": {
+     "store": "Yubico (official store)",
+     "currency": "USD",
+     "price_local": 58.0,
+     "shipping_local": 5.0,
+     "import_fees_local": 0.0,
+     "total_usd": 63.0,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.yubico.com/product/yubikey-5c-nfc/",
+     "notes": "Shipping estimated (free over $100). Best Buy also $58, free shipping from $35."
+    },
+    "in": {
+     "store": "Etherbit.in",
+     "currency": "INR",
+     "price_local": 7099.0,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 75.09,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.etherbit.in/products/yubikey-5c-nfc",
+     "notes": "Incl. taxes, free express shipping. Indian security-key retailer; official Yubico partner status not confirmed. Yubico doesn't sell to India directly."
+    },
+    "br": {
+     "store": "Yubico official store (import)",
+     "currency": "BRL",
+     "price_local": 319.21,
+     "shipping_local": null,
+     "import_fees_local": 296.13,
+     "total_usd": 111.81,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://www.yubico.com/br/product/yubikey-5-series/yubikey-5c-nfc/",
+     "notes": "US$58 + shipping (at checkout) + ~93% import tax (60% II + ICMS) + 3.5% IOF; CPF needed. Local reseller KriptoBR R$759-799, imported on demand 45-60 days."
+    },
+    "eu": {
+     "store": "reichelt.de",
+     "currency": "EUR",
+     "price_local": 60.95,
+     "shipping_local": 5.95,
+     "import_fees_local": null,
+     "total_usd": 74.69,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.reichelt.de/de/de/shop/produkt/sicherheitsschluessel_usb-c_nfc-278126",
+     "notes": "Genuine retail unit. Yubico DE store €69.02. bueromarkt-ag.de €59.89 free shipping (idealo)."
+    }
+   }
+  },
+  {
+   "name": "Minecraft (Java & Bedrock)",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "Shop pays a $30 grant; regional prices differ a lot.",
+   "regions": {
+    "us": {
+     "store": "Microsoft Store / Xbox",
+     "currency": "USD",
+     "price_local": 29.99,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 29.99,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.xbox.com/en-US/games/store/minecraft-java-bedrock-edition-for-pc/9NXP44L49SHJ",
+     "notes": "Official price, needs a Microsoft account."
+    },
+    "in": {
+     "store": "Microsoft Store India",
+     "currency": "INR",
+     "price_local": 3379.0,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 35.74,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://apps.microsoft.com/detail/9NXP44L49SHJ?gl=IN",
+     "notes": "Official India list price, GST incl."
+    },
+    "br": {
+     "store": "minecraft.net (BR)",
+     "currency": "BRL",
+     "price_local": 102.9,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 18.7,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.minecraft.net/pt-br/store/minecraft-java-bedrock-edition-pc",
+     "notes": "Official BRL price, no IOF."
+    },
+    "eu": {
+     "store": "Microsoft Store / minecraft.net (DE)",
+     "currency": "EUR",
+     "price_local": 29.99,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 33.48,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.minecraft.net/de-de/store/minecraft-java-bedrock-edition-pc",
+     "notes": "Incl. VAT; gift option. UK £29.99."
+    }
+   }
+  },
+  {
+   "name": "PICO-8",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "Shop pays a $15 grant; one USD price worldwide.",
+   "regions": {
+    "us": {
+     "store": "Lexaloffle",
+     "currency": "USD",
+     "price_local": 14.99,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 14.99,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.lexaloffle.com/pico-8.php",
+     "notes": "Includes future updates."
+    },
+    "in": {
+     "store": "Lexaloffle",
+     "currency": "INR",
+     "price_local": 1417.0,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 14.99,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.lexaloffle.com/pico-8.php",
+     "notes": "US$14.99 flat; card forex markup applies."
+    },
+    "br": {
+     "store": "Lexaloffle",
+     "currency": "BRL",
+     "price_local": 82.5,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 14.99,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.lexaloffle.com/pico-8.php",
+     "notes": "US$14.99; +3.5% IOF on BR cards."
+    },
+    "eu": {
+     "store": "lexaloffle.com",
+     "currency": "EUR",
+     "price_local": 13.43,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 14.99,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.lexaloffle.com/pico-8.php",
+     "notes": "US$14.99 converted; EU VAT at checkout unconfirmed."
+    }
+   }
+  },
+  {
+   "name": "Rubber duck",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "Shipping costs more than the duck almost everywhere; buy in bulk.",
+   "regions": {
+    "us": {
+     "store": "Schylling",
+     "currency": "USD",
+     "price_local": 4.99,
+     "shipping_local": 8.0,
+     "import_fees_local": null,
+     "total_usd": 12.99,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "https://schylling.com/product/rubber-duckies-yellow-classic/",
+     "notes": "~3 in classic duck; indexed page. Shipping estimated. Bulk: Rhode Island Novelty 12 for $22.50 ($1.88 each)."
+    },
+    "in": {
+     "store": "Flipkart (seller: TOYSGATE)",
+     "currency": "INR",
+     "price_local": 173.0,
+     "shipping_local": 40.0,
+     "import_fees_local": null,
+     "total_usd": 2.25,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.flipkart.com/toysgate-chu-duck-family-baby-bathing-toys-set-bath-toy-1-pcs-toy/p/itm53ed63f3cd66d",
+     "notes": "Single squeaky duck, size not listed. ~₹40 delivery fee under ₹500 (estimate)."
+    },
+    "br": {
+     "store": "Ri Happy marketplace (Bumerang Brinquedos)",
+     "currency": "BRL",
+     "price_local": 34.99,
+     "shipping_local": 12.79,
+     "import_fees_local": null,
+     "total_usd": 8.68,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.rihappy.com.br/brinquedo-para-bebe-patinho-de-banho-buba/p",
+     "notes": "6-pack of ~5 cm ducks (closest verified). Single duck R$19.99 out of stock. Toys need Inmetro certification."
+    },
+    "eu": {
+     "store": "duckshop.de",
+     "currency": "EUR",
+     "price_local": 1.39,
+     "shipping_local": 4.99,
+     "import_fees_local": null,
+     "total_usd": 7.12,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.duckshop.de/quietscheente-jessi-8-cm",
+     "notes": "8 cm classic squeaker. Free shipping over €50, so cheaper in bulk."
+    }
+   }
+  },
+  {
+   "name": "Drawing tablet",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "Huion H640P everywhere; may be discontinued in some EU shops.",
+   "regions": {
+    "us": {
+     "store": "Amazon.com (sold by HUION)",
+     "currency": "USD",
+     "price_local": 39.99,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 39.99,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "https://www.amazon.com/dp/B075T6MTJX",
+     "notes": "Price from indexed listing. Some EU shops list the model as discontinued. Fallback: UGEE S640 ~$29-39."
+    },
+    "in": {
+     "store": "Flipkart (seller: Born2Win)",
+     "currency": "INR",
+     "price_local": 2324.0,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 24.58,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.flipkart.com/huion-h640p-inspiroy-6-3-x-3-9-inch-graphics-tablet/p/itmfywhy3h6zrxrf",
+     "notes": "Genuine H640P, 1-year India warranty; seller 4.2 rated, 11 yrs."
+    },
+    "br": {
+     "store": "KaBuM!",
+     "currency": "BRL",
+     "price_local": 539.9,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 98.1,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://www.kabum.com.br/produto/97765",
+     "notes": "Pix; card R$635.18. No free shipping (quote needs CEP). Amazon.com.br ~R$284 per comparator, unverified."
+    },
+    "eu": {
+     "store": "galaxus.de",
+     "currency": "EUR",
+     "price_local": 38.9,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 43.43,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.galaxus.de/en/s1/product/huion-h640p-5080-lpi-graphics-tablets-15681104",
+     "notes": "Via idealo. Proshop.de €40.06 + €2.99."
+    }
+   }
+  },
+  {
+   "name": "microSD card (128GB)",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "India pack likely has no SD adapter.",
+   "regions": {
+    "us": {
+     "store": "Amazon.com (3rd-party, ships from Amazon)",
+     "currency": "USD",
+     "price_local": 35.64,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 35.64,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "https://www.amazon.com/dp/B0B7NTY2S6",
+     "notes": "SDSQUAB-128G-GN6MA (with adapter). Oct 5 snapshot. Walmart ~$33.25; SanDisk store $32.99 but out of stock."
+    },
+    "in": {
+     "store": "Flipkart (seller: TBL Online)",
+     "currency": "INR",
+     "price_local": 2201.0,
+     "shipping_local": 0.0,
+     "import_fees_local": null,
+     "total_usd": 23.28,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.flipkart.com/sandisk-sdsquab-128g-gn6mn-ultra-128-gb-microsdxc-class-10-140-mb-s-memory-card-compatible-camera-computer-gaming-console-mobile-tablet/p/itmffvfpqhhxzawh",
+     "notes": "SDSQUAB-128G-GN6MN, India pack likely WITHOUT adapter. With-adapter SKU only as import (~₹7,300)."
+    },
+    "br": {
+     "store": "Kalunga",
+     "currency": "BRL",
+     "price_local": 229.9,
+     "shipping_local": 7.47,
+     "import_fees_local": null,
+     "total_usd": 43.13,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.kalunga.com.br/prod/cartao-de-memoria-microsd-128gb-ultra-com-adaptador-classe-10-sdsqunr-sandisk-bt-1-un/259444",
+     "notes": "SDSQUNR with adapter, 3 business days. KaBuM marketplace SGMAX R$144 (less reliable); Amazon ~R$144 unverified."
+    },
+    "eu": {
+     "store": "reichelt.de",
+     "currency": "EUR",
+     "price_local": 24.95,
+     "shipping_local": 5.95,
+     "import_fees_local": null,
+     "total_usd": 34.5,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.reichelt.de/de/de/shop/produkt/microsdxc-speicherkarte_128gb-358273",
+     "notes": "GN6MA with adapter; limited stock. Amazon.de €24.36 (idealo)."
+    }
+   }
+  },
+  {
+   "name": "PineTime",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "Ships from China; Brazil ~3x with import taxes. Combine with Pinecil to share shipping.",
+   "regions": {
+    "us": {
+     "store": "Pine64 Store",
+     "currency": "USD",
+     "price_local": 26.99,
+     "shipping_local": 25.0,
+     "import_fees_local": 0.0,
+     "total_usd": 51.99,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://pine64.com/product/pinetime-smartwatch-sealed/",
+     "notes": "Ships from China/HK. $25 'US Special' shipping said to cover tariffs (small risk of extra). One $25 per order, so combine with Pinecil."
+    },
+    "in": {
+     "store": "Fab.to.Lab",
+     "currency": "INR",
+     "price_local": 4283.15,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 45.31,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://www.fabtolab.com/Pine64/pine64-pinetime-open-source-smartwatch",
+     "notes": "Indian Pine64 reseller. GST not stated; if excluded ~₹5,054. Shipping weight-based from ₹30. Pine64 direct $26.99 + courier + ~40% duty."
+    },
+    "br": {
+     "store": "AmeriDroid (Pine64 affiliate, USA; import)",
+     "currency": "BRL",
+     "price_local": 219.87,
+     "shipping_local": 109.8,
+     "import_fees_local": 305.83,
+     "total_usd": 115.47,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://ameridroid.com/products/pinetime-smart-watch",
+     "notes": "US$39.95 + US$19.95 Global Post (uninsured) + 60% II + ICMS + IOF. Pine Store offers no Brazil shipping. BLE, no Anatel homologation found."
+    },
+    "eu": {
+     "store": "pine64.com (ships from China/HK)",
+     "currency": "EUR",
+     "price_local": 24.17,
+     "shipping_local": 16.12,
+     "import_fees_local": 0.0,
+     "total_usd": 44.98,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://pine64.com/product/pinetime-smartwatch-sealed/",
+     "notes": "US$26.99 + US$18 'EU Special Shipping' (VAT covered, slow, non-refusable). pine64eu.com €67.50 out of stock."
+    }
+   }
+  },
+  {
+   "name": "Pinecil soldering iron",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "Ships from China; no power supply included. Brazil ~3x with import taxes.",
+   "regions": {
+    "us": {
+     "store": "Pine64 Store",
+     "currency": "USD",
+     "price_local": 25.99,
+     "shipping_local": 25.0,
+     "import_fees_local": 0.0,
+     "total_usd": 50.99,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://pine64.com/product/pinecil-smart-mini-portable-soldering-iron/",
+     "notes": "No power supply/cable. Same $25 US Special shipping as PineTime (shared per order)."
+    },
+    "in": {
+     "store": "Fab.to.Lab",
+     "currency": "INR",
+     "price_local": 4124.2,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 43.63,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://www.fabtolab.com/Pine64/pine64-pinecil-risc-v-powered-open-versatile-soldering-iron",
+     "notes": "Iron + tip only, needs USB-C PD supply. GST not stated; if excluded ~₹4,867. Pine64 direct $25.99 + courier + ~40% duty."
+    },
+    "br": {
+     "store": "AmeriDroid (Pine64 affiliate, USA; import)",
+     "currency": "BRL",
+     "price_local": 230.88,
+     "shipping_local": 142.82,
+     "import_fees_local": 346.68,
+     "total_usd": 130.89,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://ameridroid.com/products/pinecil-v2-soldering-iron",
+     "notes": "US$41.95 + US$25.95 shipping + 60% II + ICMS. Pine64 says AliExpress Pinecils are fake. BLE chip, no Anatel homologation found."
+    },
+    "eu": {
+     "store": "pine64.com (ships from China/HK)",
+     "currency": "EUR",
+     "price_local": 23.28,
+     "shipping_local": 16.12,
+     "import_fees_local": 0.0,
+     "total_usd": 43.99,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://pine64.com/product/pinecil-smart-mini-portable-soldering-iron/",
+     "notes": "US$25.99 + US$18 EU Special Shipping (VAT covered). Shipping shared with PineTime if ordered together. No PSU."
+    }
+   }
+  },
+  {
+   "name": "iFixit Moray precision driver kit",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "Not sold in India or Brazil; Brazil price is a local substitute kit.",
+   "regions": {
+    "us": {
+     "store": "iFixit (official store)",
+     "currency": "USD",
+     "price_local": 19.95,
+     "shipping_local": 7.0,
+     "import_fees_local": null,
+     "total_usd": 26.95,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.ifixit.com/products/moray-driver-kit",
+     "notes": "Ready to ship. Shipping estimated (free over $75)."
+    },
+    "in": {
+     "store": "iFixit.com (ships to India)",
+     "currency": "INR",
+     "price_local": 1886.0,
+     "shipping_local": null,
+     "import_fees_local": 829.0,
+     "total_usd": 28.72,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://www.ifixit.com/products/moray-driver-kit",
+     "notes": "Not sold in India. $19.95 + FedEx/UPS (rate at checkout, likely > item) + ~44% duty. Local alternative: Mi magnetic precision screwdriver set ₹1,424 on Flipkart."
+    },
+    "br": {
+     "store": "Kalunga (Tramontina 6-pc precision set, substitute)",
+     "currency": "BRL",
+     "price_local": 15.9,
+     "shipping_local": 5.85,
+     "import_fees_local": null,
+     "total_usd": 3.95,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.kalunga.com.br/prod/kit-de-chaves-de-precisao-c-6-pecas-41905306-tramontina-bt-1-un/224181",
+     "notes": "SUBSTITUTE: Moray not sold in BR and iFixit doesn't ship to BR. Closer bit kit: Lelong 32-in-1 R$72.55 (KaBuM marketplace)."
+    },
+    "eu": {
+     "store": "iFixit EU store (de-de)",
+     "currency": "EUR",
+     "price_local": 19.95,
+     "shipping_local": 4.9,
+     "import_fees_local": null,
+     "total_usd": 27.75,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.ifixit.com/de-de/products/moray-driver-kit",
+     "notes": "Ships from Stuttgart, free over €65."
+    }
+   }
+  },
+  {
+   "name": "Bambu Lab A1 mini",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "US and EU are Black Friday prices (normally ~$219 / €189). Brazil shipping unknown.",
+   "regions": {
+    "us": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 199.0,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    },
+    "in": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 228.33,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    },
+    "br": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 381.67,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    },
+    "eu": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 200.0,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    }
+   }
+  },
+  {
+   "name": "RTL-SDR Blog V3",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "EU only verified seller is ~2x official price. India and EU shipping unknown.",
+   "regions": {
+    "us": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 43.95,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    },
+    "in": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 54.4,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    },
+    "br": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 67.36,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    },
+    "eu": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 80.05,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    }
+   }
+  },
+  {
+   "name": "Blåhaj (100 cm)",
+   "aliases": [
+    "Blåhaj",
+    "BLAHAJ"
+   ],
+   "checked": "2026-11-06",
+   "notes": "US shipping unknown (IKEA US needs a $35 minimum). India: IKEA delivers to some states only. Brazil: no IKEA; import via forwarder, shipping unknown.",
+   "regions": {
+    "us": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 29.99,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    },
+    "in": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 17.85,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    },
+    "br": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 57.81,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    },
+    "eu": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 36.83,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    }
+   }
+  },
+  {
+   "name": "Flipper Zero",
+   "aliases": [],
+   "checked": "2026-11-06",
+   "notes": "Can't legally go to India or Brazil (no radio approval; Brazil seizes them).",
+   "regions": {
+    "us": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 168.97,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    },
+    "in": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": null,
+     "complete": false,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "No price found on Nov 6."
+    },
+    "br": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": null,
+     "complete": false,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "No price found on Nov 6."
+    },
+    "eu": {
+     "store": "",
+     "currency": "USD",
+     "price_local": null,
+     "shipping_local": null,
+     "import_fees_local": null,
+     "total_usd": 199.95,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "",
+     "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
+    }
+   }
+  },
+  {
+   "name": "FL Studio License (Fruity Edition)",
+   "aliases": [],
+   "checked": "2026-11-19",
+   "notes": "FL Studio Fruity Edition (Image-Line SKU 31010); lifetime licence with free updates, no subscription. Digital licence with steep regional pricing: India and Brazil pay far less than the US and Germany. Fruity isn't in the Black Friday sale.",
+   "regions": {
+    "us": {
+     "store": "Image-Line official store",
+     "currency": "USD",
+     "price_local": 99,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 99.0,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.image-line.com/fl-studio/pricing",
+     "notes": "List price $99, no discount. Digital, no shipping. US sales tax at checkout unverified."
+    },
+    "in": {
+     "store": "Image-Line official store (INR price)",
+     "currency": "INR",
+     "price_local": 2599,
+     "shipping_local": 0,
+     "import_fees_local": null,
+     "total_usd": 27.5,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://www.image-line.com/fl-studio/pricing",
+     "notes": "₹2,599 regional price. Whether 18% IGST is added at checkout is unverified; with it, ₹3,067 (~$32.45)."
+    },
+    "br": {
+     "store": "Image-Line official store (BRL price)",
+     "currency": "BRL",
+     "price_local": 199,
+     "shipping_local": 0,
+     "import_fees_local": 6.97,
+     "total_usd": 37.45,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.image-line.com/fl-studio/pricing",
+     "notes": "R$199 regional price; the fee is 3.5% IOF on a Brazilian card. No import duty on a digital licence."
+    },
+    "eu": {
+     "store": "Image-Line official store (Germany)",
+     "currency": "EUR",
+     "price_local": 99,
+     "shipping_local": 0,
+     "import_fees_local": 18.81,
+     "total_usd": 131.52,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.image-line.com/fl-studio/pricing",
+     "notes": "€99 before VAT; 19% German VAT is added (€117.81). Muziker (IE) ~€95 seen in search, not opened."
+    }
+   }
+  },
+  {
+   "name": "SOLDR Kit (Deluxe)",
+   "aliases": [],
+   "checked": "2026-11-19",
+   "notes": "SOLDR Deluxe Edition (SKU SL01DEL) by SNRGY Studios (Sweden): a modular USB-C soldering station kit. The official store ships only to the US and Europe. India and Brazil can only get it via CircuitMess, which is sold out, and import fees make it 2–2.7× the US price.",
+   "regions": {
+    "us": {
+     "store": "soldr.pro (official)",
+     "currency": "USD",
+     "price_local": 319,
+     "shipping_local": null,
+     "import_fees_local": 0,
+     "total_usd": 319.0,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://www.soldr.pro/products/soldr-kit",
+     "notes": "$319 with tax and duties included; $288 in the November sale. Shipping isn't shown before checkout."
+    },
+    "in": {
+     "store": "CircuitMess (reseller)",
+     "currency": "USD",
+     "price_local": 449,
+     "shipping_local": 0,
+     "import_fees_local": 179.6,
+     "total_usd": 628.6,
+     "complete": true,
+     "in_stock": "no",
+     "url": "https://circuitmess.com/products/soldr-deluxe-soldering-kit",
+     "notes": "soldr.pro doesn't ship to India, and CircuitMess is sold out ($449). Fees are the estimated 40% duty."
+    },
+    "br": {
+     "store": "CircuitMess (reseller)",
+     "currency": "USD",
+     "price_local": 449,
+     "shipping_local": 0,
+     "import_fees_local": 407.25,
+     "total_usd": 856.25,
+     "complete": true,
+     "in_stock": "no",
+     "url": "https://circuitmess.com/products/soldr-deluxe-soldering-kit",
+     "notes": "soldr.pro doesn't ship to Brazil, and CircuitMess is sold out ($449). Fees are estimates: 60% import tax, 17% ICMS and 3.5% IOF."
+    },
+    "eu": {
+     "store": "soldr.pro (official, ships from Sweden)",
+     "currency": "EUR",
+     "price_local": 319,
+     "shipping_local": null,
+     "import_fees_local": 0,
+     "total_usd": 356.13,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://www.soldr.pro/products/soldr-kit",
+     "notes": "€319 with VAT, no import fees inside the EU; ~€288 in the November sale. Shipping isn't shown before checkout."
+    }
+   }
+  },
+  {
+   "name": "Steam Deck",
+   "aliases": [],
+   "checked": "2026-11-19",
+   "notes": "Steam Deck OLED 512GB (2800 tickets matched its old $549 price; Valve raised it to $789 / €779 on May 27, 2026). Valve doesn't sell it in India or Brazil, so both are grey imports with no Valve warranty: Brazil costs about 2.6× the US, India about 1.3×.",
+   "regions": {
+    "us": {
+     "store": "Steam (Valve)",
+     "currency": "USD",
+     "price_local": 789.0,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 789.0,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://store.steampowered.com/steamdeck",
+     "notes": "In stock, free shipping, sales tax not included. No Black Friday discount announced."
+    },
+    "in": {
+     "store": "Amazon.in (New Horizon Limited, ships from Amazon)",
+     "currency": "INR",
+     "price_local": 99990,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 1058.1,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.amazon.in/dp/B0GZHP9DHN",
+     "notes": "Grey import with taxes and delivery included, no Valve warranty; has ranged ₹79,990–99,990. Importing it ourselves would cost more."
+    },
+    "br": {
+     "store": "Amazon.com.br (Amazon Global import)",
+     "currency": "BRL",
+     "price_local": 5730.28,
+     "shipping_local": 8.9,
+     "import_fees_local": 5511.93,
+     "total_usd": 2045.66,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.amazon.com.br/dp/B0CQ3RWQQZ",
+     "notes": "Import with prepaid taxes, 2 left, arrives Dec 7–22; no Anatel approval found. A marketplace seller has the 1TB for R$7,599."
+    },
+    "eu": {
+     "store": "Steam (Valve), Germany",
+     "currency": "EUR",
+     "price_local": 779.0,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 869.68,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://store.steampowered.com/steamdeck",
+     "notes": "In stock, VAT and shipping included. Other German shops ~€900."
+    }
+   }
+  },
+  {
+   "name": "RoG Ally",
+   "aliases": [
+    "ROG Ally"
+   ],
+   "checked": "2026-11-19",
+   "notes": "ASUS ROG Xbox Ally (2025, Ryzen Z2 A, 16GB/512GB), $599.99; the Ally X is $999.99. Sold officially in all four regions. Brazil pays about 1.5× the US; India and Germany about 1.1×.",
+   "regions": {
+    "us": {
+     "store": "Best Buy",
+     "currency": "USD",
+     "price_local": 599.99,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 599.99,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.bestbuy.com/product/rog-xbox-ally-7-fhd-120hz-gaming-handheld-amd-ryzen-z2-a-processor-16gb-with-512gb-ssd-windows/JJGHGPGFL4/sku/6642251",
+     "notes": "In stock per a tracker (the page didn't load); Walmart $599. Sales tax not included. Has been $490–500 in past sales."
+    },
+    "in": {
+     "store": "Amazon.in (Clicktech Retail, ships from Amazon)",
+     "currency": "INR",
+     "price_local": 59990,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 634.81,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.amazon.in/dp/B0FSDNXVG8",
+     "notes": "Official India model, taxes and delivery included. Launch price was ₹69,990, so this may be a temporary deal."
+    },
+    "br": {
+     "store": "Amazon.com.br (sold by Amazon)",
+     "currency": "BRL",
+     "price_local": 4999.9,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 909.07,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.amazon.com.br/dp/B09C66FYCR",
+     "notes": "Official, Anatel-approved model; below the R$5,998 MSRP. Free delivery shown for São Paulo."
+    },
+    "eu": {
+     "store": "MediaMarkt.de (ASUS eStore same price)",
+     "currency": "EUR",
+     "price_local": 599.0,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 668.72,
+     "complete": true,
+     "in_stock": "unknown",
+     "url": "https://www.mediamarkt.de/de/product/_asus-rog-xbox-ally-rc73ya-nh002w-tragbare-spielkonsole-178-cm-7-512-gb-touchscreen-wlan-weiss-2998267.html",
+     "notes": "€599 with free delivery per the listing data (the page blocked us). Has been €503–525 in promotions."
+    }
+   }
+  },
+  {
+   "name": "Pebble Time 2",
+   "aliases": [],
+   "checked": "2026-11-19",
+   "notes": "Pebble Time 2 smartwatch from Core Devices, $225 in any colour, official store only (repebble.com). $225 everywhere, with taxes collected before shipping, so taxes make the difference: Brazil about 2× the US, India about 1.4×. Shipping only shows at checkout, so every total leaves it out.",
+   "regions": {
+    "us": {
+     "store": "Core Devices (repebble.com)",
+     "currency": "USD",
+     "price_local": 225,
+     "shipping_local": null,
+     "import_fees_local": 10,
+     "total_usd": 235,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://repebble.com/watch",
+     "notes": "In stock, ships within 48 hours, no Black Friday price. About $10 US tariff. Shipping isn't shown before checkout."
+    },
+    "in": {
+     "store": "Core Devices (repebble.com)",
+     "currency": "USD",
+     "price_local": 225,
+     "shipping_local": null,
+     "import_fees_local": 95.5,
+     "total_usd": 320.5,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://repebble.com/watch",
+     "notes": "Duties prepaid: ~40% duty plus Pebble's handling fee. Not confirmed that it ships to India; smartwatches may need BIS/WPC clearance."
+    },
+    "br": {
+     "store": "Core Devices (repebble.com)",
+     "currency": "USD",
+     "price_local": 225,
+     "shipping_local": null,
+     "import_fees_local": 237.25,
+     "total_usd": 462.25,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://repebble.com/watch",
+     "notes": "Estimated 60% import tax, 20% ICMS and Pebble's handling fee. Not confirmed that it ships to Brazil; likely no Anatel certification."
+    },
+    "eu": {
+     "store": "Core Devices (repebble.com)",
+     "currency": "USD",
+     "price_local": 225,
+     "shipping_local": null,
+     "import_fees_local": 45.89,
+     "total_usd": 270.89,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://repebble.com/watch",
+     "notes": "0% EU duty on smartwatches: 19% VAT plus Pebble's handling fee, collected before shipping. No EU reseller has stock."
+    }
+   }
+  },
+  {
+   "name": "Syitren R300",
+   "aliases": [],
+   "checked": "2026-11-19",
+   "notes": "SYITREN R300 retro Bluetooth 5.3 CD player (no built-in speaker), MSRP $119.99. Cheapest in the US; India pays about 1.9× (reseller markup) and Brazil about 2.4× (import taxes).",
+   "regions": {
+    "us": {
+     "store": "Amazon.com (sold by Syitren)",
+     "currency": "USD",
+     "price_local": 99.99,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 99.99,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.amazon.com/dp/B0CNPL445V",
+     "notes": "Free delivery; syitren.com also $99.99 (normally $119.99). Prime holiday deal $80.99. Sales tax not included."
+    },
+    "in": {
+     "store": "Amazon.in (seller Trendora Global)",
+     "currency": "INR",
+     "price_local": 17850.06,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 188.89,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.amazon.in/dp/B0DQX4LDKL",
+     "notes": "Brown, GST and import included, free delivery. White ₹15,448 Black Friday deal but delivers ~Dec 10."
+    },
+    "br": {
+     "store": "AliExpress (KBTY Store, Remessa Conforme)",
+     "currency": "USD",
+     "price_local": 119.85,
+     "shipping_local": 13.69,
+     "import_fees_local": 108.54,
+     "total_usd": 242.08,
+     "complete": false,
+     "in_stock": "unknown",
+     "url": "https://www.aliexpress.us/item/3256805088210060.html",
+     "notes": "Price and shipping unverified (cached US listing); fees estimated at 60% tax less the $20 allowance plus 20% ICMS. Not on Amazon.com.br; likely no Anatel certification."
+    },
+    "eu": {
+     "store": "Audiophonics (France, ships EU-wide)",
+     "currency": "EUR",
+     "price_local": 99.0,
+     "shipping_local": null,
+     "import_fees_local": 0,
+     "total_usd": 110.52,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://www.audiophonics.fr/en/cd-players/syitren-r300-cd-player-on-battery-bluetooth-53-black-wood-p-17514.html",
+     "notes": "€99 with VAT, a few left. Shipping to Germany only shows in the cart."
+    }
+   }
+  },
+  {
+   "name": "TRMNL OG",
+   "aliases": [],
+   "checked": "2026-11-19",
+   "notes": "TRMNL (OG) 7.5in black-and-white, standard colours $139 (Coral limited edition $199 excluded), no add-ons. US and EU are about the same; India is ~1.5× after a 40% duty, Brazil at least ~2× before shipping, with an Anatel risk. No Black Friday discount.",
+   "regions": {
+    "us": {
+     "store": "TRMNL direct (ships from Atlanta)",
+     "currency": "USD",
+     "price_local": 139,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 139,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://shop.trmnl.com/products/trmnl",
+     "notes": "Free US shipping; every standard colour in stock. Sales tax not included."
+    },
+    "in": {
+     "store": "TRMNL direct (ships from US)",
+     "currency": "INR",
+     "price_local": 13135.5,
+     "shipping_local": 1228.5,
+     "import_fees_local": 5745.6,
+     "total_usd": 212.8,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://shop.trmnl.com/products/trmnl",
+     "notes": "$13 India shipping (Oct 2025 blog, may be stale) plus 40% duty. TRMNL reports one customer paying ₹7,800 duty, which would make it ~$235."
+    },
+    "br": {
+     "store": "TRMNL direct (ships from US)",
+     "currency": "BRL",
+     "price_local": 764.5,
+     "shipping_local": null,
+     "import_fees_local": 730.1,
+     "total_usd": 271.75,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://shop.trmnl.com/products/trmnl",
+     "notes": "Not confirmed that TRMNL ships to Brazil; the total leaves out shipping, so it's a lower bound. 60% import tax, 20% ICMS, 3.5% IOF. No Anatel certification found (Wi-Fi), so customs could hold it."
+    },
+    "eu": {
+     "store": "tink.de (German reseller)",
+     "currency": "EUR",
+     "price_local": 130.9,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 146.14,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.tink.de/p/trmnl-original-smartes-e-ink-display-7-5-inkl-battery-upgrade",
+     "notes": "VAT, free shipping and a battery upgrade included. TRMNL also ships EU orders duty-free from Berlin."
+    }
+   }
+  },
+  {
+   "name": "TRMNL (BWRY)",
+   "aliases": [],
+   "checked": "2026-11-19",
+   "notes": "TRMNL (BWRY), the 7.5in black/white/red/yellow model, $139; slow refresh (~13 s). Priced exactly like the OG everywhere, so the same gaps: India ~1.5× and Brazil 2× or more. No Black Friday discount.",
+   "regions": {
+    "us": {
+     "store": "TRMNL direct (ships from Atlanta)",
+     "currency": "USD",
+     "price_local": 139,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 139,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://shop.trmnl.com/products/trmnl-bwry",
+     "notes": "Free US shipping; all three colours in stock. Sales tax not included."
+    },
+    "in": {
+     "store": "TRMNL direct (ships from US)",
+     "currency": "INR",
+     "price_local": 13135.5,
+     "shipping_local": 1228.5,
+     "import_fees_local": 5745.6,
+     "total_usd": 212.8,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://shop.trmnl.com/products/trmnl-bwry",
+     "notes": "Same as the OG: $13 shipping (may be stale) plus 40% duty; the real duty may be higher."
+    },
+    "br": {
+     "store": "TRMNL direct (ships from US)",
+     "currency": "BRL",
+     "price_local": 764.5,
+     "shipping_local": null,
+     "import_fees_local": 730.1,
+     "total_usd": 271.75,
+     "complete": false,
+     "in_stock": "yes",
+     "url": "https://shop.trmnl.com/products/trmnl-bwry",
+     "notes": "Not confirmed that TRMNL ships to Brazil; a lower bound without shipping. No Anatel certification found, so customs could hold it."
+    },
+    "eu": {
+     "store": "tink.de (German reseller)",
+     "currency": "EUR",
+     "price_local": 130.9,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 146.14,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "https://www.tink.de/p/trmnl-bwry-smarter-4-farben-display-7-5-inkl-battery-upgrade",
+     "notes": "VAT, free shipping and a battery upgrade included; in stock in five colours."
+    }
+   }
+  },
+  {
+   "name": "$600 in Amp Credits!!",
+   "aliases": [],
+   "checked": "2026-11-19",
+   "notes": "$600 of Amp credits: worth the same everywhere.",
+   "regions": {
+    "us": {
+     "store": "Amp credits (digital)",
+     "currency": "USD",
+     "price_local": 600,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 600,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "",
+     "notes": ""
+    },
+    "in": {
+     "store": "Amp credits (digital)",
+     "currency": "USD",
+     "price_local": 600,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 600,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "",
+     "notes": ""
+    },
+    "br": {
+     "store": "Amp credits (digital)",
+     "currency": "USD",
+     "price_local": 600,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 600,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "",
+     "notes": ""
+    },
+    "eu": {
+     "store": "Amp credits (digital)",
+     "currency": "USD",
+     "price_local": 600,
+     "shipping_local": 0,
+     "import_fees_local": 0,
+     "total_usd": 600,
+     "complete": true,
+     "in_stock": "yes",
+     "url": "",
+     "notes": ""
+    }
+   }
+  }
+ ]
+}

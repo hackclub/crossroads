@@ -1,7 +1,7 @@
 package api
 
-// Review counts: the reviewers' dashboard at the top of /review, and the
-// admin's per-person counts that reviewers are paid by. Both count the same
+// Review counts: the reviewers' dashboard at the top of /review, the Review
+// stats tab, and the admin's per-person counts that reviewers are paid by. Both count the same
 // thing, a decision on a ship (see db/queries/reviewstats.sql), so the
 // numbers agree wherever they're shown.
 
@@ -14,6 +14,7 @@ import (
 	"time"
 	_ "time/tzdata" // periods are in New York time, whatever the server has installed
 
+	"github.com/scherepi/crossroads-backend/auth"
 	"github.com/scherepi/crossroads-backend/db"
 	"github.com/scherepi/crossroads-backend/respond"
 )
@@ -157,8 +158,8 @@ func reviewPeriod(w http.ResponseWriter, r *http.Request) (from, to time.Time, o
 type reviewerPayJSON struct {
 	ID                   int64     `json:"id"`
 	Name                 string    `json:"name"`
-	Email                string    `json:"email"`
-	SlackID              *string   `json:"slack_id"`
+	Email                string    `json:"email,omitempty"`    // admins only
+	SlackID              *string   `json:"slack_id,omitempty"` // admins only
 	Reviews              int64     `json:"reviews"`
 	FirstReviews         int64     `json:"first_reviews"`
 	FirstApprovals       int64     `json:"first_approvals"`
@@ -174,6 +175,17 @@ type reviewerPayJSON struct {
 // how many reviews each person made in a period, by stage. This is what
 // reviewers are paid by.
 func (a *API) adminReviewerStats(w http.ResponseWriter, r *http.Request) {
+	a.reviewerCounts(w, r, true)
+}
+
+// reviewReviewerStats is GET /review/reviewer-stats?from=&to=, the review
+// page's Review stats tab: the same counts for every reviewer, but only
+// admins get emails, Slack IDs and the CSV.
+func (a *API) reviewReviewerStats(w http.ResponseWriter, r *http.Request) {
+	a.reviewerCounts(w, r, auth.User(r.Context()).Role.IsAdmin())
+}
+
+func (a *API) reviewerCounts(w http.ResponseWriter, r *http.Request, admin bool) {
 	from, to, ok := reviewPeriod(w, r)
 	if !ok {
 		return
@@ -185,6 +197,10 @@ func (a *API) adminReviewerStats(w http.ResponseWriter, r *http.Request) {
 	}
 	last := to.AddDate(0, 0, -1)
 	if r.URL.Query().Get("format") == "csv" {
+		if !admin {
+			respond.Error(w, http.StatusForbidden, "Only admins can download everyone's counts.")
+			return
+		}
 		out := startCSV(w, fmt.Sprintf("crossroads-reviewers-%s-to-%s.csv", from.Format(time.DateOnly), last.Format(time.DateOnly)))
 		out.Write([]string{"Reviewer", "Email", "Slack ID", "Reviews", "First reviews", "First-review approvals",
 			"First-review rejections", "Fraud checks", "HQ decisions", "First reviews later sent back",
@@ -202,10 +218,14 @@ func (a *API) adminReviewerStats(w http.ResponseWriter, r *http.Request) {
 	var total int64
 	for _, row := range rows {
 		total += row.Reviews
-		people = append(people, reviewerPayJSON{ID: row.ID, Name: row.Name, Email: row.Email, SlackID: row.SlackID,
+		person := reviewerPayJSON{ID: row.ID, Name: row.Name,
 			Reviews: row.Reviews, FirstReviews: row.FirstReviews, FirstApprovals: row.FirstApprovals,
 			FirstRejections: row.FirstRejections, FraudChecks: row.FraudChecks, HQDecisions: row.HqDecisions,
-			LaterSentBack: row.LaterSentBack, SecondsFirstReviewed: row.SecondsFirstReviewed, LastReviewAt: row.LastReviewAt})
+			LaterSentBack: row.LaterSentBack, SecondsFirstReviewed: row.SecondsFirstReviewed, LastReviewAt: row.LastReviewAt}
+		if admin {
+			person.Email, person.SlackID = row.Email, row.SlackID
+		}
+		people = append(people, person)
 	}
 	respond.JSON(w, http.StatusOK, struct {
 		From      string            `json:"from"` // the first day, Eastern
@@ -218,12 +238,33 @@ func (a *API) adminReviewerStats(w http.ResponseWriter, r *http.Request) {
 // adminReviewLog is GET /admin/reviews?from=&to=[&reviewer=ID][&format=csv]:
 // every review in a period, oldest first: the line items behind the counts.
 func (a *API) adminReviewLog(w http.ResponseWriter, r *http.Request) {
+	a.reviewLog(w, r, nil)
+}
+
+// reviewReviewLog is GET /review/reviews?from=&to=[&reviewer=ID][&format=csv]
+// for the Review stats tab: admins see anyone's reviews, everyone else only
+// their own.
+func (a *API) reviewReviewLog(w http.ResponseWriter, r *http.Request) {
+	me := auth.User(r.Context())
+	if me.Role.IsAdmin() {
+		a.reviewLog(w, r, nil)
+		return
+	}
+	if s := r.URL.Query().Get("reviewer"); s != "" && s != strconv.FormatInt(me.ID, 10) {
+		respond.Error(w, http.StatusForbidden, "You can only list your own reviews.")
+		return
+	}
+	a.reviewLog(w, r, &me.ID)
+}
+
+// reviewLog lists the reviews in a period: only's, when set, or ?reviewer='s.
+func (a *API) reviewLog(w http.ResponseWriter, r *http.Request, only *int64) {
 	from, to, ok := reviewPeriod(w, r)
 	if !ok {
 		return
 	}
-	params := db.ListReviewsParams{Starts: from, Ends: to}
-	if s := r.URL.Query().Get("reviewer"); s != "" {
+	params := db.ListReviewsParams{Starts: from, Ends: to, ReviewerID: only}
+	if s := r.URL.Query().Get("reviewer"); s != "" && only == nil {
 		id, err := strconv.ParseInt(s, 10, 64)
 		if err != nil {
 			respond.Error(w, http.StatusUnprocessableEntity, "reviewer has to be a user ID.")
@@ -331,4 +372,131 @@ func cells(values ...any) []string {
 		out[i] = s
 	}
 	return out
+}
+
+// reviewInsights is GET /review/insights?from=&to= (Eastern days, this week
+// without them), the review page's Review stats tab: what's waiting now,
+// the decisions and rejection rates in the period, where the ships shipped
+// in it got to, how long reviews take, and reviews each day.
+func (a *API) reviewInsights(w http.ResponseWriter, r *http.Request) {
+	from, to, ok := reviewPeriod(w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	period := struct{ Starts, Ends time.Time }{from, to}
+	waiting, err := a.Queries.WaitingByStage(ctx)
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	decisions, err := a.Queries.DecisionsByStage(ctx, db.DecisionsByStageParams(period))
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	funnel, err := a.Queries.ShipFunnel(ctx, db.ShipFunnelParams(period))
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	times, err := a.Queries.ReviewTimes(ctx, db.ReviewTimesParams(period))
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	perDay, err := a.Queries.ReviewsPerDay(ctx, db.ReviewsPerDayParams(period))
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+
+	// Every stage, waiting or not, in the order a ship goes through them.
+	type waitJSON struct {
+		Stage             string   `json:"stage"` // review, fraud, hq: the queue tabs' keys
+		Waiting           int64    `json:"waiting"`
+		MedianWaitSeconds *float64 `json:"median_wait_seconds"`
+		OldestID          *int64   `json:"oldest_id"`
+		OldestProject     *string  `json:"oldest_project"`
+		OldestWaitSeconds *int64   `json:"oldest_wait_seconds"`
+	}
+	stages := []waitJSON{}
+	for _, s := range []struct{ status, key string }{{"pending", "review"}, {"fraud_check", "fraud"}, {"awaiting_hq", "hq"}} {
+		out := waitJSON{Stage: s.key}
+		for _, row := range waiting {
+			if row.Stage == s.status {
+				out = waitJSON{s.key, row.Waiting, &row.MedianWaitSeconds, &row.OldestID, &row.OldestProject, &row.OldestWaitSeconds}
+			}
+		}
+		stages = append(stages, out)
+	}
+
+	type stageJSON struct {
+		Stage    string `json:"stage"`
+		Passed   int64  `json:"passed"` // approved, passed or signed off
+		Rejected int64  `json:"rejected"`
+		SentBack int64  `json:"sent_back"`
+	}
+	type dayJSON struct {
+		Day     string `json:"day"`
+		Reviews int64  `json:"reviews"`
+	}
+	counts := map[string]int64{}
+	for _, row := range perDay {
+		counts[row.Day] = row.Reviews
+	}
+	days := []dayJSON{}
+	today := time.Now().In(reviewZone).Format(time.DateOnly)
+	for d := from; d.Before(to); d = d.AddDate(0, 0, 1) {
+		day := d.Format(time.DateOnly)
+		if day > today {
+			break
+		}
+		days = append(days, dayJSON{day, counts[day]})
+	}
+	// The same fields as db.ShipFunnelRow, so it converts.
+	type funnelJSON struct {
+		Shipped           int64 `json:"shipped"`
+		FirstReviewed     int64 `json:"first_reviewed"`
+		PassedFirstReview int64 `json:"passed_first_review"`
+		FraudChecked      int64 `json:"fraud_checked"`
+		ReachedHq         int64 `json:"reached_hq"`
+		SignedOff         int64 `json:"signed_off"`
+		Rejected          int64 `json:"rejected"`
+		InReview          int64 `json:"in_review"`
+	}
+	median := func(seconds float64) *float64 {
+		if seconds < 0 {
+			return nil
+		}
+		return &seconds
+	}
+
+	respond.JSON(w, http.StatusOK, struct {
+		From      string      `json:"from"`
+		To        string      `json:"to"`
+		Waiting   []waitJSON  `json:"waiting"`
+		Decisions []stageJSON `json:"decisions"`
+		Reviewers int64       `json:"reviewers"`
+		// Hours HQ signed off in the period.
+		SecondsSignedOff int64 `json:"seconds_signed_off"`
+		// Ships shipped in the period, counted at every step they reached.
+		Funnel                   funnelJSON `json:"funnel"`
+		MedianFirstReviewSeconds *float64   `json:"median_first_review_seconds"`
+		MedianSignOffSeconds     *float64   `json:"median_sign_off_seconds"`
+		Days                     []dayJSON  `json:"days"`
+	}{
+		From: from.Format(time.DateOnly), To: to.AddDate(0, 0, -1).Format(time.DateOnly),
+		Waiting: stages,
+		Decisions: []stageJSON{
+			{"review", decisions.FirstApprovals, decisions.FirstRejections, 0},
+			{"fraud", decisions.FraudPasses, decisions.FraudRejections, decisions.FraudSentBack},
+			{"hq", decisions.HqSignOffs, decisions.HqRejections, decisions.HqSentBack},
+		},
+		Reviewers: decisions.Reviewers, SecondsSignedOff: decisions.SecondsSignedOff,
+		Funnel:                   funnelJSON(funnel),
+		MedianFirstReviewSeconds: median(times.MedianFirstReviewSeconds),
+		MedianSignOffSeconds:     median(times.MedianSignOffSeconds),
+		Days:                     days,
+	})
 }

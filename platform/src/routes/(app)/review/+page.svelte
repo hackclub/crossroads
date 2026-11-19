@@ -10,13 +10,15 @@
 	import ReviewDashboard from '#lib/review/ReviewDashboard.svelte';
 	import PastReviews from '#lib/review/PastReviews.svelte';
 	import Prereviews from '#lib/review/Prereviews.svelte';
+	import ReviewStats from '#lib/review/ReviewStats.svelte';
 
-	// Besides the three queues: decided ships, and (HQ and admins) every
-	// rejection.
+	// Besides the three queues: decided ships, (HQ and admins) every
+	// rejection, pre-reviews, and the review stats.
 	const EXTRA = $derived({
 		past: { label: 'Past reviews', blurb: 'Ships that have been decided. Open one to see what happened.' },
 		...(canManageRejections(session.me) ? { rejected: { label: 'Rejected', blurb: 'Every rejected ship. Change a soft reject to hard or back, or undo a rejection.' } } : {}),
-		...(canPrereview(session.me) ? { prereviews: { label: 'Pre-reviews', blurb: 'Have your own Claude pre-review the ships waiting, with a prompt to copy and an answer to paste back.' } } : {})
+		...(canPrereview(session.me) ? { prereviews: { label: 'Pre-reviews', blurb: 'Have your own Claude pre-review the ships waiting, with a prompt to copy and an answer to paste back.' } } : {}),
+		stats: { label: 'Review stats', blurb: "How the queues are doing: what's waiting, how many get rejected, where ships end up, and everyone's reviews." }
 	});
 	const wanted = $derived(page.url.searchParams.get('stage'));
 	const stage = $derived(STAGES[wanted] || EXTRA[wanted] ? wanted : 'review');
@@ -84,6 +86,8 @@
 
 {#if stage === 'prereviews'}
 	<Prereviews />
+{:else if stage === 'stats'}
+	<ReviewStats />
 {:else if !queue}
 	{#key stage}<PastReviews mode={stage} />{/key}
 {:else}

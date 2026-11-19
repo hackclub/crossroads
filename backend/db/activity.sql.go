@@ -123,7 +123,12 @@ select days.day::date as day,
     (select count(*) from users
         where (users.created_at at time zone 'UTC')::date = days.day::date and users.role = 'participant')::integer as sign_ups,
     (select count(*) from users
-        where (users.created_at at time zone 'UTC')::date <= days.day::date and users.role = 'participant')::integer as participants
+        where (users.created_at at time zone 'UTC')::date <= days.day::date and users.role = 'participant')::integer as participants,
+    -- The hours participants shipped that day, whatever became of them.
+    (select coalesce(sum(submissions.new_seconds), 0) from submissions
+        join projects on projects.id = submissions.project_id
+        join users on users.id = projects.user_id
+        where (submissions.submitted_at at time zone 'UTC')::date = days.day::date and users.role = 'participant')::bigint as shipped_seconds
 from generate_series($2::date, $3::date, interval '1 day') as days (day)
 left join per_user on per_user.day = days.day::date
 group by days.day
@@ -144,13 +149,14 @@ type DailyActivityRow struct {
 	Visitors           int32
 	SignUps            int32
 	Participants       int32
+	ShippedSeconds     int64
 }
 
 // Each day from start_day to end_day, including empty ones: how many
 // participants spent at least min_seconds on their projects, how many of
 // their projects got any time, and the total; and how many participants
-// used the platform, how many signed up, and how many there were by the end
-// of the day.
+// used the platform, how many signed up, how many there were by the end
+// of the day, and the hours they shipped.
 func (q *Queries) DailyActivity(ctx context.Context, arg DailyActivityParams) ([]DailyActivityRow, error) {
 	rows, err := q.db.Query(ctx, dailyActivity, arg.MinSeconds, arg.StartDay, arg.EndDay)
 	if err != nil {
@@ -168,6 +174,7 @@ func (q *Queries) DailyActivity(ctx context.Context, arg DailyActivityParams) ([
 			&i.Visitors,
 			&i.SignUps,
 			&i.Participants,
+			&i.ShippedSeconds,
 		); err != nil {
 			return nil, err
 		}
@@ -177,6 +184,110 @@ func (q *Queries) DailyActivity(ctx context.Context, arg DailyActivityParams) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const hoursFlow = `-- name: HoursFlow :one
+with ships as (
+    select submissions.status, submissions.new_seconds, submissions.approved_seconds, submissions.unified_submitted_at,
+        coalesce((
+            select e.blocks_resubmit from ship_events e
+            where e.submission_id = submissions.id and e.kind = 'rejection'
+            order by e.id desc limit 1
+        ), false) as hard
+    from submissions
+    join projects on projects.id = submissions.project_id
+    join users on users.id = projects.user_id
+    where users.role = 'participant'
+        and not (submissions.status = 'rejected' and exists (
+            select 1 from submissions later
+            where later.project_id = submissions.project_id and later.id > submissions.id
+        ))
+)
+select
+    (select coalesce(sum(project_activity.seconds), 0) from project_activity
+        join projects on projects.id = project_activity.project_id
+        join users on users.id = projects.user_id
+        where users.role = 'participant')::bigint as logged_seconds,
+    count(*)::bigint as shipped_ships,
+    coalesce(sum(new_seconds), 0)::bigint as shipped_seconds,
+    count(*) filter (where status = 'pending')::bigint as review_ships,
+    coalesce(sum(new_seconds) filter (where status = 'pending'), 0)::bigint as review_seconds,
+    count(*) filter (where status = 'fraud_check')::bigint as fraud_ships,
+    coalesce(sum(new_seconds) filter (where status = 'fraud_check'), 0)::bigint as fraud_seconds,
+    count(*) filter (where status = 'awaiting_hq')::bigint as hq_ships,
+    coalesce(sum(new_seconds) filter (where status = 'awaiting_hq'), 0)::bigint as hq_seconds,
+    count(*) filter (where status = 'rejected' and not hard)::bigint as soft_rejected_ships,
+    coalesce(sum(new_seconds) filter (where status = 'rejected' and not hard), 0)::bigint as soft_rejected_seconds,
+    count(*) filter (where status = 'rejected' and hard)::bigint as hard_rejected_ships,
+    coalesce(sum(new_seconds) filter (where status = 'rejected' and hard), 0)::bigint as hard_rejected_seconds,
+    count(*) filter (where status = 'approved')::bigint as signed_off_ships,
+    coalesce(sum(new_seconds) filter (where status = 'approved'), 0)::bigint as signed_off_seconds,
+    count(*) filter (where status = 'approved' and approved_seconds < new_seconds)::bigint as cut_ships,
+    coalesce(sum(new_seconds - approved_seconds) filter (where status = 'approved' and approved_seconds < new_seconds), 0)::bigint as cut_seconds,
+    -- Approving more than Hackatime tracked (with a reason) adds hours.
+    coalesce(sum(approved_seconds - new_seconds) filter (where status = 'approved' and approved_seconds > new_seconds), 0)::bigint as added_seconds,
+    coalesce(sum(approved_seconds) filter (where status = 'approved'), 0)::bigint as approved_seconds,
+    count(*) filter (where status = 'approved' and unified_submitted_at is not null)::bigint as unified_ships,
+    coalesce(sum(approved_seconds) filter (where status = 'approved' and unified_submitted_at is not null), 0)::bigint as unified_seconds
+from ships
+`
+
+type HoursFlowRow struct {
+	LoggedSeconds       int64
+	ShippedShips        int64
+	ShippedSeconds      int64
+	ReviewShips         int64
+	ReviewSeconds       int64
+	FraudShips          int64
+	FraudSeconds        int64
+	HqShips             int64
+	HqSeconds           int64
+	SoftRejectedShips   int64
+	SoftRejectedSeconds int64
+	HardRejectedShips   int64
+	HardRejectedSeconds int64
+	SignedOffShips      int64
+	SignedOffSeconds    int64
+	CutShips            int64
+	CutSeconds          int64
+	AddedSeconds        int64
+	ApprovedSeconds     int64
+	UnifiedShips        int64
+	UnifiedSeconds      int64
+}
+
+// Where every hour participants logged has gone, all time, in hours and in
+// ships (the admin Stats tab's Sankey). A soft-rejected ship whose project
+// was shipped again is left out: the newer ship claims its hours again. A
+// ship is in one place at a time; cut hours (approved below what the ship
+// claimed) leave the ship where it is, so they count the ships they affect.
+func (q *Queries) HoursFlow(ctx context.Context) (HoursFlowRow, error) {
+	row := q.db.QueryRow(ctx, hoursFlow)
+	var i HoursFlowRow
+	err := row.Scan(
+		&i.LoggedSeconds,
+		&i.ShippedShips,
+		&i.ShippedSeconds,
+		&i.ReviewShips,
+		&i.ReviewSeconds,
+		&i.FraudShips,
+		&i.FraudSeconds,
+		&i.HqShips,
+		&i.HqSeconds,
+		&i.SoftRejectedShips,
+		&i.SoftRejectedSeconds,
+		&i.HardRejectedShips,
+		&i.HardRejectedSeconds,
+		&i.SignedOffShips,
+		&i.SignedOffSeconds,
+		&i.CutShips,
+		&i.CutSeconds,
+		&i.AddedSeconds,
+		&i.ApprovedSeconds,
+		&i.UnifiedShips,
+		&i.UnifiedSeconds,
+	)
+	return i, err
 }
 
 const lastProjectActivityUpdate = `-- name: LastProjectActivityUpdate :one
@@ -233,6 +344,67 @@ func (q *Queries) ListTrackedProjects(ctx context.Context) ([]ListTrackedProject
 		return nil, err
 	}
 	return items, nil
+}
+
+const participantFunnel = `-- name: ParticipantFunnel :one
+select
+    count(*)::bigint as signed_up,
+    count(*) filter (where exists (
+        select 1 from projects p where p.user_id = u.id
+    ))::bigint as made_project,
+    count(*) filter (where exists (
+        select 1 from projects p join project_hackatime_projects h on h.project_id = p.id where p.user_id = u.id
+    ))::bigint as linked_hackatime,
+    count(*) filter (where exists (
+        select 1 from projects p join project_activity a on a.project_id = p.id where p.user_id = u.id and a.seconds > 0
+    ))::bigint as logged_time,
+    count(*) filter (where exists (
+        select 1 from projects p join submissions s on s.project_id = p.id where p.user_id = u.id
+    ))::bigint as shipped,
+    count(*) filter (where exists (
+        select 1 from projects p join submissions s on s.project_id = p.id where p.user_id = u.id and s.status = 'approved'
+    ))::bigint as approved,
+    count(*) filter (where (
+        select coalesce(sum(s.approved_seconds), 0) from projects p join submissions s on s.project_id = p.id
+        where p.user_id = u.id and s.status = 'approved'
+    ) >= $1::bigint)::bigint as reached_goal,
+    count(*) filter (where exists (
+        select 1 from orders o join shop_items i on i.id = o.shop_item_id
+        where o.user_id = u.id and i.kind = 'ticket' and o.status <> 'cancelled'
+    ))::bigint as rail_pass
+from users u
+where u.role = 'participant'
+`
+
+type ParticipantFunnelRow struct {
+	SignedUp        int64
+	MadeProject     int64
+	LinkedHackatime int64
+	LoggedTime      int64
+	Shipped         int64
+	Approved        int64
+	ReachedGoal     int64
+	RailPass        int64
+}
+
+// How far participants have got, all time: each counted at every step they
+// reached (the admin Stats tab, like Stardance's user funnel). Logged time is
+// the activity poller's, on linked projects; the rail pass is the shop item
+// of kind 'ticket', in any order not cancelled.
+func (q *Queries) ParticipantFunnel(ctx context.Context, goalSeconds int64) (ParticipantFunnelRow, error) {
+	row := q.db.QueryRow(ctx, participantFunnel, goalSeconds)
+	var i ParticipantFunnelRow
+	err := row.Scan(
+		&i.SignedUp,
+		&i.MadeProject,
+		&i.LinkedHackatime,
+		&i.LoggedTime,
+		&i.Shipped,
+		&i.Approved,
+		&i.ReachedGoal,
+		&i.RailPass,
+	)
+	return i, err
 }
 
 const recordVisit = `-- name: RecordVisit :exec
