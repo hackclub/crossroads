@@ -1,10 +1,6 @@
 package api
 
-<<<<<<< Updated upstream
 // Where a shop item can go (migration 00034): everywhere, only to some
-=======
-// Where a shop item can go (migration 00032): everywhere, only to some
->>>>>>> Stashed changes
 // countries, or everywhere except some. It's judged by the country of
 // someone's home address from Hack Club Auth: an item that can't go there
 // isn't listed for them and can't be bought by them. A physical item's
