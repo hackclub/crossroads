@@ -1,8 +1,10 @@
 <script>
-	// Black mountains in the mist under "Coming soon...", for now. Until the
-	// community goal's deadline (Nov 18) this was "Repair Bridge", from the
-	// Figma home frame: a broken viaduct and the goal's hours above it. Its
-	// art is still in assets/bridge, and GET /api/community still answers.
+	// Black mountains under "Coming soon...", for now: overlapping triangles,
+	// solid black to the bottom, where the train carries the black on down
+	// behind it (rail.mountains). Until the community goal's deadline (Nov 18)
+	// this was "Repair Bridge", from the Figma home frame: a broken viaduct
+	// and the goal's hours above it. Its art is still in assets/bridge, and
+	// GET /api/community still answers.
 	import { untrack } from 'svelte';
 	import { rail, BRIDGE_FOLD_MS } from './rail.svelte.js';
 	import mountains from './assets/mountains/mountains.svg';
@@ -33,6 +35,10 @@
 			cancelAnimationFrame(frame);
 			clearTimeout(timer);
 		};
+	});
+	$effect(() => {
+		rail.mountains = shown;
+		return () => (rail.mountains = false);
 	});
 </script>
 

@@ -87,7 +87,7 @@
 	});
 </script>
 
-<div class="rail" style="--k: {shown}; --wood: url({wood})">
+<div class="rail" class:under-mountains={rail.mountains} style="--k: {shown}; --wood: url({wood})">
 	<div class="track rails" aria-hidden="true"></div>
 	<div class="arrive">
 		<div class="strip" style="transition-duration: {duration}s; transition-delay: {delay}s">
@@ -125,6 +125,22 @@
 		margin-top: 24px;
 		padding-block: 16px;
 		overflow-x: clip;
+	}
+	/* On Home the mountains above (CommunityBridge) run on down behind the
+	   train, from the gap over it, and fade out by its bottom. They fade in
+	   as the mountains finish rising, and out as soon as they start to fold. */
+	.rail::before {
+		content: '';
+		position: absolute;
+		inset: -24px 0 0; /* up over the margin above, to the mountains */
+		background: linear-gradient(#000 55%, transparent);
+		opacity: 0;
+		transition: opacity 0.2s ease-in;
+		pointer-events: none;
+	}
+	.rail.under-mountains::before { opacity: 1; transition: opacity 0.4s ease-out 0.6s; }
+	@media (prefers-reduced-motion: reduce) {
+		.rail::before, .rail.under-mountains::before { transition: none; }
 	}
 	.strip {
 		--W: min(var(--content), 100cqw - 2 * var(--gutter)); /* a station car */
