@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// AI pre-reviews from a laptop with Claude Code signed in, like Ari's Jame
+// Pre-reviews from a laptop with Claude Code signed in, like Ari's Jame
 // Gam script: no server runs Claude. For each ship, it clones the repo, runs
 // `claude -p` in it with the site's instructions and the ship's details, and
 // collects the answers. Plain Node (18+), no packages.
 //
-// Two ways (see backend/api/prereview.go and the review queue's AI
-// pre-reviews tab):
+// Two ways (see backend/api/prereview.go and the review queue's
+// Pre-reviews tab):
 //
 //   Files, no token needed:
-//     1. Review > AI pre-reviews > "Download the ships" (crossroads-prereviews.json)
+//     1. Review > Pre-reviews > "Download the ships" (crossroads-prereviews.json)
 //     2. node scripts/prereview.mjs --from crossroads-prereviews.json --out answer.json
 //     3. Choose answer.json under "Paste Claude's answer" and save.
 //
@@ -43,7 +43,7 @@ const ONLY = opt('--only');
 const DRY = flag('--dry');
 
 if (!FROM && !(BASE && TOKEN)) {
-	console.error('Give it --from <file> (downloaded from Review > AI pre-reviews),');
+	console.error('Give it --from <file> (downloaded from Review > Pre-reviews),');
 	console.error('or --base <site> with PREREVIEW_TOKEN set. See the top of this file.');
 	process.exit(1);
 }
@@ -170,7 +170,7 @@ if (DRY) {
 	console.log(JSON.stringify(body, null, 2));
 } else if (OUT || !TOKEN) {
 	writeFileSync(OUT ?? 'answer.json', JSON.stringify(body, null, 2));
-	console.log(`Wrote ${answers.length} to ${OUT ?? 'answer.json'}: choose it on Review > AI pre-reviews and save.`);
+	console.log(`Wrote ${answers.length} to ${OUT ?? 'answer.json'}: choose it on Review > Pre-reviews and save.`);
 } else if (answers.length) {
 	const res = await site('POST', '/prereviews', body);
 	console.log(`Uploaded ${res.saved.length}.`);

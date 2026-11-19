@@ -172,7 +172,7 @@ func (a *API) signedInRoutes(r chi.Router) {
 // shown in hours.
 func (a *API) me(w http.ResponseWriter, r *http.Request) {
 	user := auth.User(r.Context())
-	// Whether the review pages show AI pre-reviews (prereview.go).
+	// Whether the review pages show pre-reviews (prereview.go).
 	canPrereview := false
 	if p := permissionsOf(user); p.Review || p.FraudReview || p.HQReview {
 		settings, err := a.Queries.GetReviewSettings(r.Context())

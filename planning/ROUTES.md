@@ -59,7 +59,7 @@ interface Me {
   can_review: boolean;
   can_fraud_review: boolean;
   can_hq_review: boolean;
-  // Whether the review pages show AI pre-reviews: the fraud check, HQ and
+  // Whether the review pages show pre-reviews: the fraud check, HQ and
   // admins, and base reviewers when prereviews_for_reviewers is on.
   can_prereview: boolean;
 }
@@ -248,9 +248,9 @@ Reviewer and admin shapes are listed with their routes below.
 | GET | `/api/review/past?scope=&status=` | reviewer | Decided ships, the latest first |
 | PUT | `/api/review/projects/{id}/resubmit-block` | HQ, admin | Stop a project being shipped again, or allow it |
 | PATCH | `/api/review/projects/{id}` | reviewer | Fix a shipped project's demo link or screenshot |
-| GET | `/api/review/prereviews/prompt?limit=&all=` | reviewer | One prompt for AI pre-reviews of ships without one |
+| GET | `/api/review/prereviews/prompt?limit=&all=` | reviewer | One prompt for pre-reviews of ships without one |
 | GET | `/api/review/prereviews/batch?limit=&all=` | reviewer | The same ships for `scripts/prereview.mjs` |
-| POST | `/api/review/prereviews` | reviewer | Save AI pre-reviews from Claude's answer |
+| POST | `/api/review/prereviews` | reviewer | Save pre-reviews from Claude's answer |
 | GET, POST | `/api/prereviews` | `PREREVIEW_TOKEN` | The batch and saving, for the script without a session |
 | PUT | `/api/review/users/{id}/note` | reviewer | The reviewers-only note on a person |
 | GET | `/api/review/templates` | reviewer | Feedback templates |
@@ -757,7 +757,7 @@ interface ReviewSettings {
   fraud_check_everything: boolean; // every approved ship goes through the fraud check
   large_ship_seconds: number;      // ships claiming more than this get a fraud check (default 20h)
   long_day_seconds: number;        // so do ships with a UTC day over this on the project (default 14h)
-  prereviews_for_reviewers: boolean; // reviewers with only Review see AI pre-reviews (default off)
+  prereviews_for_reviewers: boolean; // reviewers with only Review see pre-reviews (default off)
   updated_at: string;
 }
 ```
