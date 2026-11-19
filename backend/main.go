@@ -64,9 +64,11 @@ const (
 	testChannel    = "C0CHU1G66AW" // #xr-station-test
 )
 
-// The launch sale: from launch on November 6 until the community goal closes,
-// 11:59 PM Eastern on November 18. It first ran for a week, to Nov 13.
-var saleEnd = communityGoal.Ends
+// The launch sale: from launch on November 6 until 11:59 PM Eastern on
+// December 2, two weeks past the community goal's close, to celebrate the
+// community reaching it. It first ran for a week, to Nov 13, then until the
+// goal closed on Nov 18.
+var saleEnd = communityGoal.Ends.AddDate(0, 0, 14)
 
 func main() {
 	ctx := context.Background()
