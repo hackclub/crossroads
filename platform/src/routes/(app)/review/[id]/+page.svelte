@@ -388,6 +388,9 @@
 						<p class="desc-full">{p.description}</p>
 						<div class="row"><button class="btn small" onclick={() => descDialog.close()}>Close</button></div>
 					</dialog>
+					{#if sub.notes_for_reviewers}
+						<div class="ship-notes small"><strong>Maker's notes:</strong> {sub.notes_for_reviewers}</div>
+					{/if}
 					<div class="links">
 						{#if p.demo_url}<a class="btn small primary" href={p.demo_url} target="_blank" rel="noreferrer">Try the demo</a>{/if}
 						{#if p.repo_url}<a class="btn small ghost" href={p.repo_url} target="_blank" rel="noreferrer">Repo</a>{/if}
@@ -844,6 +847,8 @@
 	.desc-dialog::backdrop { background: rgb(0 0 0 / 0.7); }
 	.desc-dialog h2 { font-size: 30px; margin: 0 0 12px; }
 	.desc-full { margin: 0 0 16px; max-height: 65vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+	/* What the maker wrote when shipping. Long notes scroll, so the summary stays put. */
+	.ship-notes { max-height: 7.5em; overflow: auto; padding: 4px 10px; border-radius: 8px; background: var(--rv-sunk); white-space: pre-wrap; overflow-wrap: anywhere; }
 	.links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 	.maker { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
 	.note { margin: 0; padding: 4px 10px; border-radius: 8px; background: var(--rv-sunk); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

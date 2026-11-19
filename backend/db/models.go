@@ -899,6 +899,7 @@ type Submission struct {
 	OverrideReason     *string
 	TechnicalFeatures  *string
 	DeflationReason    *string
+	NotesForReviewers  *string
 }
 
 type User struct {
