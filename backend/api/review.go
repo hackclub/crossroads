@@ -425,7 +425,7 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
-	// The AI pre-review, for those who can see them (prereview.go).
+	// The pre-review, for those who can see them (prereview.go).
 	var pre *prereviewJSON
 	seePrereviews := canSeePrereviews(viewer, settings)
 	if seePrereviews {
@@ -516,7 +516,7 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		// Telescreen (telescreen.hackclub.com, HQ's fraud tool): the person,
 		// and their time on this ship's Hackatime projects.
 		TelescreenURL          string         `json:"telescreen_url,omitempty"`
-		Prereview              *prereviewJSON `json:"prereview"` // the AI pre-review (prereview.go), or null
+		Prereview              *prereviewJSON `json:"prereview"` // the pre-review (prereview.go), or null
 		PrereviewsVisible      bool           `json:"prereviews_visible"`
 		TelescreenHackatimeURL string         `json:"telescreen_hackatime_url,omitempty"`
 		// What the Airtable sync will send to the Unified YSWS DB; null until

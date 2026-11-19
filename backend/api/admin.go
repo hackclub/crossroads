@@ -776,7 +776,7 @@ type reviewSettingsJSON struct {
 	LargeShipSeconds int32 `json:"large_ship_seconds"`
 	// So do ships whose project has a UTC day with more than this.
 	LongDaySeconds int32 `json:"long_day_seconds"`
-	// Reviewers with only the Review permission see AI pre-reviews; the
+	// Reviewers with only the Review permission see pre-reviews; the
 	// fraud check, HQ and admins always do (prereview.go).
 	PrereviewsForReviewers bool      `json:"prereviews_for_reviewers"`
 	UpdatedAt              time.Time `json:"updated_at"`

@@ -1,5 +1,5 @@
 // Package api is the JSON API the frontend uses, mounted at /api. Everything
-// in it needs someone signed in.
+// in it needs someone signed in, except the few routes Routes adds first.
 package api
 
 import (
@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/scherepi/crossroads-backend/auth"
+	"github.com/scherepi/crossroads-backend/cachet"
 	"github.com/scherepi/crossroads-backend/db"
 	"github.com/scherepi/crossroads-backend/github"
 	"github.com/scherepi/crossroads-backend/hackatime"
@@ -51,10 +52,20 @@ type API struct {
 	// app's bot. A nil Slack still lets superadmins write drafts.
 	Slack           *slack.Client
 	AnnounceChannel string
+	// The same bot DMs people about their projects as Tickets, Please
+	// (dms.go). A channel here gets every DM instead, so a dev build never
+	// DMs anyone; empty sends them to the people they're for.
+	DMRedirect string
+	// The landing page's riders (riders.go). Nil Cachet leaves the trains to
+	// the team.
+	Cachet *cachet.Client
+	riders riders
 }
 
 func (a *API) Routes() chi.Router {
 	r := chi.NewRouter()
+	// The landing page asks who's riding its trains before anyone signs in.
+	r.Get("/riders", a.listRiders)
 	// Sidekick signs its requests with a shared secret instead of a session.
 	if a.SidekickSecret != "" {
 		r.Post("/sidekick", a.sidekick)
@@ -172,7 +183,7 @@ func (a *API) signedInRoutes(r chi.Router) {
 // shown in hours.
 func (a *API) me(w http.ResponseWriter, r *http.Request) {
 	user := auth.User(r.Context())
-	// Whether the review pages show AI pre-reviews (prereview.go).
+	// Whether the review pages show pre-reviews (prereview.go).
 	canPrereview := false
 	if p := permissionsOf(user); p.Review || p.FraudReview || p.HQReview {
 		settings, err := a.Queries.GetReviewSettings(r.Context())

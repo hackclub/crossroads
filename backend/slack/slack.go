@@ -68,8 +68,10 @@ func (e *Error) Error() string {
 // Message is a message to post.
 type Message struct {
 	Channel string // a channel ID, or a user ID for a DM from the app
-	Text    string // the notification and screen reader text
-	Blocks  json.RawMessage
+	// The notification and screen reader text, and without Blocks, the
+	// message itself, in Slack's mrkdwn.
+	Text   string
+	Blocks json.RawMessage // optional
 	// Who it shows as: chat:write.customize lets the app post under someone's
 	// name and picture, with an APP tag. Empty is the app's own.
 	Username string
@@ -83,15 +85,18 @@ func (c *Client) Post(ctx context.Context, m Message) (channel, ts string, err e
 		Channel string `json:"channel"`
 		TS      string `json:"ts"`
 	}
-	err = c.call(ctx, "chat.postMessage", map[string]any{
+	body := map[string]any{
 		"channel":      m.Channel,
 		"text":         m.Text,
-		"blocks":       m.Blocks,
 		"username":     m.Username,
 		"icon_url":     m.IconURL,
 		"unfurl_links": false,
 		"unfurl_media": false,
-	}, &out)
+	}
+	if m.Blocks != nil {
+		body["blocks"] = m.Blocks
+	}
+	err = c.call(ctx, "chat.postMessage", body, &out)
 	return out.Channel, out.TS, err
 }
 

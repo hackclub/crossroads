@@ -68,8 +68,8 @@
 				<small>So do ships whose project has a day (UTC) with more than this.</small>
 			</label>
 		</div>
-		<label class="check"><input type="checkbox" bind:checked={form.prereviews} /> Reviewers see AI pre-reviews</label>
-		<p class="small muted">The AI pre-reviews tab and each ship's AI pre-review. Off, only the fraud check, HQ and admins see them; reviewers with just Review see nothing of them.</p>
+		<label class="check"><input type="checkbox" bind:checked={form.prereviews} /> Reviewers see pre-reviews</label>
+		<p class="small muted">The pre-reviews tab and each ship's pre-review. Off, only the fraud check, HQ and admins see them; reviewers with just Review see nothing of them.</p>
 		<div class="row"><button class="btn primary" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button></div>
 	{/if}
 	<div role="status" aria-live="polite">{#if msg}<p class="callout {msg.tone} small">{msg.text}</p>{/if}</div>

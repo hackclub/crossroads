@@ -337,13 +337,18 @@ type MeJSON struct {
 	Emporium bool `json:"emporium"`
 	// Whether name is one they chose rather than their Hack Club name.
 	NameCustomized bool `json:"name_customized"`
+	// Their settings: whether Tickets, Please DMs them about their projects,
+	// and whether they want to ride the landing page's trains (null until
+	// they've been asked).
+	DMsEnabled    bool  `json:"dms_enabled"`
+	OnLandingPage *bool `json:"on_landing_page"`
 }
 
 func ToMeJSON(user *db.User) MeJSON {
 	admin, reviewer := user.Role.IsAdmin(), user.Role == db.UserRoleReviewer
 	return MeJSON{user.ID, user.Name, user.Email, user.SlackID, user.Role, user.Stamps, user.VerificationStatus, user.YswsEligible, nullableJSON(user.Address),
 		admin || reviewer && user.CanReview, admin || reviewer && user.CanFraudReview, admin || reviewer && user.CanHqReview,
-		user.InEmporium(), user.NameCustomized}
+		user.InEmporium(), user.NameCustomized, user.DmsEnabled, user.OnLandingPage}
 }
 
 // Me responds with the signed-in user. Wrap it in RequireUser.

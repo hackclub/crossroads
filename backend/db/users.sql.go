@@ -18,7 +18,7 @@ with invite as (
 update users set role = invite.role, can_review = users.can_review or invite.role = 'reviewer'
 from invite
 where users.id = $1
-returning users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized
+returning users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized, users.dms_enabled, users.on_landing_page
 `
 
 type ClaimRoleInviteParams struct {
@@ -58,6 +58,8 @@ func (q *Queries) ClaimRoleInvite(ctx context.Context, arg ClaimRoleInviteParams
 		&i.EmporiumNote,
 		&i.EmporiumGrantedBy,
 		&i.NameCustomized,
+		&i.DmsEnabled,
+		&i.OnLandingPage,
 	)
 	return i, err
 }
@@ -87,7 +89,7 @@ func (q *Queries) DeleteRoleInviteByEmail(ctx context.Context, email string) (in
 }
 
 const getUser = `-- name: GetUser :one
-select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized from users where id = $1
+select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized, dms_enabled, on_landing_page from users where id = $1
 `
 
 func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
@@ -118,12 +120,14 @@ func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
 		&i.EmporiumNote,
 		&i.EmporiumGrantedBy,
 		&i.NameCustomized,
+		&i.DmsEnabled,
+		&i.OnLandingPage,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized from users where lower(email) = lower($1::text)
+select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized, dms_enabled, on_landing_page from users where lower(email) = lower($1::text)
 order by id
 limit 1
 `
@@ -156,8 +160,42 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.EmporiumNote,
 		&i.EmporiumGrantedBy,
 		&i.NameCustomized,
+		&i.DmsEnabled,
+		&i.OnLandingPage,
 	)
 	return i, err
+}
+
+const listRiders = `-- name: ListRiders :many
+select distinct users.slack_id::text
+from users
+join projects on projects.user_id = users.id
+join submissions on submissions.project_id = projects.id
+where users.on_landing_page
+    and users.slack_id is not null
+    and submissions.status = 'approved'
+`
+
+// People who said yes to the landing page and have an approved ship, by Slack
+// ID: who its trains can carry (api/riders.go).
+func (q *Queries) ListRiders(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, listRiders)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var users_slack_id string
+		if err := rows.Scan(&users_slack_id); err != nil {
+			return nil, err
+		}
+		items = append(items, users_slack_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listRoleInvites = `-- name: ListRoleInvites :many
@@ -204,7 +242,7 @@ func (q *Queries) ListRoleInvites(ctx context.Context) ([]ListRoleInvitesRow, er
 }
 
 const searchUsers = `-- name: SearchUsers :many
-select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized from users
+select id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized, dms_enabled, on_landing_page from users
 where $1::text = ''
     or name ilike '%' || $1::text || '%'
     or email ilike '%' || $1::text || '%'
@@ -249,6 +287,8 @@ func (q *Queries) SearchUsers(ctx context.Context, query string) ([]User, error)
 			&i.EmporiumNote,
 			&i.EmporiumGrantedBy,
 			&i.NameCustomized,
+			&i.DmsEnabled,
+			&i.OnLandingPage,
 		); err != nil {
 			return nil, err
 		}
@@ -262,7 +302,7 @@ func (q *Queries) SearchUsers(ctx context.Context, query string) ([]User, error)
 
 const setEmporiumAccess = `-- name: SetEmporiumAccess :one
 update users set emporium_access_at = $2, emporium_note = $3, emporium_granted_by = $4 where id = $1
-returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized, dms_enabled, on_landing_page
 `
 
 type SetEmporiumAccessParams struct {
@@ -306,13 +346,15 @@ func (q *Queries) SetEmporiumAccess(ctx context.Context, arg SetEmporiumAccessPa
 		&i.EmporiumNote,
 		&i.EmporiumGrantedBy,
 		&i.NameCustomized,
+		&i.DmsEnabled,
+		&i.OnLandingPage,
 	)
 	return i, err
 }
 
 const setUserName = `-- name: SetUserName :one
 update users set name = $2, name_customized = $3 where id = $1
-returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized, dms_enabled, on_landing_page
 `
 
 type SetUserNameParams struct {
@@ -350,13 +392,15 @@ func (q *Queries) SetUserName(ctx context.Context, arg SetUserNameParams) (User,
 		&i.EmporiumNote,
 		&i.EmporiumGrantedBy,
 		&i.NameCustomized,
+		&i.DmsEnabled,
+		&i.OnLandingPage,
 	)
 	return i, err
 }
 
 const setUserPermissions = `-- name: SetUserPermissions :one
 update users set can_review = $2, can_fraud_review = $3, can_hq_review = $4 where id = $1
-returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized, dms_enabled, on_landing_page
 `
 
 type SetUserPermissionsParams struct {
@@ -399,13 +443,15 @@ func (q *Queries) SetUserPermissions(ctx context.Context, arg SetUserPermissions
 		&i.EmporiumNote,
 		&i.EmporiumGrantedBy,
 		&i.NameCustomized,
+		&i.DmsEnabled,
+		&i.OnLandingPage,
 	)
 	return i, err
 }
 
 const setUserRole = `-- name: SetUserRole :one
 update users set role = $2 where id = $1
-returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized, dms_enabled, on_landing_page
 `
 
 type SetUserRoleParams struct {
@@ -441,6 +487,57 @@ func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (User,
 		&i.EmporiumNote,
 		&i.EmporiumGrantedBy,
 		&i.NameCustomized,
+		&i.DmsEnabled,
+		&i.OnLandingPage,
+	)
+	return i, err
+}
+
+const setUserSettings = `-- name: SetUserSettings :one
+update users
+set dms_enabled = coalesce($1, dms_enabled),
+    on_landing_page = coalesce($2, on_landing_page)
+where id = $3
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized, dms_enabled, on_landing_page
+`
+
+type SetUserSettingsParams struct {
+	DmsEnabled    *bool
+	OnLandingPage *bool
+	ID            int64
+}
+
+// The settings page's choices; a null one stays as it is.
+func (q *Queries) SetUserSettings(ctx context.Context, arg SetUserSettingsParams) (User, error) {
+	row := q.db.QueryRow(ctx, setUserSettings, arg.DmsEnabled, arg.OnLandingPage, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.HcaID,
+		&i.SlackID,
+		&i.Email,
+		&i.Name,
+		&i.VerificationStatus,
+		&i.YswsEligible,
+		&i.Role,
+		&i.Stamps,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.FirstName,
+		&i.LastName,
+		&i.Birthday,
+		&i.PhoneNumber,
+		&i.Address,
+		&i.CanReview,
+		&i.CanFraudReview,
+		&i.CanHqReview,
+		&i.ReviewerNote,
+		&i.EmporiumAccessAt,
+		&i.EmporiumNote,
+		&i.EmporiumGrantedBy,
+		&i.NameCustomized,
+		&i.DmsEnabled,
+		&i.OnLandingPage,
 	)
 	return i, err
 }
@@ -506,7 +603,7 @@ on conflict (hca_id) do update set
     address = excluded.address,
     verification_status = excluded.verification_status,
     ysws_eligible = excluded.ysws_eligible
-returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized
+returning id, hca_id, slack_id, email, name, verification_status, ysws_eligible, role, stamps, created_at, updated_at, first_name, last_name, birthday, phone_number, address, can_review, can_fraud_review, can_hq_review, reviewer_note, emporium_access_at, emporium_note, emporium_granted_by, name_customized, dms_enabled, on_landing_page
 `
 
 type UpsertUserFromHCAParams struct {
@@ -563,6 +660,8 @@ func (q *Queries) UpsertUserFromHCA(ctx context.Context, arg UpsertUserFromHCAPa
 		&i.EmporiumNote,
 		&i.EmporiumGrantedBy,
 		&i.NameCustomized,
+		&i.DmsEnabled,
+		&i.OnLandingPage,
 	)
 	return i, err
 }

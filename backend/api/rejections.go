@@ -9,6 +9,7 @@ package api
 // ship back in the review queue.
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -154,7 +155,7 @@ func (a *API) setResubmitBlock(w http.ResponseWriter, r *http.Request) {
 	case *body.Blocked:
 		err = a.Queries.BlockResubmit(r.Context(), db.BlockResubmitParams{ID: id, ResubmitBlockedBy: &viewer.ID, ResubmitBlockReason: &body.Reason})
 	case project.ResubmitBlockedAt != nil:
-		_, err = a.Queries.AllowResubmit(r.Context(), id)
+		err = a.allowResubmit(r.Context(), id)
 	}
 	if err != nil {
 		respond.ServerError(w, r, err)
@@ -173,6 +174,28 @@ func (a *API) setResubmitBlock(w http.ResponseWriter, r *http.Request) {
 		ResubmitBlocked bool               `json:"resubmit_blocked"`
 		ResubmitBlock   *resubmitBlockJSON `json:"resubmit_block"`
 	}{block != nil, block})
+}
+
+// allowResubmit lets a hard-rejected project be shipped again, and DMs its
+// owner that it can be.
+func (a *API) allowResubmit(ctx context.Context, id int64) error {
+	tx, err := a.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	q := a.Queries.WithTx(tx)
+	project, err := q.AllowResubmit(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // someone else just did
+	}
+	if err != nil {
+		return err
+	}
+	if err := addProjectDM(ctx, q, project, nil, db.ProjectDmKindResubmitAllowed, a.resubmitAllowedDM(project)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // reopenSubmission is POST /review/submissions/{id}/reopen {"reason": "..."}:
@@ -264,6 +287,11 @@ func (a *API) reopen(r *http.Request, viewer *db.User, id int64, reason string) 
 		return err
 	}
 	if _, err := q.AllowResubmit(ctx, s.ProjectID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	// One DM, even if it was a hard reject: being back in review says it
+	// can be shipped again.
+	if err := addProjectDM(ctx, q, row.Project, &s.ID, db.ProjectDmKindReopened, a.reopenedDM(row.Project)); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

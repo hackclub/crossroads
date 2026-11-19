@@ -6,6 +6,7 @@
 	import { session, refresh } from '#lib/session.svelte.js';
 	import TopBar from '#lib/TopBar.svelte';
 	import DevPanel from '#lib/DevPanel.svelte';
+	import LandingPagePrompt from '#lib/LandingPagePrompt.svelte';
 	import RailTrain from '#lib/RailTrain.svelte';
 	import CommunityBridge from '#lib/CommunityBridge.svelte';
 	import { STATIONS } from '#lib/rail.svelte.js';
@@ -41,6 +42,7 @@
 		<main class="main">
 			{@render children()}
 		</main>
+		<LandingPagePrompt />
 		<DevPanel onchange={refresh} />
 	{/if}
 </div>

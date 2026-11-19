@@ -169,10 +169,10 @@
 	}
 
 	// The details under the summary, in tabs: the checks and notes first,
-	// then the AI pre-review, GitHub and Hackatime. Each ship opens on the first.
-	// The AI pre-review tab only for those an admin lets see them.
-	const ALL_TABS = [['checks', 'Checks & notes'], ['ai', 'AI pre-review'], ['github', 'GitHub'], ['hackatime', 'Hackatime']];
-	const TABS = $derived(d?.prereviews_visible ? ALL_TABS : ALL_TABS.filter(([key]) => key !== 'ai'));
+	// then the pre-review, GitHub and Hackatime. Each ship opens on the first.
+	// The pre-review tab only for those an admin lets see them.
+	const ALL_TABS = [['checks', 'Checks & notes'], ['prereview', 'Pre-review'], ['github', 'GitHub'], ['hackatime', 'Hackatime']];
+	const TABS = $derived(d?.prereviews_visible ? ALL_TABS : ALL_TABS.filter(([key]) => key !== 'prereview'));
 	const AI_COUNTS = { none: 'no AI seen', low: 'a little AI', medium: 'some AI', high: 'mostly AI' };
 	let tab = $state('checks');
 	// Arrow keys move between tabs, as tablists do.
@@ -444,7 +444,7 @@
 							onclick={() => (tab = key)} onkeydown={tabKeys}>
 							{label}
 							{#if key === 'checks'}<span class="count" class:bad={failing.length}>{failing.length ? `${failing.length} to look at` : 'all passed'}</span>
-							{:else if key === 'ai'}<span class="count" class:bad={d.prereview?.ai_usage?.level === 'medium' || d.prereview?.ai_usage?.level === 'high'}>{d.prereview ? (AI_COUNTS[d.prereview.ai_usage?.level] ?? 'ready') : 'none yet'}</span>
+							{:else if key === 'prereview'}<span class="count" class:bad={d.prereview?.ai_usage?.level === 'medium' || d.prereview?.ai_usage?.level === 'high'}>{d.prereview ? (AI_COUNTS[d.prereview.ai_usage?.level] ?? 'ready') : 'none yet'}</span>
 							{:else if key === 'github'}<span class="count">{d.github ? `${d.github.commits.length}${d.github.truncated ? '+' : ''} commits` : 'no data'}</span>
 							{:else}<span class="count">{d.hackatime ? hours(d.hackatime.seconds) : 'no data'}</span>{/if}
 						</button>
@@ -568,8 +568,8 @@
 							{/if}
 						</section>
 					</div>
-				{:else if tab === 'ai' && d.prereviews_visible}
-					<div class="tab-panel part" role="tabpanel" id="panel-ai" aria-labelledby="tab-ai">
+				{:else if tab === 'prereview' && d.prereviews_visible}
+					<div class="tab-panel part" role="tabpanel" id="panel-prereview" aria-labelledby="tab-prereview">
 						<PrereviewPanel prereview={d.prereview} />
 					</div>
 				{:else if tab === 'github'}

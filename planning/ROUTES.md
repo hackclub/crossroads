@@ -6,7 +6,7 @@ The code is the source of truth. Routes are registered in `backend/main.go`, `ba
 
 ## Conventions
 
-- **Sign-in.** Everything under `/api` needs a signed-in session (the `crossroads_session` cookie). Without one: `401 {"error": "Sign in first."}`.
+- **Sign-in.** Everything under `/api` needs a signed-in session (the `crossroads_session` cookie), except `GET /api/riders` and the routes Sidekick and the prereview script sign with their own secrets. Without one: `401 {"error": "Sign in first."}`.
 - **Roles.** People are `participant`, `reviewer`, `admin` or `superadmin`. `/api/review/*` needs reviewer or admin, `/api/admin/*` needs admin, `/api/superadmin/*` needs superadmin. Otherwise: `403 {"error": "You don't have access to this."}`. Admins can do everything reviewers can, and superadmins everything admins can. Superadmins are a fixed list of Slack IDs in `backend/main.go` (`superadmins`), set at startup and every sign-in; no route can grant or remove it.
 - **Bodies** are JSON. Unknown fields are rejected with `400`, so typos don't fail silently. An empty body counts as `{}`.
 - **Errors** are always `{"error": "..."}`, written to be shown to people as is. Server errors are `500 {"error": "Something went wrong on our end."}`; the details only go to the server log.
@@ -59,9 +59,13 @@ interface Me {
   can_review: boolean;
   can_fraud_review: boolean;
   can_hq_review: boolean;
-  // Whether the review pages show AI pre-reviews: the fraud check, HQ and
+  // Whether the review pages show pre-reviews: the fraud check, HQ and
   // admins, and base reviewers when prereviews_for_reviewers is on.
   can_prereview: boolean;
+  // Their settings (PATCH /api/me): Tickets, Please's DMs, on until turned
+  // off, and riding the landing page's trains, null until they've answered.
+  dms_enabled: boolean;
+  on_landing_page: boolean | null;
 }
 
 interface Project {
@@ -215,6 +219,7 @@ Reviewer and admin shapes are listed with their routes below.
 | GET | `/auth/login?next=/path` | anyone | Start signing in (full-page navigation) |
 | GET | `/auth/hcacallback` | Hack Club Auth | Where sign-in comes back to |
 | POST | `/auth/logout` | anyone | Sign out |
+| GET | `/api/riders` | anyone | A few participants for the landing page's trains |
 | GET | `/api/me` | signed in | The signed-in person |
 | GET | `/api/hackatime/projects` | signed in | Their Hackatime projects, for linking |
 | GET | `/api/community` | signed in | The community goal: hours shipped by everyone so far |
@@ -248,9 +253,9 @@ Reviewer and admin shapes are listed with their routes below.
 | GET | `/api/review/past?scope=&status=` | reviewer | Decided ships, the latest first |
 | PUT | `/api/review/projects/{id}/resubmit-block` | HQ, admin | Stop a project being shipped again, or allow it |
 | PATCH | `/api/review/projects/{id}` | reviewer | Fix a shipped project's demo link or screenshot |
-| GET | `/api/review/prereviews/prompt?limit=&all=` | reviewer | One prompt for AI pre-reviews of ships without one |
+| GET | `/api/review/prereviews/prompt?limit=&all=` | reviewer | One prompt for pre-reviews of ships without one |
 | GET | `/api/review/prereviews/batch?limit=&all=` | reviewer | The same ships for `scripts/prereview.mjs` |
-| POST | `/api/review/prereviews` | reviewer | Save AI pre-reviews from Claude's answer |
+| POST | `/api/review/prereviews` | reviewer | Save pre-reviews from Claude's answer |
 | GET, POST | `/api/prereviews` | `PREREVIEW_TOKEN` | The batch and saving, for the script without a session |
 | PUT | `/api/review/users/{id}/note` | reviewer | The reviewers-only note on a person |
 | GET | `/api/review/templates` | reviewer | Feedback templates |
@@ -489,7 +494,14 @@ Claims a stamp of the type with that claim code (the platform's `/claim/{code}` 
 
 ### `PATCH /api/me`
 
-`{"name": "Max"}` changes the name the site shows (people click their name in the top bar). It's trimmed, inner runs of spaces become one, and it has to be 1 to 50 characters with nothing invisible in it. Signing in then leaves it alone; `{"name": null}` goes back to the name on their Hack Club account. `/api/me`'s `name_customized` says which it is. Their legal `first_name` and `last_name` don't change: the Unified YSWS DB and Airtable orders use those. Answers like `GET /api/me`.
+Changes any of `name`, `dms_enabled` and `on_landing_page`, all at once or none (a bad name changes nothing). Answers like `GET /api/me`; `422` if the body has none of them.
+
+`{"name": "Max"}` changes the name the site shows (people click their name in the top bar). It's trimmed, inner runs of spaces become one, and it has to be 1 to 50 characters with nothing invisible in it. Signing in then leaves it alone; `{"name": null}` goes back to the name on their Hack Club account. `/api/me`'s `name_customized` says which it is. Their legal `first_name` and `last_name` don't change: the Unified YSWS DB and Airtable orders use those.
+
+The settings page's two choices are `true` or `false`:
+
+- `dms_enabled`: whether Tickets, Please DMs them on Slack about their projects. On until they turn it off; DMs waiting to go out when they do aren't sent.
+- `on_landing_page`: whether their Slack picture can ride the landing page's trains (`GET /api/riders`). `/api/me` has it `null` until they've answered, and the platform asks anyone who hasn't. Saying no takes them off straight away.
 
 ### The Smugglers' Emporium
 
@@ -757,7 +769,7 @@ interface ReviewSettings {
   fraud_check_everything: boolean; // every approved ship goes through the fraud check
   large_ship_seconds: number;      // ships claiming more than this get a fraud check (default 20h)
   long_day_seconds: number;        // so do ships with a UTC day over this on the project (default 14h)
-  prereviews_for_reviewers: boolean; // reviewers with only Review see AI pre-reviews (default off)
+  prereviews_for_reviewers: boolean; // reviewers with only Review see pre-reviews (default off)
   updated_at: string;
 }
 ```
@@ -943,6 +955,12 @@ interface Community {
 ```
 
 `seconds` is the `new_seconds` of every participant's submission made between `starts_at` and `ends_at`. A ship counts as soon as it's submitted, without waiting for review, and drops out if it's rejected; a reviewer cutting its hours doesn't change it. The goal and deadline are `communityGoal` in `backend/main.go`.
+
+## Riders
+
+The landing page's trains carry the team and a few participants who said they'd like to, as their Slack pictures from Cachet. Anyone can ask, signed in or not.
+
+**`GET /api/riders`** → `200 {"slack_ids": string[]}`: up to 8 people who said yes to it (`on_landing_page`) and have an approved ship and a Slack picture of their own (not Slack's default), a different few each time. It's empty until the backend has asked Cachet about everyone, a minute or so after it starts, and new riders show up within 10 minutes (`api/riders.go`).
 
 
 ## Audit log (`/api/superadmin`, superadmins only)

@@ -15,6 +15,8 @@ There are three parts:
 - `post.js` posts or edits a message with your user token (`xoxp-`), for anything the tab can't build. Run it from your own machine; that token can post as you anywhere, so it doesn't go on a server.
 - `bot.js` runs all the time (on Orchard) with only the app-level token (`xapp-`), which can do nothing but receive the clicks. It forwards them to the backend's `POST /slack/clicks`.
 
+The backends also use the bot token to DM people about their projects, as **Tickets, Please**: when a ship is approved and paid or rejected, when a rejection is undone, and when a project can be shipped again. Only the real site DMs anyone; dev and local builds send every DM to #xr-station-test, saying who it was for. See `planning/INTERNALS.md`.
+
 ## Setting up the Slack app (once)
 
 1. https://api.slack.com/apps → Create New App → From a manifest → the Hack Club workspace → paste `manifest.json`.

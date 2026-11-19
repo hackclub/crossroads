@@ -1,5 +1,5 @@
 <script>
-	// AI pre-reviews without a server running Claude (backend/api/prereview.go):
+	// Pre-reviews without a server running Claude (backend/api/prereview.go):
 	// copy one prompt with every ship that doesn't have one, give it to your
 	// own Claude, and paste the answer back. Or run scripts/prereview.mjs on a
 	// laptop with Claude Code, which reads each repo itself.
@@ -79,8 +79,8 @@
 	}
 </script>
 
-<div class="stack ai">
-	<p class="small muted">Claude reads each ship first and writes what it is, how big it is, how AI-written it looks and what to check. Reviewers see it in the ship's AI pre-review tab. It decides nothing and isn't a review.</p>
+<div class="stack prereviews">
+	<p class="small muted">Claude reads each ship first and writes what it is, how big it is, how AI-written it looks and what to check. Reviewers see it in the ship's pre-review tab. It decides nothing and isn't a review.</p>
 
 	<section class="card stack-sm">
 		<h2>1. Copy the prompt</h2>
@@ -145,9 +145,9 @@
 </div>
 
 <style>
-	.ai { max-width: 860px; }
-	.ai h2 { font-size: 24px; margin: 0; }
-	.ai p { margin: 0; }
+	.prereviews { max-width: 860px; }
+	.prereviews h2 { font-size: 24px; margin: 0; }
+	.prereviews p { margin: 0; }
 	.wrap { flex-wrap: wrap; }
 	textarea { width: 100%; min-height: 140px; font-family: ui-monospace, monospace; font-size: 13px; }
 	details textarea { margin-top: 8px; min-height: 220px; }

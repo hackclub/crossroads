@@ -22,7 +22,7 @@
 	import Postcard from '#lib/Postcard.svelte';
 	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
-	import { signIn, isDevMode } from '#lib/api.js';
+	import { get, signIn, isDevMode } from '#lib/api.js';
 	import { refresh } from '#lib/session.svelte.js';
 
 	// "Get Started": signed in goes home; signed out goes straight into Hack Club
@@ -227,9 +227,10 @@
 	const tracks = [108, 324, 540, 756];
 
 	// People riding cars on the three left tracks (the fourth runs behind the
-	// postcard). Their pictures come from Cachet, Hack Club's cache of Slack
-	// avatars, by Slack ID; a rider without one yet gets an empty window.
-	const riders = [
+	// postcard): the team, then a few participants. Their pictures come from
+	// Cachet, Hack Club's cache of Slack avatars, by Slack ID; a seat nobody's
+	// in gets an empty window.
+	const team = [
 		{ name: 'Joaquin', slack: 'U083W5CCFDG' },
 		{ name: 'Max H', slack: 'U078ZJHUKFW' },
 		{ name: 'Barnav', slack: 'U08RVF1BAN4' },
@@ -237,14 +238,30 @@
 	];
 	const avatar = (slack) => `https://cachet.dunkirk.sh/users/${slack}/r`;
 
+	// The participants are a different few each visit, with Slack pictures of
+	// their own (GET /api/riders). The trains have their seats from the start,
+	// so none of them grows, and jumps along its track, when they arrive.
+	const SEATS = 12;
+	let participants = $state([]);
+	$effect(() => {
+		get('/riders')
+			.then(({ slack_ids }) => {
+				participants = slack_ids.filter((slack) => !team.some((rider) => rider.slack === slack)).map((slack) => ({ slack }));
+			})
+			.catch(() => {});
+	});
+	const riders = $derived([...team, ...participants, ...Array(SEATS).fill({})].slice(0, SEATS));
+
 	// A train on each of those tracks, carrying every third rider: `time` is
 	// how many seconds it takes to cross the screen, `start` how far across it
 	// is when the page loads, and `up` which way it runs.
-	const trains = [
-		{ time: 40, start: 0.2, up: false },
-		{ time: 52, start: 0.65, up: true },
-		{ time: 46, start: 0.4, up: false }
-	].map((train, t) => ({ ...train, x: tracks[t], cars: riders.filter((_, i) => i % 3 === t) }));
+	const trains = $derived(
+		[
+			{ time: 48, start: 0.2, up: false },
+			{ time: 70, start: 0.65, up: true },
+			{ time: 62, start: 0.4, up: false }
+		].map((train, t) => ({ ...train, x: tracks[t], cars: riders.filter((_, i) => i % 3 === t) }))
+	);
 </script>
 
 <svelte:head>

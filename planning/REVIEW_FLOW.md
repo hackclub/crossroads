@@ -40,7 +40,7 @@ A reviewer who can also sign off (an admin, or someone with `can_hq_review`) ski
 
 **Sent back** clears every decision on the ship and puts it back in the review queue. The timeline keeps the old approval, and the person sending it back has to say why.
 
-Participants see three states: **In review** (`pending`), **Approved, final check** (`fraud_check` or `awaiting_hq`: a reviewer approved it and it's waiting to be signed off), and **Approved** or **Rejected**. They aren't told when a ship is at the fraud check. They see the feedback on each decision and any comment a reviewer marks for them.
+Participants see three states: **In review** (`pending`), **Approved, final check** (`fraud_check` or `awaiting_hq`: a reviewer approved it and it's waiting to be signed off), and **Approved** or **Rejected**. They aren't told when a ship is at the fraud check. They see the feedback on each decision and any comment a reviewer marks for them. **Tickets, Please** DMs them on Slack when a ship is signed off (with the tickets it paid) or rejected, when a rejection is undone, and when a hard-rejected project can be shipped again; see [INTERNALS.md](INTERNALS.md#tickets-please).
 
 ## What sends a ship to the fraud check
 
@@ -86,13 +86,13 @@ Besides the checks, the review page shows:
 
 GitHub answers are cached for 10 minutes and link checks for 5, so opening a ship and then approving it doesn't ask twice.
 
-## AI pre-reviews
+## Pre-reviews
 
-Like Ari's Jame Gam pre-reviews, but nothing runs Claude on a server (`backend/api/prereview.go`). Claude writes, for each ship in review: what it is, how big, what it does, how AI-written the code and README look (none, low, medium or high, with evidence), the README and the demo link in a line each, who made what, and up to five things worth knowing. It never suggests hours or a decision. Reviewers see it in the ship's **AI pre-review** tab.
+Like Ari's Jame Gam pre-reviews, but nothing runs Claude on a server (`backend/api/prereview.go`). Claude writes, for each ship in review: what it is, how big, what it does, how AI-written the code and README look (none, low, medium or high, with evidence), the README and the demo link in a line each, who made what, and up to five things worth knowing. It never suggests hours or a decision. Reviewers see it in the ship's **Pre-review** tab.
 
-**Who sees them:** the fraud check, HQ and admins always. Reviewers with only the Review permission see nothing of them (no tabs, and the API refuses) until an admin ticks **Reviewers see AI pre-reviews** in the admin page's Review settings (`prereviews_for_reviewers`, off to start).
+**Who sees them:** the fraud check, HQ and admins always. Reviewers with only the Review permission see nothing of them (no tabs, and the API refuses) until an admin ticks **Reviewers see pre-reviews** in the admin page's Review settings (`prereviews_for_reviewers`, off to start).
 
-Two ways to make them, from the **AI pre-reviews** tab on the Review page:
+Two ways to make them, from the **Pre-reviews** tab on the Review page:
 
 - **Copy and paste.** "Copy the prompt" copies one prompt: the instructions, then every ship without a pre-review (up to 5, 10 or 20, oldest first) with its description, README, commits, Hackatime time and the checks that didn't pass. Give it to your own Claude (claude.ai with web search can also open the repos and demos), paste the whole answer back, and save. The site finds the JSON in it and saves each ship's on its own, saying why any were refused.
 - **The laptop script**, `scripts/prereview.mjs`, with Claude Code signed in. It clones each repo and runs `claude -p` in it, read-only, so Claude reads the actual code and git history. "Download the ships" gives it a batch file; its answer file goes in the same paste box. With `PREREVIEW_TOKEN` set on the server, `PREREVIEW_TOKEN=… node scripts/prereview.mjs --base <site>` fetches and uploads by itself.
