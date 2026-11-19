@@ -94,6 +94,7 @@ interface Submission {
   new_seconds: number;          // what this submission claims
   approved_seconds: number | null; // what it pays (or will, in final_check) once signed off
   feedback: string | null;      // the latest decision's message to them
+  notes_for_reviewers: string | null; // what they wrote for reviewers when shipping
   submitted_at: string;
   reviewed_at: string | null;   // when the first reviewer decided
   // Only on GET /api/projects/{id}: what reviewers said to them about this ship.
@@ -403,10 +404,11 @@ Any of the fields from `POST`. Left-out fields don't change. A URL set to `""` i
 Sends the project for review. The body is optional:
 
 ```json
-{ "special_stamp_id": 12 }
+{ "special_stamp_id": 12, "notes_for_reviewers": "Log in with demo / demo." }
 ```
 
-to use a special stamp on it (one with an effect, like priority review, that hasn't been used yet).
+- `special_stamp_id` uses a special stamp on it (one with an effect, like priority review, that hasn't been used yet).
+- `notes_for_reviewers` is anything that helps reviewers try it: a test login, what changed since the last ship. Only they and reviewers see it, and the pre-review reads it. It's trimmed, and blank is none.
 
 The submission claims the project's Hackatime time that nobody has claimed yet. See INTERNALS.md, "Hours accounting".
 
@@ -415,6 +417,7 @@ The submission claims the project's Hackatime time that nobody has claimed yet. 
 | Status | When |
 |---|---|
 | 422 | Missing a description, repo link, demo link, screenshot or Hackatime project. The `error` lists them all. |
+| 422 | Notes for reviewers over 2,000 characters |
 | 422 | A Hackatime problem (no Slack, no account, private stats, unreachable) |
 | 403 | Hackatime has flagged them as a cheater |
 | 409 | It's already waiting for review |

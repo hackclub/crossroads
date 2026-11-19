@@ -8,8 +8,8 @@ where projects.user_id = $1
 order by submissions.id desc;
 
 -- name: CreateSubmission :one
-insert into submissions (project_id, hackatime_projects, hackatime_seconds, new_seconds)
-values ($1, $2, $3, $4)
+insert into submissions (project_id, hackatime_projects, hackatime_seconds, new_seconds, notes_for_reviewers)
+values ($1, $2, $3, $4, $5)
 returning *;
 
 -- name: ClaimedSecondsForUser :one

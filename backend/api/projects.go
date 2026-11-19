@@ -59,6 +59,7 @@ type submissionJSON struct {
 	NewSeconds        int32      `json:"new_seconds"`
 	ApprovedSeconds   *int32     `json:"approved_seconds"`
 	Feedback          *string    `json:"feedback"`
+	NotesForReviewers *string    `json:"notes_for_reviewers"` // what the maker wrote when shipping
 	SubmittedAt       time.Time  `json:"submitted_at"`
 	ReviewedAt        *time.Time `json:"reviewed_at"`
 
@@ -141,6 +142,7 @@ func toSubmissionJSON(s db.Submission) submissionJSON {
 		NewSeconds:        s.NewSeconds,
 		ApprovedSeconds:   s.ApprovedSeconds,
 		Feedback:          s.Feedback,
+		NotesForReviewers: s.NotesForReviewers,
 		SubmittedAt:       s.SubmittedAt,
 		ReviewedAt:        s.ReviewedAt,
 	}
@@ -629,9 +631,15 @@ func (a *API) submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		SpecialStampID *int64 `json:"special_stamp_id"`
+		SpecialStampID    *int64 `json:"special_stamp_id"`
+		NotesForReviewers string `json:"notes_for_reviewers"`
 	}
 	if !decode(w, r, &body) {
+		return
+	}
+	notes := strings.TrimSpace(body.NotesForReviewers)
+	if len(notes) > 2000 {
+		respond.Error(w, http.StatusUnprocessableEntity, "Keep the notes for reviewers under 2,000 characters.")
 		return
 	}
 	project, err := a.Queries.GetProject(r.Context(), db.GetProjectParams{ID: id, UserID: user.ID})
@@ -774,6 +782,7 @@ func (a *API) submit(w http.ResponseWriter, r *http.Request) {
 		HackatimeProjects: links,
 		HackatimeSeconds:  int32(totals.Project),
 		NewSeconds:        int32(newSeconds),
+		NotesForReviewers: nonEmpty(notes),
 	})
 	if db.IsViolation(err, "submissions_one_pending_per_project") {
 		respond.Error(w, http.StatusConflict, "This project is already waiting for review.")

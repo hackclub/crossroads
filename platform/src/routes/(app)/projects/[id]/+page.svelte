@@ -22,6 +22,7 @@
 	let error = $state('');
 	let actionError = $state('');
 	let busy = $state(false);
+	let notes = $state(''); // for the reviewer, sent with the next ship
 	let shotFailed = $state(false);
 
 	async function load() {
@@ -209,7 +210,8 @@
 		actionError = '';
 		busy = true;
 		try {
-			await api('POST', `/projects/${project.id}/submissions`);
+			await api('POST', `/projects/${project.id}/submissions`, { notes_for_reviewers: notes });
+			notes = '';
 			await load();
 		} catch (e) {
 			actionError = e.message;
@@ -293,7 +295,7 @@
 			<div class="grid-halves">
 				<section class="panel">
 					<div class="panel-head">Ship it</div>
-					<div class="panel-body">
+					<div class="panel-body compact">
 						<span class="small muted">A reviewer tries your project and approves the new hours you tracked on it. Approved hours pay tickets.</span>
 						{#if latest?.status === 'final_check'}
 							<p class="callout info small">A reviewer approved {hours(latest.approved_seconds)}. It's waiting for a final check; your tickets are paid once it's signed off. You can ship again after that.</p>
@@ -310,6 +312,10 @@
 						{:else}
 							<p><span class="big">{hours(project.unsubmitted_seconds)}</span> of new time goes to review.</p>
 							{#if waitingExpress}<p class="small">Your Express stamp gives this ship priority review.</p>{/if}
+							<label class="field notes">
+								<span>Notes for reviewers <em>optional</em></span>
+								<textarea maxlength="2000" bind:value={notes} placeholder="Anything that helps them try it: a test login, what's new since your last ship, what to look at."></textarea>
+							</label>
 							<div class="row"><button class="btn primary" disabled={busy} onclick={ship}>{busy ? 'Shipping…' : project.submissions.length ? 'Ship again' : 'Ship'}</button></div>
 						{/if}
 						{#if spiked}<p class="small">Golden Spike: approved ships of this project earn 10% more tickets.</p>{/if}
@@ -340,7 +346,7 @@
 				{@const label = shipLabels[sub.status] ?? sub.status}
 				<!-- Each ship is a postcard: the reviewer's note on the left, the
 				     stamp (hours), postmark (status and date) and details on the right. -->
-				<article class="postcard {sub.status}" aria-label="Ship #{project.submissions.length - i}: {label}">
+				<article class="postcard {sub.status}" class:has-notes={sub.notes_for_reviewers} aria-label="Ship #{project.submissions.length - i}: {label}">
 					<div class="message">
 						<h3>Ship #{project.submissions.length - i}</h3>
 						{#if sub.status === 'final_check'}
@@ -381,6 +387,13 @@
 							<div><dt>Shipped</dt><dd>{date(sub.submitted_at)}</dd></div>
 						</dl>
 					</div>
+					{#if sub.notes_for_reviewers}
+						<!-- What they wrote for the reviewer, stuck on the card's bottom-left corner. -->
+						<div class="sticky">
+							<span class="sticky-for">For your reviewer</span>
+							<p>{sub.notes_for_reviewers}</p>
+						</div>
+					{/if}
 				</article>
 			{:else}
 				<p class="muted">Not shipped yet.</p>
@@ -512,6 +525,7 @@
 	.card-actions .btn.ghost { box-shadow: inset 0 0 0 2px var(--head); }
 
 	/* ---- Ships as postcards ---- */
+	.notes textarea { min-height: 100px; }
 	.ships { align-items: center; }
 	.postcard {
 		--paper: #efe9dc;
@@ -581,6 +595,26 @@
 	.lines div { display: flex; gap: 12px; padding: 6px 0 2px; font-size: 21px; border-bottom: 1px solid rgb(43 37 34 / 0.25); }
 	.lines dt { flex: none; width: 96px; color: var(--ink-soft); }
 	.lines dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+	/* Their notes for the reviewer: a sticky note under the message, hanging
+	   off the card's corner, with the back running down beside it. */
+	.postcard.has-notes .back { grid-row: span 2; }
+	.sticky {
+		position: relative;
+		z-index: 1;
+		grid-column: 1;
+		grid-row: 2;
+		align-self: end;
+		justify-self: start;
+		width: min(300px, 100%);
+		margin: 0 0 -46px -50px;
+		padding: 12px 16px 16px;
+		color: #3b3320;
+		background: linear-gradient(rgb(0 0 0 / 0.07), transparent 20px), #f2db6c;
+		box-shadow: 0 1px 2px rgb(0 0 0 / 0.25), 0 10px 20px rgb(0 0 0 / 0.35);
+		rotate: -3deg;
+	}
+	.sticky-for { font-size: 17px; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.7; }
+	.sticky p { margin: 4px 0 0; font-size: 21px; line-height: 1.3; white-space: pre-line; overflow-wrap: anywhere; }
 	@media (max-width: 640px) {
 		.placed img { height: 64px; max-width: 86px; }
 		.placed .blank { width: 54px; height: 64px; }
@@ -592,6 +626,8 @@
 		.status-mark { top: 14px; width: 92px; height: 92px; font-size: 14px; }
 		.postcard { grid-template-columns: 1fr; padding: 22px 20px; }
 		.back { padding: 20px 0 0; border-left: 0; border-top: 1px solid rgb(43 37 34 / 0.3); }
+		.postcard.has-notes .back { grid-row: auto; }
+		.sticky { grid-row: auto; margin: 0 0 -34px -26px; }
 		.postmark { top: 20px; }
 	}
 

@@ -260,9 +260,10 @@ type project struct {
 }
 
 type submission struct {
-	ID         int64  `json:"id"`
-	Status     string `json:"status"`
-	NewSeconds int    `json:"new_seconds"`
+	ID                int64   `json:"id"`
+	Status            string  `json:"status"`
+	NewSeconds        int     `json:"new_seconds"`
+	NotesForReviewers *string `json:"notes_for_reviewers"`
 }
 
 type apiError struct {
@@ -428,6 +429,49 @@ func TestSubmitAndResubmit(t *testing.T) {
 	e.call(t, user, "GET", "/api/projects/"+itoa(p.ID), nil, &detail)
 	if detail.ApprovedSeconds != 5*3600 || len(detail.Submissions) != 2 {
 		t.Errorf("got %d approved seconds over %d submissions, want 5 hours over 2", detail.ApprovedSeconds, len(detail.Submissions))
+	}
+}
+
+func TestNotesForReviewers(t *testing.T) {
+	e := newEnv(t)
+	user := e.newUser(t, "U1")
+	reviewer := e.newReviewer(t)
+	e.hackatime.set("U1", "racer", 3*3600)
+	p := e.createProject(t, user, completeProject("racer"))
+	ship := func(notes string) (int, submission) {
+		t.Helper()
+		var s submission
+		status := e.call(t, user, "POST", "/api/projects/"+itoa(p.ID)+"/submissions", map[string]any{"notes_for_reviewers": notes}, &s)
+		return status, s
+	}
+
+	if status, _ := ship(strings.Repeat("a", 2001)); status != http.StatusUnprocessableEntity {
+		t.Errorf("2,001 characters of notes: got %d, want 422", status)
+	}
+	status, first := ship("  Log in with demo / demo.\nThe map is new.  ")
+	if status != http.StatusCreated || first.NotesForReviewers == nil || *first.NotesForReviewers != "Log in with demo / demo.\nThe map is new." {
+		t.Fatalf("shipping with notes: got %d %+v, want them saved without the spaces around them", status, first)
+	}
+
+	// The maker sees what they wrote, and so does the reviewer.
+	var detail project
+	e.call(t, user, "GET", "/api/projects/"+itoa(p.ID), nil, &detail)
+	if len(detail.Submissions) != 1 || detail.Submissions[0].NotesForReviewers == nil {
+		t.Errorf("the maker's view of the ship: %+v", detail.Submissions)
+	}
+	var review struct {
+		Submission submission `json:"submission"`
+	}
+	e.mustCall(t, reviewer, http.StatusOK, "GET", "/api/review/submissions/"+itoa(first.ID), nil, &review)
+	if n := review.Submission.NotesForReviewers; n == nil || *n != *first.NotesForReviewers {
+		t.Errorf("the reviewer sees notes %v, want %q", n, *first.NotesForReviewers)
+	}
+
+	// Blank notes are none.
+	e.review(t, p.ID, "approved")
+	e.hackatime.set("U1", "racer", 5*3600)
+	if status, second := ship(" \n "); status != http.StatusCreated || second.NotesForReviewers != nil {
+		t.Errorf("shipping with blank notes: got %d %+v, want no notes", status, second)
 	}
 }
 
