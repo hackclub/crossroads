@@ -187,3 +187,208 @@ func TestReviewerStats(t *testing.T) {
 		t.Errorf("a participant got the leaderboard: %d", status)
 	}
 }
+
+// The review page's Review stats tab: every reviewer sees everyone's counts,
+// but no emails or Slack IDs, and lists only their own reviews. Admins see
+// what the admin page does.
+func TestReviewStatsTab(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	rita := e.newStageReviewer(t, "URITA", true, false, false)
+	fern := e.newStageReviewer(t, "UFERN", true, false, false)
+	admin := e.newAdmin(t)
+	maker, ship := e.shipFor(t, "UMAKER", 10)
+	_, other := e.shipFor(t, "UOTHER", 4)
+	for _, u := range []*db.User{rita, fern} {
+		if _, err := e.pool.Exec(ctx, "update users set email = $2 where id = $1", u.ID, *u.SlackID+"@example.com"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for who, id := range map[*db.User]int64{rita: ship, fern: other} {
+		if status, result := e.decide(t, who, id, map[string]any{"action": "approve"}); status != http.StatusOK {
+			t.Fatalf("approving: %d %q", status, result.Error)
+		}
+	}
+
+	newYork, _ := time.LoadLocation("America/New_York")
+	today := time.Now().In(newYork).Format(time.DateOnly)
+	period := "?from=" + today + "&to=" + today
+	raw := func(u *db.User, path string) (int, string) {
+		t.Helper()
+		req := httptest.NewRequest("GET", path, nil)
+		req = req.WithContext(auth.WithUser(req.Context(), u))
+		rec := httptest.NewRecorder()
+		e.router.ServeHTTP(rec, req)
+		return rec.Code, rec.Body.String()
+	}
+
+	status, body := raw(rita, "/api/review/reviewer-stats"+period)
+	if status != http.StatusOK || strings.Contains(body, "@example.com") || strings.Contains(body, "slack_id") {
+		t.Fatalf("a reviewer's counts: %d %s", status, body)
+	}
+	var counts struct {
+		Reviews   int64    `json:"reviews"`
+		Reviewers []payRow `json:"reviewers"`
+	}
+	e.mustCall(t, rita, http.StatusOK, "GET", "/api/review/reviewer-stats"+period, nil, &counts)
+	if counts.Reviews != 2 || len(counts.Reviewers) != 2 {
+		t.Errorf("a reviewer sees %+v", counts)
+	}
+	if status, _ := raw(rita, "/api/review/reviewer-stats"+period+"&format=csv"); status != http.StatusForbidden {
+		t.Errorf("a reviewer downloaded everyone's counts: %d", status)
+	}
+
+	var log []struct {
+		ReviewerID int64 `json:"reviewer_id"`
+	}
+	e.mustCall(t, rita, http.StatusOK, "GET", "/api/review/reviews"+period, nil, &log)
+	if len(log) != 1 || log[0].ReviewerID != rita.ID {
+		t.Errorf("a reviewer's own reviews: %+v", log)
+	}
+	if status, _ := raw(rita, "/api/review/reviews"+period+"&reviewer="+itoa(fern.ID)); status != http.StatusForbidden {
+		t.Errorf("a reviewer listed someone else's reviews: %d", status)
+	}
+	if status, body := raw(rita, "/api/review/reviews"+period+"&format=csv"); status != http.StatusOK || strings.Contains(body, "UOTHER") {
+		t.Errorf("a reviewer's own CSV: %d %s", status, body)
+	}
+
+	// Admins get the emails and anyone's reviews.
+	if status, body := raw(admin, "/api/review/reviewer-stats"+period); status != http.StatusOK || !strings.Contains(body, "UFERN@example.com") {
+		t.Errorf("an admin's counts: %d %s", status, body)
+	}
+	e.mustCall(t, admin, http.StatusOK, "GET", "/api/review/reviews"+period+"&reviewer="+itoa(fern.ID), nil, &log)
+	if len(log) != 1 || log[0].ReviewerID != fern.ID {
+		t.Errorf("an admin's look at Fern's reviews: %+v", log)
+	}
+	if status, _ := raw(maker, "/api/review/reviewer-stats"+period); status != http.StatusForbidden {
+		t.Errorf("a participant got the counts: %d", status)
+	}
+}
+
+// The Review stats tab's queue numbers, and the admin Stats tab's hours
+// funnel.
+func TestReviewInsightsAndHoursFunnel(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	rita := e.newStageReviewer(t, "URITA", true, false, false)
+	hugo := e.newStageReviewer(t, "UHUGO", true, false, true) // can review first, so can hard reject
+	admin := e.newAdmin(t)
+	_, signed := e.shipFor(t, "U1", 5)
+	_, soft := e.shipFor(t, "U2", 3)
+	_, hard := e.shipFor(t, "U3", 2)
+	_, waiting := e.shipFor(t, "U4", 1)
+	decide := func(who *db.User, id int64, body map[string]any) {
+		t.Helper()
+		if status, result := e.decide(t, who, id, body); status != http.StatusOK {
+			t.Fatalf("%v: got %d %q", body, status, result.Error)
+		}
+	}
+	four := int32(4 * 3600)
+	decide(rita, signed, map[string]any{"action": "approve", "approved_seconds": four})
+	decide(hugo, signed, map[string]any{"action": "approve"})
+	decide(rita, soft, map[string]any{"action": "reject", "feedback": "Add a demo."})
+	decide(hugo, hard, map[string]any{"action": "reject", "block_resubmit": true, "feedback": "This was copied.", "internal_notes": "Copied."})
+	if _, err := e.pool.Exec(ctx, "update submissions set unified_submitted_at = now() where id = $1", signed); err != nil {
+		t.Fatal(err)
+	}
+
+	var in struct {
+		Waiting []struct {
+			Stage    string `json:"stage"`
+			Waiting  int64  `json:"waiting"`
+			OldestID *int64 `json:"oldest_id"`
+		} `json:"waiting"`
+		Decisions []struct {
+			Stage    string `json:"stage"`
+			Passed   int64  `json:"passed"`
+			Rejected int64  `json:"rejected"`
+		} `json:"decisions"`
+		SecondsSignedOff int64 `json:"seconds_signed_off"`
+		Days             []struct {
+			Reviews int64 `json:"reviews"`
+		} `json:"days"`
+	}
+	e.mustCall(t, rita, http.StatusOK, "GET", "/api/review/insights", nil, &in)
+	if len(in.Waiting) != 3 || in.Waiting[0].Waiting != 1 || in.Waiting[0].OldestID == nil || *in.Waiting[0].OldestID != waiting || in.Waiting[2].Waiting != 0 {
+		t.Errorf("waiting: %+v", in.Waiting)
+	}
+	if d := in.Decisions; len(d) != 3 || d[0].Passed != 1 || d[0].Rejected != 2 || d[2].Passed != 1 {
+		t.Errorf("decisions: %+v", d)
+	}
+	var raw struct {
+		Funnel map[string]int64 `json:"funnel"`
+	}
+	e.mustCall(t, rita, http.StatusOK, "GET", "/api/review/insights", nil, &raw)
+	want := map[string]int64{"shipped": 4, "first_reviewed": 3, "passed_first_review": 1, "reached_hq": 1, "signed_off": 1, "rejected": 2, "in_review": 1}
+	for k, v := range want {
+		if raw.Funnel[k] != v {
+			t.Errorf("funnel %s: %d, want %d", k, raw.Funnel[k], v)
+		}
+	}
+	if in.SecondsSignedOff != int64(four) {
+		t.Errorf("signed off %d seconds", in.SecondsSignedOff)
+	}
+	var reviews int64
+	for _, d := range in.Days {
+		reviews += d.Reviews
+	}
+	if reviews != 4 {
+		t.Errorf("%d reviews in the days, want 4", reviews)
+	}
+
+	var stats struct {
+		Days []struct {
+			ShippedSeconds int64 `json:"shipped_seconds"`
+		} `json:"days"`
+		People []struct {
+			Key    string `json:"key"`
+			People int64  `json:"people"`
+		} `json:"people"`
+		Hours struct {
+			Nodes []struct {
+				Key     string `json:"key"`
+				Seconds int64  `json:"seconds"`
+				Ships   int64  `json:"ships"`
+			} `json:"nodes"`
+			Links []struct {
+				Source, Target string
+				Seconds        int64 `json:"seconds"`
+			} `json:"links"`
+		} `json:"hours"`
+	}
+	e.mustCall(t, admin, http.StatusOK, "GET", "/api/admin/activity?days=7", nil, &stats)
+	h := int64(3600)
+	type at struct{ seconds, ships int64 }
+	got := map[string]at{}
+	for _, n := range stats.Hours.Nodes {
+		got[n.Key] = at{n.Seconds, n.Ships}
+	}
+	for key, want := range map[string]at{"shipped": {11 * h, 4}, "signed_off": {5 * h, 1}, "review": {h, 1}, "soft_rejected": {3 * h, 1},
+		"hard_rejected": {2 * h, 1}, "approved": {4 * h, 1}, "cut": {h, 1}, "unified": {4 * h, 1}, "waiting_unified": {0, 0}} {
+		if got[key] != want {
+			t.Errorf("hours flow %s: %+v, want %+v", key, got[key], want)
+		}
+	}
+	// Every node but the first and the added hours gets what flows into it.
+	inflow := map[string]int64{}
+	for _, l := range stats.Hours.Links {
+		inflow[l.Target] += l.Seconds
+	}
+	for _, n := range stats.Hours.Nodes {
+		if n.Key != "logged" && n.Key != "added" && n.Key != "shipped" && inflow[n.Key] != n.Seconds {
+			t.Errorf("%s holds %d but gets %d", n.Key, n.Seconds, inflow[n.Key])
+		}
+	}
+	people := map[string]int64{}
+	for _, step := range stats.People {
+		people[step.Key] = step.People
+	}
+	for key, want := range map[string]int64{"signed_up": 4, "made_project": 4, "linked_hackatime": 4, "shipped": 4, "approved": 1, "reached_goal": 0, "rail_pass": 0} {
+		if people[key] != want {
+			t.Errorf("participant funnel %s: %d, want %d", key, people[key], want)
+		}
+	}
+	if last := stats.Days[len(stats.Days)-1]; last.ShippedSeconds != int64(11*h) {
+		t.Errorf("shipped today: %d", last.ShippedSeconds)
+	}
+}

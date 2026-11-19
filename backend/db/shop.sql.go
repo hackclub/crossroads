@@ -10,7 +10,7 @@ import (
 )
 
 const adminListOrders = `-- name: AdminListOrders :many
-select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price, orders.quantity, orders.grant_cents, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, shop_items.batch_size, shop_items.batch_step, shop_items.emporium, shop_items.grant_cents, shop_items.grant_cents_per_hour, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized, users.dms_enabled, users.on_landing_page
+select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price, orders.quantity, orders.grant_cents, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, shop_items.batch_size, shop_items.batch_step, shop_items.emporium, shop_items.grant_cents, shop_items.grant_cents_per_hour, shop_items.region_rule, shop_items.region_countries, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized, users.dms_enabled, users.on_landing_page
 from orders
 join shop_items on shop_items.id = orders.shop_item_id
 join users on users.id = orders.user_id
@@ -66,6 +66,8 @@ func (q *Queries) AdminListOrders(ctx context.Context, status *OrderStatus) ([]A
 			&i.ShopItem.Emporium,
 			&i.ShopItem.GrantCents,
 			&i.ShopItem.GrantCentsPerHour,
+			&i.ShopItem.RegionRule,
+			&i.ShopItem.RegionCountries,
 			&i.User.ID,
 			&i.User.HcaID,
 			&i.User.SlackID,
@@ -245,9 +247,9 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 
 const createShopItem = `-- name: CreateShopItem :one
 insert into shop_items (kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, position, batch_size, batch_step,
-    emporium, grant_cents, grant_cents_per_hour)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-returning id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour
+    emporium, grant_cents, grant_cents_per_hour, region_rule, region_countries)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+returning id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour, region_rule, region_countries
 `
 
 type CreateShopItemParams struct {
@@ -266,6 +268,8 @@ type CreateShopItemParams struct {
 	Emporium          bool
 	GrantCents        *int32
 	GrantCentsPerHour *int32
+	RegionRule        string
+	RegionCountries   []string
 }
 
 func (q *Queries) CreateShopItem(ctx context.Context, arg CreateShopItemParams) (ShopItem, error) {
@@ -285,6 +289,8 @@ func (q *Queries) CreateShopItem(ctx context.Context, arg CreateShopItemParams) 
 		arg.Emporium,
 		arg.GrantCents,
 		arg.GrantCentsPerHour,
+		arg.RegionRule,
+		arg.RegionCountries,
 	)
 	var i ShopItem
 	err := row.Scan(
@@ -306,6 +312,8 @@ func (q *Queries) CreateShopItem(ctx context.Context, arg CreateShopItemParams) 
 		&i.Emporium,
 		&i.GrantCents,
 		&i.GrantCentsPerHour,
+		&i.RegionRule,
+		&i.RegionCountries,
 	)
 	return i, err
 }
@@ -341,7 +349,7 @@ func (q *Queries) GetPriceLock(ctx context.Context, userID int64) (Order, error)
 }
 
 const getShopItem = `-- name: GetShopItem :one
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour from shop_items where id = $1
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour, region_rule, region_countries from shop_items where id = $1
 `
 
 func (q *Queries) GetShopItem(ctx context.Context, id int64) (ShopItem, error) {
@@ -366,12 +374,14 @@ func (q *Queries) GetShopItem(ctx context.Context, id int64) (ShopItem, error) {
 		&i.Emporium,
 		&i.GrantCents,
 		&i.GrantCentsPerHour,
+		&i.RegionRule,
+		&i.RegionCountries,
 	)
 	return i, err
 }
 
 const getTicket = `-- name: GetTicket :one
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour from shop_items where kind = 'ticket' and active order by position, id limit 1
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour, region_rule, region_countries from shop_items where kind = 'ticket' and active order by position, id limit 1
 `
 
 // The ticket the shop sells, which price locks apply to: the first active
@@ -398,6 +408,8 @@ func (q *Queries) GetTicket(ctx context.Context) (ShopItem, error) {
 		&i.Emporium,
 		&i.GrantCents,
 		&i.GrantCentsPerHour,
+		&i.RegionRule,
+		&i.RegionCountries,
 	)
 	return i, err
 }
@@ -417,7 +429,7 @@ func (q *Queries) HasTicket(ctx context.Context, userID int64) (bool, error) {
 }
 
 const listAllShopItems = `-- name: ListAllShopItems :many
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour from shop_items order by position, price, id
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour, region_rule, region_countries from shop_items order by position, price, id
 `
 
 func (q *Queries) ListAllShopItems(ctx context.Context) ([]ShopItem, error) {
@@ -448,6 +460,8 @@ func (q *Queries) ListAllShopItems(ctx context.Context) ([]ShopItem, error) {
 			&i.Emporium,
 			&i.GrantCents,
 			&i.GrantCentsPerHour,
+			&i.RegionRule,
+			&i.RegionCountries,
 		); err != nil {
 			return nil, err
 		}
@@ -460,7 +474,7 @@ func (q *Queries) ListAllShopItems(ctx context.Context) ([]ShopItem, error) {
 }
 
 const listEmporiumItems = `-- name: ListEmporiumItems :many
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour from shop_items where active and emporium order by position, price, id
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour, region_rule, region_countries from shop_items where active and emporium order by position, price, id
 `
 
 func (q *Queries) ListEmporiumItems(ctx context.Context) ([]ShopItem, error) {
@@ -491,6 +505,8 @@ func (q *Queries) ListEmporiumItems(ctx context.Context) ([]ShopItem, error) {
 			&i.Emporium,
 			&i.GrantCents,
 			&i.GrantCentsPerHour,
+			&i.RegionRule,
+			&i.RegionCountries,
 		); err != nil {
 			return nil, err
 		}
@@ -503,7 +519,7 @@ func (q *Queries) ListEmporiumItems(ctx context.Context) ([]ShopItem, error) {
 }
 
 const listOrders = `-- name: ListOrders :many
-select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price, orders.quantity, orders.grant_cents, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, shop_items.batch_size, shop_items.batch_step, shop_items.emporium, shop_items.grant_cents, shop_items.grant_cents_per_hour
+select orders.id, orders.user_id, orders.shop_item_id, orders.price, orders.status, orders.shipping_address, orders.notes, orders.created_at, orders.updated_at, orders.airtable_record_id, orders.airtable_synced_at, orders.locked_price, orders.quantity, orders.grant_cents, shop_items.id, shop_items.kind, shop_items.name, shop_items.description, shop_items.image_url, shop_items.price, shop_items.stipend_cents, shop_items.stock, shop_items.max_per_user, shop_items.active, shop_items.created_at, shop_items.updated_at, shop_items.position, shop_items.batch_size, shop_items.batch_step, shop_items.emporium, shop_items.grant_cents, shop_items.grant_cents_per_hour, shop_items.region_rule, shop_items.region_countries
 from orders
 join shop_items on shop_items.id = orders.shop_item_id
 where orders.user_id = $1
@@ -557,6 +573,8 @@ func (q *Queries) ListOrders(ctx context.Context, userID int64) ([]ListOrdersRow
 			&i.ShopItem.Emporium,
 			&i.ShopItem.GrantCents,
 			&i.ShopItem.GrantCentsPerHour,
+			&i.ShopItem.RegionRule,
+			&i.ShopItem.RegionCountries,
 		); err != nil {
 			return nil, err
 		}
@@ -569,7 +587,7 @@ func (q *Queries) ListOrders(ctx context.Context, userID int64) ([]ListOrdersRow
 }
 
 const listShopItems = `-- name: ListShopItems :many
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour from shop_items where active and not emporium order by position, price, id
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour, region_rule, region_countries from shop_items where active and not emporium order by position, price, id
 `
 
 // The shop: what's on sale, without the Emporium's.
@@ -601,6 +619,8 @@ func (q *Queries) ListShopItems(ctx context.Context) ([]ShopItem, error) {
 			&i.Emporium,
 			&i.GrantCents,
 			&i.GrantCentsPerHour,
+			&i.RegionRule,
+			&i.RegionCountries,
 		); err != nil {
 			return nil, err
 		}
@@ -675,7 +695,7 @@ func (q *Queries) LockOrder(ctx context.Context, id int64) (Order, error) {
 }
 
 const lockShopItem = `-- name: LockShopItem :one
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour from shop_items where id = $1 for update
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour, region_rule, region_countries from shop_items where id = $1 for update
 `
 
 func (q *Queries) LockShopItem(ctx context.Context, id int64) (ShopItem, error) {
@@ -700,12 +720,14 @@ func (q *Queries) LockShopItem(ctx context.Context, id int64) (ShopItem, error) 
 		&i.Emporium,
 		&i.GrantCents,
 		&i.GrantCentsPerHour,
+		&i.RegionRule,
+		&i.RegionCountries,
 	)
 	return i, err
 }
 
 const lockTicket = `-- name: LockTicket :one
-select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour from shop_items where kind = 'ticket' and active order by position, id limit 1 for update
+select id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour, region_rule, region_countries from shop_items where kind = 'ticket' and active order by position, id limit 1 for update
 `
 
 func (q *Queries) LockTicket(ctx context.Context) (ShopItem, error) {
@@ -730,6 +752,8 @@ func (q *Queries) LockTicket(ctx context.Context) (ShopItem, error) {
 		&i.Emporium,
 		&i.GrantCents,
 		&i.GrantCentsPerHour,
+		&i.RegionRule,
+		&i.RegionCountries,
 	)
 	return i, err
 }
@@ -845,9 +869,10 @@ const updateShopItem = `-- name: UpdateShopItem :one
 update shop_items set
     kind = $2, name = $3, description = $4, image_url = $5, price = $6,
     stipend_cents = $7, stock = $8, max_per_user = $9, active = $10, position = $11,
-    batch_size = $12, batch_step = $13, emporium = $14, grant_cents = $15, grant_cents_per_hour = $16
+    batch_size = $12, batch_step = $13, emporium = $14, grant_cents = $15, grant_cents_per_hour = $16,
+    region_rule = $17, region_countries = $18
 where id = $1
-returning id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour
+returning id, kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, created_at, updated_at, position, batch_size, batch_step, emporium, grant_cents, grant_cents_per_hour, region_rule, region_countries
 `
 
 type UpdateShopItemParams struct {
@@ -867,6 +892,8 @@ type UpdateShopItemParams struct {
 	Emporium          bool
 	GrantCents        *int32
 	GrantCentsPerHour *int32
+	RegionRule        string
+	RegionCountries   []string
 }
 
 func (q *Queries) UpdateShopItem(ctx context.Context, arg UpdateShopItemParams) (ShopItem, error) {
@@ -887,6 +914,8 @@ func (q *Queries) UpdateShopItem(ctx context.Context, arg UpdateShopItemParams) 
 		arg.Emporium,
 		arg.GrantCents,
 		arg.GrantCentsPerHour,
+		arg.RegionRule,
+		arg.RegionCountries,
 	)
 	var i ShopItem
 	err := row.Scan(
@@ -908,6 +937,8 @@ func (q *Queries) UpdateShopItem(ctx context.Context, arg UpdateShopItemParams) 
 		&i.Emporium,
 		&i.GrantCents,
 		&i.GrantCentsPerHour,
+		&i.RegionRule,
+		&i.RegionCountries,
 	)
 	return i, err
 }

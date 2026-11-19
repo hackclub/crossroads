@@ -173,6 +173,10 @@ interface ShopItem {
   bought: number;               // how many the signed-in person has (0 on admin routes)
   locked_price: number | null;  // tickets: the price they locked in with a price lock (null on admin routes)
   sale: Sale | null;            // while it's on sale (null on admin routes, which show the full price)
+  regions: {                    // where it can go, by the country of the buyer's Hack Club address
+    rule: 'everywhere' | 'only' | 'except';
+    countries: string[];        // ISO 3166-1 alpha-2 codes, upper case; empty for everywhere
+  };
 }
 
 interface Sale {
@@ -252,6 +256,9 @@ Reviewer and admin shapes are listed with their routes below.
 | POST | `/api/review/submissions/{id}/comments` | reviewer | Comment, for the participant or reviewers only |
 | POST | `/api/review/submissions/{id}/reopen` | HQ, admin | Undo a rejection: back in the review queue |
 | GET | `/api/review/past?scope=&status=` | reviewer | Decided ships, the latest first |
+| GET | `/api/review/insights?from=&to=` | reviewer | The Review stats tab: the queues now, rejection rates, the funnel |
+| GET | `/api/review/reviewer-stats?from=&to=` | reviewer | Everyone's review counts, without emails |
+| GET | `/api/review/reviews?from=&to=` | reviewer | Your own reviews (admins: anyone's, with `&reviewer=`) |
 | PUT | `/api/review/projects/{id}/resubmit-block` | HQ, admin | Stop a project being shipped again, or allow it |
 | PATCH | `/api/review/projects/{id}` | reviewer | Fix a shipped project's demo link or screenshot |
 | GET | `/api/review/prereviews/prompt?limit=&all=` | reviewer | One prompt for pre-reviews of ships without one |
@@ -510,6 +517,8 @@ The settings page's two choices are `true` or `false`:
 
 A second shop, hidden from everyone but reviewers, admins, and people an admin let in for a project worth rewarding (`emporium` on `/api/me` says who). `GET /api/emporium/items` lists it the way `GET /api/shop/items` lists the shop, and answers 404 to anyone else; its items aren't in the shop's list, and buying one without access answers 404 as if it didn't exist. The launch sale doesn't apply in the Emporium.
 
+**Regions**: an item can go everywhere (the default), `only` to some countries, or everywhere `except` some, set with `"regions": {"rule": "except", "countries": ["IN"]}` when creating or editing it. Codes are ISO 3166-1 alpha-2, in any case. The shop and the Emporium leave out items that can't go to the country of the person's Hack Club address, and buying one is a `422`; so is sending a physical item to a typed address whose country is a code it can't go to. With no address, or a country that isn't a code, everything shows. `422` for an unknown rule, a non-code, `only`/`except` without countries, or a rule on a rail pass or price lock.
+
 **Grants** (kind `grant`, Emporium only) are money for a project, sold in pieces: `grant_cents` a piece (default $5) at `grant_cents_per_hour` of approved time (default $6.50). A piece costs the stamps for the hours it's worth, rounded up, so with `STAMPS_PER_HOUR=30` a $5 piece is 24 stamps and $50 is 231. Buy them with `{"quantity": 10}` (1 to 200 pieces). `stock` counts pieces, so it caps the whole budget. The order's `grant_cents` is what it's worth; Airtable gets it in Stipend.
 
 Admins let someone in with `PATCH /api/admin/users/{id}` `{"emporium_access": true, "emporium_note": "for Tiny Compiler"}`, and out with `false`, from the People tab or a ship's review page.
@@ -761,7 +770,33 @@ interface AdminUser {
 
 `GET /api/admin/reviewer-stats?from=2026-11-09&to=2026-11-15` counts each person's reviews (as defined under `GET /api/review/stats`) for those days, both included, midnight to midnight Eastern. Without `from` and `to` it's this week. Each row has `name`, `email`, `slack_id`, `reviews` (the total), `first_reviews` with `first_approvals` and `first_rejections`, `fraud_checks`, `hq_decisions`, `later_sent_back` (first reviews whose approval was later sent back; they still count), `seconds_first_reviewed` and `last_review_at`. Ships can't be deleted and events never are, so a finished period's counts never change.
 
-`GET /api/admin/reviews?from=&to=[&reviewer=ID]` lists the reviews behind the counts, oldest first. Add `&format=csv` to either for a spreadsheet; cells a spreadsheet would read as a formula get a leading apostrophe.
+`GET /api/admin/reviews?from=&to=[&reviewer=ID]` lists the reviews behind the counts, oldest first. Add `&format=csv` to either for a spreadsheet; cells a spreadsheet would read as a formula get a leading apostrophe. The admin page shows these as **Admin review stats**.
+
+The review page's **Review stats** tab has reviewer versions of both. `GET /api/review/reviewer-stats` is the same counts for everyone, but `email` and `slack_id` are left out unless you're an admin, and its CSV is admins only (`403`). `GET /api/review/reviews` lists only your own reviews, CSV included; asking for someone else's with `&reviewer=` is a `403` unless you're an admin.
+
+### `GET /api/review/insights?from=&to=`
+
+The rest of the Review stats tab, for Eastern days `from` to `to` (this week without them; `422` like reviewer-stats):
+
+```ts
+{
+  from: string; to: string;
+  // Every stage now, waiting or not. A ship's wait starts when it reached
+  // its stage (its last approval, pass, send-back, reopening or flag).
+  waiting: { stage: 'review' | 'fraud' | 'hq'; waiting: number; median_wait_seconds: number | null;
+    oldest_id: number | null; oldest_project: string | null; oldest_wait_seconds: number | null }[];
+  // Decisions in the period, per stage: passed = approved, passed or signed off.
+  decisions: { stage: 'review' | 'fraud' | 'hq'; passed: number; rejected: number; sent_back: number }[];
+  reviewers: number;           // people who made a review
+  seconds_signed_off: number;  // hours HQ signed off
+  // The ships shipped in the period, counted at every step they ever reached.
+  funnel: { shipped: number; first_reviewed: number; passed_first_review: number; fraud_checked: number;
+    reached_hq: number; signed_off: number; rejected: number; in_review: number };
+  median_first_review_seconds: number | null; // shipping to the first decision
+  median_sign_off_seconds: number | null;     // shipping to HQ's sign-off
+  days: { day: string; reviews: number }[];   // each day of the period up to today
+}
+```
 
 ### Review settings
 
@@ -903,10 +938,29 @@ interface Activity {
     visitors: number;            // participants who made a signed-in request
     sign_ups: number;            // participants who signed up
     participants: number;        // participants signed up by the end of the day
+    shipped_seconds: number;     // hours participants shipped, whatever became of them
   }[];
   range: {                       // each participant counted once over all the days returned
     visitors: number;            // used the platform on at least one of them
     active_participants: number; // active (min_minutes) on at least one of them
+  };
+  // How far participants have got, all time: how many ever reached each
+  // step. keys: signed_up, made_project, linked_hackatime, logged_time,
+  // shipped, approved (a ship signed off), reached_goal (60 approved hours),
+  // rail_pass (an order for it, not cancelled).
+  people: { key: string; label: string; people: number }[];
+  // Where every hour participants logged has gone, all time (not just these
+  // days), as a Sankey like Stardance's hour funnel: columns left to right,
+  // links carrying hours and ships. kind is kept (flows on), held (waiting on
+  // someone) or lost. A soft-rejected ship that was shipped again is left
+  // out: the newer ship claims its hours. Partial nodes (cut, added) move
+  // hours but not ships; their ships is how many they affect.
+  hours: {
+    nodes: { key: string; label: string; note: string; column: number; kind: 'kept' | 'held' | 'lost';
+      seconds: number; ships: number; partial: boolean }[];
+    // keys: logged, shipped, not_shipped, signed_off, review, fraud, hq, soft_rejected,
+    // hard_rejected, added, approved, cut, unified, waiting_unified
+    links: { source: string; target: string; seconds: number; ships: number }[];
   };
   min_minutes: number;
   updated_at: string | null; // when the poller last recorded anything

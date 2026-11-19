@@ -195,7 +195,7 @@ The queues put submissions with a priority-review special stamp first, then olde
 `buy`:
 1. Check verification. This happens before the transaction because it may call Hack Club Auth: if the saved status isn't verified and eligible, ask the public check endpoint and save what it says.
 2. Lock the buyer's `users` row, then the item.
-3. Fill in the shipping address from `users.address` if none was sent.
+3. Refuse an item that can't go to the country of their Hack Club address (`api/regions.go`; the listings leave those out too). Then fill in the shipping address from `users.address` if none was sent, and refuse a physical item whose shipping country is a code it can't go to.
 4. Check `max_per_user`, stock, and the balance (only for a friendlier message).
 5. Work out the price: the launch sale (`api/sale.go`: 10% off everything but tickets and price locks until `API.SaleEnd`), then tickets and price locks, below.
 6. Create the order, then the purchase ledger entry. The ledger trigger is the real guard against overspending.

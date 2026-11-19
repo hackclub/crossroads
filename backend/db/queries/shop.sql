@@ -16,15 +16,16 @@ select * from shop_items where id = $1 for update;
 
 -- name: CreateShopItem :one
 insert into shop_items (kind, name, description, image_url, price, stipend_cents, stock, max_per_user, active, position, batch_size, batch_step,
-    emporium, grant_cents, grant_cents_per_hour)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+    emporium, grant_cents, grant_cents_per_hour, region_rule, region_countries)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 returning *;
 
 -- name: UpdateShopItem :one
 update shop_items set
     kind = $2, name = $3, description = $4, image_url = $5, price = $6,
     stipend_cents = $7, stock = $8, max_per_user = $9, active = $10, position = $11,
-    batch_size = $12, batch_step = $13, emporium = $14, grant_cents = $15, grant_cents_per_hour = $16
+    batch_size = $12, batch_step = $13, emporium = $14, grant_cents = $15, grant_cents_per_hour = $16,
+    region_rule = $17, region_countries = $18
 where id = $1
 returning *;
 
