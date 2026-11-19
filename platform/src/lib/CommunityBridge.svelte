@@ -1,21 +1,16 @@
 <script>
-	// "Repair Bridge", from the Figma home frame (Group 28 and "train on bridge"):
-	// a broken viaduct with a train stopped short of the gap, and the community
-	// goal above it. The in-person event only runs if everyone together ships
-	// the goal's hours by the deadline (GET /api/community). A ship counts as
-	// soon as it's submitted, without waiting for review.
+	// Black mountains in the mist under "Coming soon...", for now. Until the
+	// community goal's deadline (Nov 18) this was "Repair Bridge", from the
+	// Figma home frame: a broken viaduct and the goal's hours above it. Its
+	// art is still in assets/bridge, and GET /api/community still answers.
 	import { untrack } from 'svelte';
-	import { get } from './api.js';
 	import { rail, BRIDGE_FOLD_MS } from './rail.svelte.js';
-	import bridge from './assets/bridge/bridge.svg';
-	import wagon from './assets/bridge/wagon.svg';
-	import locomotive from './assets/bridge/locomotive.svg';
-	import crumble from './assets/bridge/crumble.svg';
+	import mountains from './assets/mountains/mountains.svg';
 
 	// Open on Home only. It stays mounted on the other train pages, folded
 	// away, so arriving at or leaving Home can animate: the section opens and
-	// pushes the train down while the bridge rises in, then the words fade in;
-	// leaving does the same backwards. It waits for the train to pull in
+	// pushes the train down while the mountains rise in, then the words fade
+	// in; leaving does the same backwards. It waits for the train to pull in
 	// before opening, and the train waits for it to fold before leaving.
 	let { open = false } = $props();
 	let shown = $state(false);
@@ -39,72 +34,17 @@
 			clearTimeout(timer);
 		};
 	});
-
-	let goal = $state(null);
-	$effect(() => {
-		if (!open) return;
-		get('/community')
-			.then((g) => (goal = g))
-			.catch(() => {});
-	});
-
-	const hours = (s) => Math.floor(s / 3600);
-	const pct = $derived(goal ? Math.min(goal.seconds / goal.goal_seconds, 1) * 100 : 0);
-	const done = $derived(!!goal && goal.seconds >= goal.goal_seconds);
-	// "11:59 PM EST on November 18", in the deadline's own Eastern time.
-	const deadline = $derived.by(() => {
-		if (!goal) return '11:59 PM EST on November 18';
-		const at = new Date(goal.ends_at);
-		const time = at.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
-		const day = at.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric' });
-		return `${time} on ${day}`;
-	});
-	// The wagons, then the locomotive at the front, as placed in the Figma.
-	const WAGONS = [-14, 127, 268, 409];
-	// Loose bricks by the broken ends (Rectangles 204-207), x and y in the scene.
-	const BRICKS = [[784, 218.5], [787, 224.5], [917, 218.5], [920, 224.5]];
 </script>
 
 <section class="goal" class:shown aria-labelledby="goal-title" inert={!open}>
 	<div class="fold">
 		<div class="stage">
 			<div class="scene" aria-hidden="true">
-				<img class="bridge" src={bridge} alt="" />
-				<!-- The crumbled ends either side of the gap (Vector 1). -->
-				<img class="crumble" src={crumble} alt="" />
-				{#each BRICKS as [x, y]}<i class="brick" style="--x: {x}; --y: {y}"></i>{/each}
-				<!-- The train on the bridge rolls in as the scene rises. -->
-				<div class="consist">
-					{#each WAGONS as x}<img class="wagon" src={wagon} alt="" style="--x: {x}" />{/each}
-					<img class="loco" src={locomotive} alt="" />
-				</div>
+				<img class="mountains" src={mountains} alt="" />
 			</div>
 
 			<div class="copy">
-				<h2 id="goal-title">{done ? 'Bridge repaired' : 'Repair Bridge'}</h2>
-				<p>
-					{#if done}
-						The community shipped {goal ? hours(goal.goal_seconds) : 500} hours together, so the in-person event is on.
-					{:else}
-						The in-person event can only run if the community ships {goal ? hours(goal.goal_seconds) : 500} hours together, from launch
-						to {deadline}.
-					{/if}
-				</p>
-				<div class="meter" style="--pct: {pct}%">
-					<!-- The hours so far, with a tick down to the end of the fill. -->
-					<span class="now">{goal ? hours(goal.seconds) : 0}H</span>
-					<div
-						class="gauge"
-						role="progressbar"
-						aria-label="Hours shipped by the community"
-						aria-valuemin="0"
-						aria-valuemax={goal ? hours(goal.goal_seconds) : 500}
-						aria-valuenow={goal ? hours(goal.seconds) : 0}
-						aria-valuetext="{goal ? hours(goal.seconds) : 0} of {goal ? hours(goal.goal_seconds) : 500} hours"
-					>
-						{#if pct > 0}<span class="fill"></span>{/if}
-					</div>
-				</div>
+				<h2 id="goal-title">Coming soon...</h2>
 			</div>
 		</div>
 	</div>
@@ -124,15 +64,10 @@
 	.fold { min-height: 0; overflow: hidden; }
 	.scene { translate: 0 calc(160 * var(--bu)); transition: translate 0.5s cubic-bezier(0.55, 0, 1, 0.45) 0.1s; }
 	.shown .scene { translate: 0 0; transition: translate 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.1s; }
-	/* The train on the bridge starts off the left edge and rolls in while the
-	   scene rises, slowing to a stop; it rolls back out as the scene sinks.
-	   (transform, not translate: phones use translate to lift the scene.) */
-	.consist { transform: translateX(calc(-720 * var(--bu))); transition: transform 0.5s cubic-bezier(0.55, 0, 1, 0.45); }
-	.shown .consist { transform: none; transition: transform 1.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s; }
 	.copy { opacity: 0; transition: opacity 0.2s ease-in; }
 	.shown .copy { opacity: 1; transition: opacity 0.45s ease-out 0.55s; }
 	@media (prefers-reduced-motion: reduce) {
-		.goal, .goal.shown, .scene, .shown .scene, .consist, .shown .consist, .copy, .shown .copy { transition: none; }
+		.goal, .goal.shown, .scene, .shown .scene, .copy, .shown .copy { transition: none; }
 	}
 	.stage {
 		--bu: calc(100cqw / 1728);
@@ -142,25 +77,21 @@
 		color: var(--text);
 	}
 
-	/* The scene covers the stage, so its pieces sit at stage coordinates. */
+	/* The scene covers the stage, so the mountains sit at stage coordinates.
+	   They run past both edges, below the words, and their foot fades into
+	   the photo. */
 	.scene { position: absolute; inset: 0; }
-	.scene > *, .consist > * { position: absolute; display: block; max-width: none; } /* the bridge is wider than the page on purpose */
-	.consist { inset: 0; }
-	/* The viaduct runs past both edges; its foot fades into the photo. */
-	.bridge { left: calc(-83 * var(--bu)); top: calc(193.5 * var(--bu)); width: calc(1844 * var(--bu)); height: calc(220 * var(--bu)); }
-	.crumble { left: calc(788.6 * var(--bu)); top: calc(195.5 * var(--bu)); width: calc(143.36 * var(--bu)); height: calc(55 * var(--bu)); }
-	.brick {
-		left: calc(var(--x) * var(--bu));
-		top: calc(var(--y) * var(--bu));
-		width: calc(11 * var(--bu));
-		height: calc(5 * var(--bu));
-		border-radius: calc(2 * var(--bu));
-		background: #000;
+	.mountains {
+		position: absolute;
+		display: block;
+		max-width: none; /* wider than the page on purpose */
+		left: calc(-83 * var(--bu));
+		top: calc(70.5 * var(--bu));
+		width: calc(1844 * var(--bu));
+		height: calc(343 * var(--bu));
 	}
-	.wagon { left: calc(var(--x) * var(--bu)); top: calc(136.5 * var(--bu)); width: calc(143 * var(--bu)); height: calc(57 * var(--bu)); }
-	.loco { left: calc(548 * var(--bu)); top: calc(123 * var(--bu)); width: calc(151 * var(--bu)); height: calc(70.5 * var(--bu)); }
 
-	/* The words, centred on x 851.5 like the Figma's paragraph and bar. */
+	/* The words, centred on x 851.5 like the Figma's title. */
 	.copy {
 		position: absolute;
 		top: calc(32.5 * var(--bu));
@@ -175,7 +106,7 @@
 		text-shadow: 0 1px 3px rgb(0 0 0 / 0.8);
 	}
 	/* The title between two 2px rules (Lines 8 and 9), sitting a touch right
-	   of the paragraph's centre, as drawn. */
+	   of centre, as drawn. */
 	h2 {
 		display: flex;
 		align-items: center;
@@ -192,41 +123,14 @@
 		background: currentColor;
 		translate: 0 calc(2 * var(--bu));
 	}
-	p { font-size: max(15px, calc(20 * var(--bu))); line-height: normal; }
 
-	/* Rectangles 208 and 209: a 2px white outline with a solid white fill
-	   over its start, both radius 4. The label and its tick (Line 10) sit at
-	   the end of the fill. */
-	.meter { width: max(180px, calc(269 * var(--bu))); margin-top: calc(3 * var(--bu)); }
-	.now {
-		position: relative;
-		display: block;
-		width: max-content;
-		left: clamp(0px, var(--pct), 100%);
-		translate: -50% 0;
-		font-size: max(15px, calc(20 * var(--bu)));
-	}
-	.now::after {
-		content: '';
-		position: absolute;
-		left: 50%;
-		top: calc(100% - 2 * var(--bu));
-		width: 1px;
-		height: max(3px, calc(4 * var(--bu)));
-		background: currentColor;
-	}
-	/* Not ".bar" or ".track": app.css has both. */
-	.gauge { position: relative; height: max(12px, calc(20 * var(--bu))); border-radius: 4px; box-shadow: inset 0 0 0 2px currentColor; }
-	.fill { position: absolute; inset: 0 auto 0 0; width: max(8px, var(--pct)); border-radius: 4px; background: currentColor; }
-
-	/* Narrower than ~1100px the words would run into the train, so they sit
-	   above the scene instead of over it; the scene keeps its shape. */
+	/* Narrower than ~1100px the words would run into the peaks, so they sit
+	   above the scene instead of over it; the mountains keep their shape. */
 	@container (max-width: 1100px) {
 		.stage { display: flex; flex-direction: column; height: auto; padding-top: 12px; }
 		.copy { order: -1; position: static; translate: none; margin: 0 auto; }
 		h2 { translate: none; }
-		.meter { margin-top: 18px; }
-		.scene { position: relative; height: calc(413.5 * var(--bu) - 123 * var(--bu)); margin-top: 12px; }
-		.scene > * { translate: 0 calc(-123 * var(--bu)); }
+		.scene { position: relative; height: calc(343 * var(--bu)); margin-top: 12px; }
+		.mountains { top: 0; }
 	}
 </style>
