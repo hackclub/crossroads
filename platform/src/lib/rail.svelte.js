@@ -7,7 +7,8 @@ export const rail = $state({
 	home: null, // snippet from the Home page, while it's open
 	shop: null, // snippet from the Shop page, while it's open
 	stampsVersion: 0,
-	// Sequencing the train with the Repair Bridge above it (CommunityBridge),
+	// Sequencing the train with the section above it on Home (CommunityBridge,
+	// once Repair Bridge, now the mountains under "Coming soon..."),
 	// as performance.now() times: when the train comes to rest after rolling
 	// in or moving, and when the bridge has finished folding away. The bridge
 	// opens only once the train has stopped; the train leaves Home only once
