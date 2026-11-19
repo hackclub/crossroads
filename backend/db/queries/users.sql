@@ -41,6 +41,14 @@ returning *;
 update users set name = $2, name_customized = $3 where id = $1
 returning *;
 
+-- name: SetUserSettings :one
+-- The settings page's choices; a null one stays as it is.
+update users
+set dms_enabled = coalesce(sqlc.narg(dms_enabled), dms_enabled),
+    on_landing_page = coalesce(sqlc.narg(on_landing_page), on_landing_page)
+where id = sqlc.arg(id)
+returning *;
+
 -- name: SetEmporiumAccess :one
 -- Lets someone into the Smugglers' Emporium, or (with a null time) out again.
 update users set emporium_access_at = $2, emporium_note = $3, emporium_granted_by = $4 where id = $1
@@ -97,3 +105,14 @@ returning users.*;
 update users
 set role = case when slack_id = any(sqlc.arg(slack_ids)::text[]) then 'superadmin'::user_role else 'admin'::user_role end
 where coalesce(slack_id = any(sqlc.arg(slack_ids)::text[]), false) <> (role = 'superadmin');
+
+-- name: ListRiders :many
+-- People who said yes to the landing page and have an approved ship, by Slack
+-- ID: who its trains can carry (api/riders.go).
+select distinct users.slack_id::text
+from users
+join projects on projects.user_id = users.id
+join submissions on submissions.project_id = projects.id
+where users.on_landing_page
+    and users.slack_id is not null
+    and submissions.status = 'approved';

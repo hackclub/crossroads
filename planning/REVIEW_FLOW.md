@@ -40,7 +40,7 @@ A reviewer who can also sign off (an admin, or someone with `can_hq_review`) ski
 
 **Sent back** clears every decision on the ship and puts it back in the review queue. The timeline keeps the old approval, and the person sending it back has to say why.
 
-Participants see three states: **In review** (`pending`), **Approved, final check** (`fraud_check` or `awaiting_hq`: a reviewer approved it and it's waiting to be signed off), and **Approved** or **Rejected**. They aren't told when a ship is at the fraud check. They see the feedback on each decision and any comment a reviewer marks for them.
+Participants see three states: **In review** (`pending`), **Approved, final check** (`fraud_check` or `awaiting_hq`: a reviewer approved it and it's waiting to be signed off), and **Approved** or **Rejected**. They aren't told when a ship is at the fraud check. They see the feedback on each decision and any comment a reviewer marks for them. **Tickets, Please** DMs them on Slack when a ship is signed off (with the tickets it paid) or rejected, when a rejection is undone, and when a hard-rejected project can be shipped again; see [INTERNALS.md](INTERNALS.md#tickets-please).
 
 ## What sends a ship to the fraud check
 

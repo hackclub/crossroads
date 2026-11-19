@@ -45,7 +45,7 @@ Postgres is on **5433**, not the usual 5432, so it doesn't collide with other pr
 | `SIDEKICK_SECRET` | no | Turns on `POST /api/sidekick` for Sidekick, Hack Club's review platform; the same secret goes into Sidekick. See REVIEW_FLOW.md. Ignored in dev mode. |
 | `PUBLIC_URL` | no | The site's address, for upload links and the links Sidekick shows reviewers. Defaults to the sign-in redirect's site. |
 | `SLACK_CLICKS_SECRET` | no | Turns on `POST /slack/clicks`, where the Slack bot (`slackbot/`) records clicks on its announcements' buttons. The bot sends the same value. Any long random string (`openssl rand -hex 32`). |
-| `SLACK_BOT_TOKEN` | no | The Crossroads Announcements Slack app's Bot User OAuth Token (`xoxb-…`), for posting announcements from Admin's Announce tab. Without it they can be drafted but not sent. Local and dev builds post to #xr-station-test; only the real site posts to #crossroads-station (`main.go`). See `slackbot/README.md`. |
+| `SLACK_BOT_TOKEN` | no | The Crossroads Announcements Slack app's Bot User OAuth Token (`xoxb-…`), for posting announcements from Admin's Announce tab and for Tickets, Please's DMs about people's projects. Without it announcements can be drafted but not sent, and DMs aren't sent. Local and dev builds post announcements and every DM to #xr-station-test; only the real site posts to #crossroads-station and DMs people (`main.go`). See `slackbot/README.md`. |
 | `TEST_DATABASE_URL` | for tests | Any Postgres the tests can create schemas in. The compose one works. |
 
 `.env` is gitignored. Keep secrets out of `.env.example`.

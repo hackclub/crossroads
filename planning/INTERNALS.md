@@ -12,7 +12,7 @@ The backend is a Go server (chi router) on Postgres. Postgres is the source of t
 
 ```
 backend/
-  main.go           reads config, connects, migrates, wires everything, starts the activity poller and Airtable sync, records visits
+  main.go           reads config, connects, migrates, wires everything, starts the activity poller, Airtable sync, project DMs and riders, records visits
   auth/             sign-in with Hack Club Auth, sessions, RequireUser / RequireRole, GET /api/me
   api/              every /api handler
     api.go            the routes, decode(), idParam()
@@ -28,6 +28,9 @@ backend/
     activity.go       the admin activity numbers
     audit.go          GET /api/superadmin/audit-log
     announcements.go  Slack announcements: drafts, posting, engagement
+    dms.go            Tickets, Please: Slack DMs about people's projects, and sending them
+    riders.go         GET /api/riders: participants who said yes, with Slack pictures, for the landing page's trains
+    me.go             PATCH /api/me: their name and settings
   hca/              Hack Club Auth client: OAuth, GET /api/v1/me, the public verification check
   hackatime/        Hackatime client: user stats and heartbeat spans, filtered to some projects
   airtable/         small Airtable REST client: create, update, list
@@ -36,6 +39,7 @@ backend/
   airtablesync/     the background copy into Airtable, and picking up fulfilled orders
   slackclicks/      POST /slack/clicks: the Slack bot records clicks on its announcements' buttons
   slack/            Slack Web API client with the bot token: post, edit, delete, profiles, reactions, channels
+  cachet/           asks Cachet, Hack Club's cache of Slack profiles, whether someone's picture is their own
   respond/          JSON, error and 500 responses
   db/
     migrations/       the schema (goose)
@@ -51,7 +55,7 @@ backend/
 ## A request's path
 
 1. chi's `Logger` and `Recoverer` middleware, then `auth.LoadSession`. It hashes the `crossroads_session` cookie, looks up the session and its user, and puts a `*db.User` in the request context. The user is read fresh on every request, so role changes and new balances apply immediately.
-2. `/auth/*` goes to `auth.Auth.Routes()`. `/api/*` goes to `api.API.Routes()`, which requires a user for everything, plus `RequireRole(reviewer, admin)` on `/api/review` and `RequireRole(admin)` on `/api/admin`.
+2. `/auth/*` goes to `auth.Auth.Routes()`. `/api/*` goes to `api.API.Routes()`, which requires a user for everything but `GET /api/riders` (and Sidekick's and the prereview script's routes, which have secrets of their own), plus `RequireRole(reviewer, admin)` on `/api/review` and `RequireRole(admin)` on `/api/admin`.
 3. A handler usually:
    - gets the user with `auth.User(ctx)`
    - reads path IDs with `idParam` and the body with `decode`; both respond themselves and return false on failure
@@ -237,6 +241,17 @@ Superadmins write announcements on Admin's Announce tab and post them to the sta
 - **Reactions, replies and channel size** are asked of Slack whenever an announcement is opened, not stored.
 - **Posting** locks the row, posts, then records the `ts`; if recording fails after Slack took it, the log says where the message is. Editing a posted one edits the message in Slack before saving, so the two can't disagree. Deleting one deletes the message and keeps the row and its clicks.
 - Every write is in the audit log as a request, with its body, like any other.
+
+## Tickets, Please
+
+The same bot DMs people when something happens to one of their projects, under the name **Tickets, Please** (`api/dms.go`). Four changes get a DM: a ship signed off (its hours, the tickets it paid, any boxes, and the feedback), a rejection (the feedback, and for a hard reject that it can't be shipped again), a rejection undone, and a project allowed to ship again. Nothing in between: a first approval waiting for the final check, comments and reviewer link fixes aren't DMed, and neither is HQ blocking a project by hand.
+
+- **An outbox.** The change writes its DM into `project_dms` in the same transaction (`addProjectDM`, from `decide`, `reopen` and `allowResubmit`), already worded, so there's a DM exactly when the change happened, whether it came from the review pages or Sidekick. `RunProjectDMs` sends what's due every 15 seconds.
+- **Only the real site DMs people.** Every other build sends every DM to #xr-station-test, saying who it was for (`DMRedirect`, set in `main.go` the way the announcement channel is), because dev-db is a copy of the real database with everyone's real Slack IDs.
+- **Failures:** Slack being down is tried again, waiting twice as long each time up to an hour. Rate limiting stops the pass. Errors that won't pass (`channel_not_found` and the like), someone with no Slack ID, and DMs more than a day old are given up on (`abandoned_at`, with `error` saying why), so a backend that gets a bot token late doesn't send stale news.
+- Text from people (project names, feedback) is escaped, so it can't make links or `@channel`s.
+- People can turn them off on the platform's Settings page (`users.dms_enabled`). Ones waiting to go out then are given up on too.
+- Only one server instance should send them, like the Airtable sync.
 
 ## Airtable sync
 

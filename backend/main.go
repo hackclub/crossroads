@@ -22,6 +22,7 @@ import (
 	"github.com/scherepi/crossroads-backend/api"
 	"github.com/scherepi/crossroads-backend/audit"
 	"github.com/scherepi/crossroads-backend/auth"
+	"github.com/scherepi/crossroads-backend/cachet"
 	"github.com/scherepi/crossroads-backend/db"
 	"github.com/scherepi/crossroads-backend/devgithub"
 	"github.com/scherepi/crossroads-backend/devhackatime"
@@ -58,6 +59,10 @@ var superadmins = []string{
 // Announcements from the admin page's Announce tab go to #crossroads-station
 // from the real site, and to #xr-station-test (private) from every other
 // build, dev and local, so trying them out never reaches the real channel.
+// Tickets, Please's DMs about people's projects work the same way: only the
+// real site sends them to the people they're for, and every other build
+// sends them all to #xr-station-test, since dev-db is a copy of the real
+// database.
 const (
 	realSite       = "https://crossroads.hackclub.com"
 	stationChannel = "C0CGSJP0L05" // #crossroads-station
@@ -160,17 +165,18 @@ func main() {
 	} else {
 		log.Print("UNIFIED_AIRTABLE_TOKEN isn't set, so reviews don't check the Unified YSWS DB for double-dipping")
 	}
-	announceChannel := testChannel
+	announceChannel, dmRedirect := testChannel, testChannel
 	if strings.TrimSuffix(publicURL, "/") == realSite {
-		announceChannel = stationChannel
+		announceChannel, dmRedirect = stationChannel, ""
 	}
-	// The Slack app's bot token, for posting announcements. Without it they
-	// can be drafted but not sent.
+	// The Slack app's bot token, for posting announcements and DMing people
+	// about their projects. Without it announcements can be drafted but not
+	// sent, and DMs wait (for a day at most) for a token.
 	var slackClient *slack.Client
 	if token := os.Getenv("SLACK_BOT_TOKEN"); token != "" {
 		slackClient = slack.New(slack.Config{Token: token})
 	} else {
-		log.Print("SLACK_BOT_TOKEN isn't set, so announcements can't be posted to Slack")
+		log.Print("SLACK_BOT_TOKEN isn't set, so announcements can't be posted to Slack and nobody is DMed about their projects")
 	}
 	apiRoutes := &api.API{
 		Pool:          pool,
@@ -192,10 +198,18 @@ func main() {
 		Unified:         unifiedLookup,
 		Slack:           slackClient,
 		AnnounceChannel: announceChannel,
+		DMRedirect:      dmRedirect,
+		Cachet:          cachet.New(""),
 	}
 
 	// Price locks are refunded if the tickets sell out before they're used.
 	go apiRoutes.RunPriceLockRefunds(ctx, 10*time.Minute)
+
+	// Tickets, Please's DMs about people's projects (api/dms.go).
+	go apiRoutes.RunProjectDMs(ctx, 15*time.Second)
+
+	// Participants riding the landing page's trains (api/riders.go).
+	go apiRoutes.RunRiders(ctx, 10*time.Minute)
 
 	// Each project's Hackatime time per day, for the admin activity page.
 	poller := &activity.Poller{Pool: pool, Queries: db.New(pool), Hackatime: apiRoutes.Hackatime, Start: hoursStart}

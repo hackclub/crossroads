@@ -69,6 +69,7 @@
 					{#if session.me.emporium}<a href="/emporium" title="The Smugglers' Emporium">Emporium</a>{/if}
 					{#if isReviewer()}<a href="/review">Review</a>{/if}
 					{#if isAdmin()}<a href="/admin">Admin</a>{/if}
+					<a href="/settings">Settings</a>
 					<button class="link-btn" onclick={signOut}>Sign out</button>
 				</span>
 			</div>

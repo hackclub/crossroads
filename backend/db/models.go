@@ -71,6 +71,70 @@ func AllOrderStatusValues() []OrderStatus {
 	}
 }
 
+type ProjectDmKind string
+
+const (
+	ProjectDmKindApproved        ProjectDmKind = "approved"
+	ProjectDmKindRejected        ProjectDmKind = "rejected"
+	ProjectDmKindReopened        ProjectDmKind = "reopened"
+	ProjectDmKindResubmitAllowed ProjectDmKind = "resubmit_allowed"
+)
+
+func (e *ProjectDmKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ProjectDmKind(s)
+	case string:
+		*e = ProjectDmKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ProjectDmKind: %T", src)
+	}
+	return nil
+}
+
+type NullProjectDmKind struct {
+	ProjectDmKind ProjectDmKind
+	Valid         bool // Valid is true if ProjectDmKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullProjectDmKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.ProjectDmKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ProjectDmKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullProjectDmKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ProjectDmKind), nil
+}
+
+func (e ProjectDmKind) Valid() bool {
+	switch e {
+	case ProjectDmKindApproved,
+		ProjectDmKindRejected,
+		ProjectDmKindReopened,
+		ProjectDmKindResubmitAllowed:
+		return true
+	}
+	return false
+}
+
+func AllProjectDmKindValues() []ProjectDmKind {
+	return []ProjectDmKind{
+		ProjectDmKindApproved,
+		ProjectDmKindRejected,
+		ProjectDmKindReopened,
+		ProjectDmKindResubmitAllowed,
+	}
+}
+
 type ShipEventKind string
 
 const (
@@ -659,6 +723,23 @@ type ProjectActivity struct {
 	UpdatedAt time.Time
 }
 
+type ProjectDm struct {
+	ID           int64
+	UserID       int64
+	ProjectID    int64
+	SubmissionID *int64
+	Kind         ProjectDmKind
+	Text         string
+	CreatedAt    time.Time
+	Attempts     int32
+	Error        *string
+	NextTryAt    time.Time
+	SentAt       *time.Time
+	ChannelID    *string
+	MessageTs    *string
+	AbandonedAt  *time.Time
+}
+
 type ProjectHackatimeProject struct {
 	UserID           int64
 	HackatimeProject string
@@ -845,4 +926,6 @@ type User struct {
 	EmporiumNote       *string
 	EmporiumGrantedBy  *int64
 	NameCustomized     bool
+	DmsEnabled         bool
+	OnLandingPage      *bool
 }

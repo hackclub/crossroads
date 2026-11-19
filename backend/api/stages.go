@@ -391,8 +391,19 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 			return out, err
 		}
 	}
-	if finalize {
+	// Tickets, Please DMs them when it's signed off or rejected.
+	switch {
+	case finalize:
 		if out.StampsPaid, out.Boxes, err = a.payOut(ctx, q, owner.ID, saved); err != nil {
+			return out, err
+		}
+		if err := addProjectDM(ctx, q, row.Project, &saved.ID, db.ProjectDmKindApproved,
+			a.approvedDM(row.Project, saved, out.StampsPaid, len(out.Boxes))); err != nil {
+			return out, err
+		}
+	case saved.Status == db.SubmissionStatusRejected:
+		if err := addProjectDM(ctx, q, row.Project, &saved.ID, db.ProjectDmKindRejected,
+			a.rejectedDM(row.Project, d.Feedback, d.BlockResubmit)); err != nil {
 			return out, err
 		}
 	}
