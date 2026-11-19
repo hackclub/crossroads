@@ -181,14 +181,6 @@ func (t hackatimeTotals) unclaimed(projectAccountedFor, userClaimed int) int {
 	return max(0, min(t.Project-projectAccountedFor, t.User-userClaimed))
 }
 
-func linkNames(links []db.ProjectHackatimeProject) []string {
-	names := make([]string, len(links))
-	for i, link := range links {
-		names[i] = link.HackatimeProject
-	}
-	return names
-}
-
 // hasPending says whether a project has a ship in review, at any stage.
 // sameNames says whether a and b hold the same names, in any order.
 func sameNames(a, b []string) bool {
@@ -408,7 +400,12 @@ func (a *API) getProject(w http.ResponseWriter, r *http.Request) {
 			respond.ServerError(w, r, err)
 			return
 		}
-		if totals, problem := a.hackatimeTotals(r, user, links, linkNames(userLinks)); problem != "" {
+		totals, problem, err := a.hackatimeTotals(r, user, project, links, userLinks)
+		if err != nil {
+			respond.ServerError(w, r, err)
+			return
+		}
+		if problem != "" {
 			out.HackatimeError = problem
 		} else {
 			accounted, _ := accountedFor(submissions)
@@ -679,7 +676,11 @@ func (a *API) submit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ask Hackatime before taking any locks; it can be slow.
-	totals, problem := a.hackatimeTotals(r, user, links, linkNames(userLinks))
+	totals, problem, err := a.hackatimeTotals(r, user, project, links, userLinks)
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
 	if problem != "" {
 		respond.Error(w, http.StatusUnprocessableEntity, problem)
 		return
@@ -820,7 +821,7 @@ type hackatimeProjectJSON struct {
 // their time since the event started, for picking which to link.
 func (a *API) listHackatimeProjects(w http.ResponseWriter, r *http.Request) {
 	user := auth.User(r.Context())
-	stats, problem := a.hackatimeStats(r, user, nil)
+	stats, problem := a.hackatimeStats(r, user, nil, a.HoursStart)
 	if problem != "" {
 		respond.Error(w, http.StatusUnprocessableEntity, problem)
 		return
@@ -846,31 +847,72 @@ func (a *API) listHackatimeProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 // hackatimeTotals asks Hackatime for the time on a project's links and on all
-// of its owner's links. If that fails, it returns a problem to show them.
-func (a *API) hackatimeTotals(r *http.Request, user *db.User, projectLinks, userLinks []string) (hackatimeTotals, string) {
-	stats, problem := a.hackatimeStats(r, user, projectLinks)
+// of its owner's links, each since its project's time starts counting. If
+// Hackatime fails, it returns a problem to show them.
+func (a *API) hackatimeTotals(r *http.Request, user *db.User, project db.Project, projectLinks []string,
+	userLinks []db.ProjectHackatimeProject) (hackatimeTotals, string, error) {
+	stats, problem := a.hackatimeStats(r, user, projectLinks, project.CountsFrom(a.HoursStart))
 	if problem != "" {
-		return hackatimeTotals{}, problem
+		return hackatimeTotals{}, problem, nil
 	}
 	totals := hackatimeTotals{Project: stats.Seconds, User: stats.Seconds, Convicted: stats.Convicted}
 	if len(userLinks) > len(projectLinks) {
-		all, problem := a.hackatimeStats(r, user, userLinks)
-		if problem != "" {
-			return hackatimeTotals{}, problem
+		groups, err := a.linksByStart(r.Context(), user.ID, userLinks)
+		if err != nil {
+			return hackatimeTotals{}, "", err
 		}
-		totals.User = all.Seconds
+		totals.User = 0
+		for _, g := range groups {
+			all, problem := a.hackatimeStats(r, user, g.links, g.start)
+			if problem != "" {
+				return hackatimeTotals{}, problem, nil
+			}
+			totals.User += all.Seconds
+		}
 	}
-	return totals, ""
+	return totals, "", nil
 }
 
-// hackatimeStats asks Hackatime for user's time on projects (or on everything,
-// if projects is empty). If that fails, it returns a problem to show them
-// instead.
-func (a *API) hackatimeStats(r *http.Request, user *db.User, projects []string) (hackatime.Stats, string) {
+// linkGroup is Hackatime projects whose time counts from the same moment.
+type linkGroup struct {
+	start time.Time
+	links []string
+}
+
+// linksByStart groups someone's Hackatime links by when their projects' time
+// starts counting (see db.Project.CountsFrom), since Hackatime totals time
+// from one moment at a time. Time that counted toward links in two groups at
+// once is then counted in both, which only loosens the owner's limit a little.
+func (a *API) linksByStart(ctx context.Context, userID int64, links []db.ProjectHackatimeProject) ([]linkGroup, error) {
+	projects, err := a.Queries.ListProjects(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	starts := map[int64]time.Time{}
+	for _, p := range projects {
+		starts[p.ID] = p.CountsFrom(a.HoursStart)
+	}
+	var groups []linkGroup
+	for _, link := range links {
+		start := starts[link.ProjectID]
+		i := slices.IndexFunc(groups, func(g linkGroup) bool { return g.start.Equal(start) })
+		if i < 0 {
+			i = len(groups)
+			groups = append(groups, linkGroup{start: start})
+		}
+		groups[i].links = append(groups[i].links, link.HackatimeProject)
+	}
+	return groups, nil
+}
+
+// hackatimeStats asks Hackatime for user's time since start on projects (or
+// on everything, if projects is empty). If that fails, it returns a problem to
+// show them instead.
+func (a *API) hackatimeStats(r *http.Request, user *db.User, projects []string, start time.Time) (hackatime.Stats, string) {
 	if user.SlackID == nil {
 		return hackatime.Stats{}, "Link Slack to your Hack Club account first. That's how we find you on Hackatime."
 	}
-	stats, err := a.Hackatime.Stats(r.Context(), *user.SlackID, projects)
+	stats, err := a.Hackatime.Stats(r.Context(), *user.SlackID, projects, start)
 	switch {
 	case errors.Is(err, hackatime.ErrNoAccount):
 		return stats, "We couldn't find a Hackatime account for your Slack. Sign in to Hackatime with the same Slack account."

@@ -23,7 +23,7 @@ The reward is a train journey across Europe with other teen builders, not a priz
 ## Operating Context
 
 - Sign-in is Hack Club Auth only; it also supplies name, Slack ID, birthday, address and identity verification, so the platform never asks for them.
-- Time comes from Hackatime, counted from midnight UTC Oct 30, 2026, the day the RSVP page first went up. Only approved hours count, totaled across all projects.
+- Time comes from Hackatime, counted from midnight UTC Aug 1, 2026 (it was Oct 30, the day the RSVP page first went up, until Nov 19). The move wasn't retroactive: projects that already had a ship approved or in review keep counting from Oct 30. Only approved hours count, totaled across all projects.
 - Reviewers can approve fewer hours than tracked; rejected time can be shipped again, cut time can't. Tickets are paid only once HQ signs a ship off.
 - Help happens on Slack in #crossroads-help.
 - Backend: Go API in `backend/` (routes in `planning/ROUTES.md`). Postgres is the source of truth; approved projects and orders are copied to Airtable.

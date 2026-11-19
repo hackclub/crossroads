@@ -37,7 +37,7 @@ func (a *API) unifiedPreview(ctx context.Context, row db.GetSubmissionForReviewR
 	}
 	r := unified.Review{
 		HackatimeProjects: s.HackatimeProjects, HackatimeSeconds: s.HackatimeSeconds, NewSeconds: s.NewSeconds,
-		ApprovedSeconds: *s.ApprovedSeconds, HoursStart: a.HoursStart, SubmittedAt: s.SubmittedAt,
+		ApprovedSeconds: *s.ApprovedSeconds, HoursStart: project.CountsFrom(a.HoursStart), SubmittedAt: s.SubmittedAt,
 		ReviewerSeconds: *s.ApprovedSeconds, TechnicalFeatures: deref(s.TechnicalFeatures), Notes: deref(s.InternalNotes),
 		OverrideReason: deref(s.OverrideReason), FraudReasons: s.FraudReasons,
 	}

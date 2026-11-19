@@ -191,7 +191,7 @@ func (q *Queries) LastProjectActivityUpdate(ctx context.Context) (time.Time, err
 }
 
 const listTrackedProjects = `-- name: ListTrackedProjects :many
-select projects.id, users.slack_id::text as slack_id,
+select projects.id, users.slack_id::text as slack_id, projects.hours_start,
     array_agg(project_hackatime_projects.hackatime_project order by project_hackatime_projects.hackatime_project)::text[] as hackatime_projects
 from projects
 join users on users.id = projects.user_id
@@ -204,6 +204,7 @@ order by projects.id
 type ListTrackedProjectsRow struct {
 	ID                int64
 	SlackID           string
+	HoursStart        *time.Time
 	HackatimeProjects []string
 }
 
@@ -218,7 +219,12 @@ func (q *Queries) ListTrackedProjects(ctx context.Context) ([]ListTrackedProject
 	var items []ListTrackedProjectsRow
 	for rows.Next() {
 		var i ListTrackedProjectsRow
-		if err := rows.Scan(&i.ID, &i.SlackID, &i.HackatimeProjects); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.SlackID,
+			&i.HoursStart,
+			&i.HackatimeProjects,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

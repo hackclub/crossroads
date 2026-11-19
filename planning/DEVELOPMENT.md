@@ -50,7 +50,7 @@ Postgres is on **5433**, not the usual 5432, so it doesn't collide with other pr
 
 `.env` is gitignored. Keep secrets out of `.env.example`.
 
-The date Hackatime time starts counting from isn't an environment variable. It's `hoursStart` in `backend/main.go` (midnight UTC, Oct 30 2026, the day the RSVP page first went up).
+The date Hackatime time starts counting from isn't an environment variable. It's `hoursStart` in `backend/main.go` (midnight UTC, Aug 1 2026), unless a project has its own `hours_start` (see INTERNALS.md).
 
 ### Making yourself an admin
 

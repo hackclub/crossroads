@@ -126,7 +126,7 @@ Rules live in the database wherever possible, so a bug in Go can't break them. S
 
 This is the subtlest part, and it exists to stop the same time being paid twice ("prevent duping wherever possible" was the brief).
 
-Time comes from Hackatime's `GET /api/v1/users/{slack_id}/stats?features=projects&start_date=…&filter_by_project=a,b`, counting from `hoursStart` (midnight UTC, Oct 30 2026). Hackatime itself counts overlapping time once within a filtered total, but separate calls for separate projects each count it in full.
+Time comes from Hackatime's `GET /api/v1/users/{slack_id}/stats?features=projects&start_date=…&filter_by_project=a,b`, counting from `hoursStart` (midnight UTC, Aug 1 2026), or from the project's `hours_start` if it has one (`db.Project.CountsFrom`). Someone's total across all their links asks once per start their projects have and adds them up. Hackatime itself counts overlapping time once within a filtered total, but separate calls for separate projects each count it in full.
 
 A submission's `new_seconds` is `hackatimeTotals.unclaimed`, the smaller of two limits, and never below zero:
 
@@ -267,7 +267,7 @@ Details:
 3. Asks Hackatime for each one's heartbeat spans (`/users/{slack_id}/heartbeats/spans`, filtered to the linked projects), splits them at UTC midnight and adds them up per day. Spans add up to the same total as the stats call.
 4. In one transaction per project, deletes its rows for the days covered and writes the new ones, so time that moves between projects (relinking) or disappears ends up right.
 
-The first pass each UTC day covers everything since Hackatime time starts counting (Oct 30), which picks up relinked projects and late heartbeats. The rest cover yesterday and today. Private or missing Hackatime accounts are skipped; other errors are logged and retried next pass.
+The first pass each UTC day covers everything since each project's time starts counting (Aug 1, or its `hours_start`), which picks up relinked projects and late heartbeats. The rest cover yesterday and today. Private or missing Hackatime accounts are skipped; other errors are logged and retried next pass.
 
 `activity.Visits` is middleware, right after `auth.LoadSession`, that records platform use. A signed-in person's first request each UTC day adds a `platform_activity` row; the server then remembers that day in memory, so their later requests don't touch the database. Several instances each remember on their own, which only costs an insert that does nothing. A failed insert is logged and retried on the person's next request. Migration 10 filled in earlier days from existing sessions' sign-in times. Sign-ups per day come from `users.created_at`.
 
@@ -310,7 +310,7 @@ Settled with the organizer while building this (Nov 3 and 4, 2026):
 - **Postgres as the source of truth, synced one way to Airtable.** The shop needs transactions so nobody can spend the same stamps twice, and Airtable has none (and a limit of 5 requests a second).
 - **Rates and qualifying:** 30 stamps per approved hour. The ticket costs 60 hours' worth (1,800) in its first batch, then 5 hours more for each batch of 6 after that, up to 80 hours for the last of the 30. A price lock costs 5 hours' worth and is on top of the ticket, so it pays off only if the price would have gone up two batches or more (decided 2026-11-06). Qualifying means buying the ticket, so spending stamps on other things delays it.
 - **Launch sale:** from launch until 11:59 PM Eastern on Nov 18 2026, when the community goal closes, everything is 10% off except the ticket and price locks, so qualifying still takes 60 hours (decided 2026-11-06 for the first week, to Nov 13; extended 2026-11-11).
-- **Hours count from midnight UTC on Oct 30 2026 (the day the RSVP page first went up; moved from Nov 3 on Nov 6), and only approved hours count,** totaled across all of a person's projects.
+- **Hours count from midnight UTC on Aug 1 2026 (first Nov 3, then Oct 30 from Nov 6, the day the RSVP page first went up; moved back to Aug 1 on Nov 19), and only approved hours count,** totaled across all of a person's projects. Moving it back wasn't retroactive: migration 31 gave every project with a ship approved or in review `hours_start` Oct 30, so time before then can't be shipped on top of what was weighed then. Projects never shipped, or only rejected, count from Aug 1.
 - **Verification:** submitting doesn't need Hack Club Auth verification. Buying needs a verified identity that HCA says is YSWS-eligible.
 - **Milestones count approved hours, not raw Hackatime hours,** so they can't be farmed. The catch is that the first box only arrives after the first approval.
 - **Special stamps:**

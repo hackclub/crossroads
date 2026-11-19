@@ -87,12 +87,18 @@ func (p *Poller) Poll(ctx context.Context, since time.Time) error {
 		return err
 	}
 	now := p.now()
-	from := Day(since)
-	if from.Before(p.Start) {
-		from = p.Start
-	}
 	var errs []error
 	for _, project := range projects {
+		// A project that kept an older start (see db.Project.CountsFrom)
+		// only has its time from then on kept.
+		start := p.Start
+		if project.HoursStart != nil {
+			start = *project.HoursStart
+		}
+		from := Day(since)
+		if from.Before(start) {
+			from = start
+		}
 		spans, err := p.Hackatime.Spans(ctx, project.SlackID, project.HackatimeProjects, from, now)
 		switch {
 		case errors.Is(err, hackatime.ErrNoAccount), errors.Is(err, hackatime.ErrPrivate):

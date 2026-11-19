@@ -649,6 +649,7 @@ type Project struct {
 	ResubmitBlockedAt   *time.Time
 	ResubmitBlockedBy   *int64
 	ResubmitBlockReason *string
+	HoursStart          *time.Time
 }
 
 type ProjectActivity struct {

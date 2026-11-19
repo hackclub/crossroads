@@ -99,9 +99,9 @@ func fraudReasonText(reasons []string, checks []check) string {
 }
 
 // windowStart is when the time a ship claims starts: the project's last
-// approved ship before it, or the start of the event.
-func (a *API) windowStart(ctx context.Context, s db.Submission) (start time.Time, reship bool, err error) {
-	start = a.HoursStart
+// approved ship before it, or when the project's time starts counting.
+func (a *API) windowStart(ctx context.Context, project db.Project, s db.Submission) (start time.Time, reship bool, err error) {
+	start = project.CountsFrom(a.HoursStart)
 	earlier, err := a.Queries.ListSubmissions(ctx, s.ProjectID)
 	if err != nil {
 		return start, false, err
@@ -119,7 +119,7 @@ func (a *API) windowStart(ctx context.Context, s db.Submission) (start time.Time
 func (a *API) runChecks(ctx context.Context, row db.GetSubmissionForReviewRow, settings db.ReviewSetting) (checkReport, error) {
 	s, project, user := row.Submission, row.Project, row.User
 	var report checkReport
-	since, reship, err := a.windowStart(ctx, s)
+	since, reship, err := a.windowStart(ctx, project, s)
 	if err != nil {
 		return report, err
 	}
@@ -141,7 +141,9 @@ func (a *API) runChecks(ctx context.Context, row db.GetSubmissionForReviewRow, s
 	repoURL, demoURL := deref(project.RepoUrl), deref(project.DemoUrl)
 	_, _, onGitHub := github.ParseRepo(repoURL)
 	if user.SlackID != nil {
-		wg.Go(func() { stats, statsErr = a.Hackatime.Stats(ctx, *user.SlackID, s.HackatimeProjects) })
+		wg.Go(func() {
+			stats, statsErr = a.Hackatime.Stats(ctx, *user.SlackID, s.HackatimeProjects, project.CountsFrom(a.HoursStart))
+		})
 	}
 	switch {
 	case onGitHub && a.GitHub != nil:

@@ -26,7 +26,7 @@
 			const end = shift(monthStart(today()), -1);
 			return [monthStart(end), end];
 		}],
-		['all', 'All time', () => ['2026-10-30', today()]]
+		['all', 'All time', () => ['2026-08-01', today()]]
 	];
 
 	let preset = $state('week');

@@ -25,7 +25,8 @@ func (e *env) withOutsideChecks(t *testing.T) {
 	e.api.GitHub = github.New(github.Config{BaseURL: server.URL})
 	e.api.Links = linkcheck.Dev{}
 	e.api.Unified = unified.Dev{}
-	e.api.HoursStart = time.Now().AddDate(0, 0, -10)
+	e.api.HoursStart = fake.HoursStart
+	e.hackatime.start = fake.HoursStart
 }
 
 // shipLinks ships 3 hours of a project with these links.

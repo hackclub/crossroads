@@ -13,7 +13,7 @@ const allowResubmit = `-- name: AllowResubmit :one
 update projects
 set resubmit_blocked_at = null, resubmit_blocked_by = null, resubmit_block_reason = null
 where id = $1 and resubmit_blocked_at is not null
-returning id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason
+returning id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason, hours_start
 `
 
 func (q *Queries) AllowResubmit(ctx context.Context, id int64) (Project, error) {
@@ -32,6 +32,7 @@ func (q *Queries) AllowResubmit(ctx context.Context, id int64) (Project, error) 
 		&i.ResubmitBlockedAt,
 		&i.ResubmitBlockedBy,
 		&i.ResubmitBlockReason,
+		&i.HoursStart,
 	)
 	return i, err
 }
@@ -57,7 +58,7 @@ func (q *Queries) BlockResubmit(ctx context.Context, arg BlockResubmitParams) er
 const createProject = `-- name: CreateProject :one
 insert into projects (user_id, name, description, repo_url, demo_url, screenshot_url)
 values ($1, $2, $3, $4, $5, $6)
-returning id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason
+returning id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason, hours_start
 `
 
 type CreateProjectParams struct {
@@ -92,6 +93,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.ResubmitBlockedAt,
 		&i.ResubmitBlockedBy,
 		&i.ResubmitBlockReason,
+		&i.HoursStart,
 	)
 	return i, err
 }
@@ -111,7 +113,7 @@ func (q *Queries) DeleteProject(ctx context.Context, arg DeleteProjectParams) er
 }
 
 const getAnyProject = `-- name: GetAnyProject :one
-select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason from projects where id = $1
+select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason, hours_start from projects where id = $1
 `
 
 // A project by ID, whoever owns it, for HQ and admins.
@@ -131,12 +133,13 @@ func (q *Queries) GetAnyProject(ctx context.Context, id int64) (Project, error) 
 		&i.ResubmitBlockedAt,
 		&i.ResubmitBlockedBy,
 		&i.ResubmitBlockReason,
+		&i.HoursStart,
 	)
 	return i, err
 }
 
 const getProject = `-- name: GetProject :one
-select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason from projects where id = $1 and user_id = $2
+select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason, hours_start from projects where id = $1 and user_id = $2
 `
 
 type GetProjectParams struct {
@@ -160,6 +163,7 @@ func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (Project
 		&i.ResubmitBlockedAt,
 		&i.ResubmitBlockedBy,
 		&i.ResubmitBlockReason,
+		&i.HoursStart,
 	)
 	return i, err
 }
@@ -228,7 +232,7 @@ func (q *Queries) ListProjectHackatimeLinks(ctx context.Context, projectID int64
 }
 
 const listProjects = `-- name: ListProjects :many
-select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason from projects where user_id = $1 order by id desc
+select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason, hours_start from projects where user_id = $1 order by id desc
 `
 
 func (q *Queries) ListProjects(ctx context.Context, userID int64) ([]Project, error) {
@@ -253,6 +257,7 @@ func (q *Queries) ListProjects(ctx context.Context, userID int64) ([]Project, er
 			&i.ResubmitBlockedAt,
 			&i.ResubmitBlockedBy,
 			&i.ResubmitBlockReason,
+			&i.HoursStart,
 		); err != nil {
 			return nil, err
 		}
@@ -265,7 +270,7 @@ func (q *Queries) ListProjects(ctx context.Context, userID int64) ([]Project, er
 }
 
 const lockProject = `-- name: LockProject :one
-select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason from projects where id = $1 and user_id = $2 for update
+select id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason, hours_start from projects where id = $1 and user_id = $2 for update
 `
 
 type LockProjectParams struct {
@@ -289,6 +294,7 @@ func (q *Queries) LockProject(ctx context.Context, arg LockProjectParams) (Proje
 		&i.ResubmitBlockedAt,
 		&i.ResubmitBlockedBy,
 		&i.ResubmitBlockReason,
+		&i.HoursStart,
 	)
 	return i, err
 }
@@ -310,7 +316,7 @@ func (q *Queries) UnlinkHackatimeProject(ctx context.Context, arg UnlinkHackatim
 const updateProject = `-- name: UpdateProject :one
 update projects set name = $3, description = $4, repo_url = $5, demo_url = $6, screenshot_url = $7
 where id = $1 and user_id = $2
-returning id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason
+returning id, user_id, name, description, repo_url, demo_url, screenshot_url, created_at, updated_at, resubmit_blocked_at, resubmit_blocked_by, resubmit_block_reason, hours_start
 `
 
 type UpdateProjectParams struct {
@@ -347,6 +353,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.ResubmitBlockedAt,
 		&i.ResubmitBlockedBy,
 		&i.ResubmitBlockReason,
+		&i.HoursStart,
 	)
 	return i, err
 }
