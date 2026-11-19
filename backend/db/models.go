@@ -819,6 +819,8 @@ type ShopItem struct {
 	Emporium          bool
 	GrantCents        *int32
 	GrantCentsPerHour *int32
+	RegionRule        string
+	RegionCountries   []string
 }
 
 type SlackClick struct {

@@ -52,6 +52,8 @@ type shopItemJSON struct {
 	// priced at. price is what one piece costs; buy as many as you like.
 	GrantCents        *int32 `json:"grant_cents"`
 	GrantCentsPerHour *int32 `json:"grant_cents_per_hour"`
+	// Where it can go, by home country (regions.go).
+	Regions regionsJSON `json:"regions"`
 }
 
 func toShopItemJSON(item db.ShopItem, bought int64) shopItemJSON {
@@ -73,6 +75,7 @@ func toShopItemJSON(item db.ShopItem, bought int64) shopItemJSON {
 		Emporium:          item.Emporium,
 		GrantCents:        item.GrantCents,
 		GrantCentsPerHour: item.GrantCentsPerHour,
+		Regions:           toRegionsJSON(item),
 	}
 }
 
@@ -209,8 +212,13 @@ func (a *API) respondItems(w http.ResponseWriter, r *http.Request, items []db.Sh
 		return
 	}
 	now := time.Now()
+	home := homeCountry(user.Address)
 	out := []shopItemJSON{}
 	for _, item := range items {
+		// What can't be sent to their home country isn't there for them.
+		if !goesTo(item, home) {
+			continue
+		}
 		j := toShopItemJSON(item, bought[item.ID])
 		if a.onSale(item, now) {
 			j.Sale = &saleJSON{FullPrice: item.Price, Percent: salePercent, EndsAt: a.SaleEnd}
@@ -295,6 +303,10 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
+	if home := homeCountry(locked.Address); !goesTo(item, home) {
+		respond.Error(w, http.StatusUnprocessableEntity, fmt.Sprintf("%s can't be sent to %s, where your Hack Club address is.", item.Name, home))
+		return
+	}
 	quantity := int32(1)
 	switch {
 	case item.Kind == db.ShopItemKindGrant && body.Quantity != nil:
@@ -323,6 +335,10 @@ func (a *API) buy(w http.ResponseWriter, r *http.Request) {
 	case item.Kind == db.ShopItemKindPhysical:
 		if problem := cleanAddress(body.ShippingAddress); problem != "" {
 			respond.Error(w, http.StatusUnprocessableEntity, problem)
+			return
+		}
+		if to := countryCode(body.ShippingAddress.Country); !goesTo(item, to) {
+			respond.Error(w, http.StatusUnprocessableEntity, fmt.Sprintf("%s can't be sent to %s.", item.Name, to))
 			return
 		}
 		address, _ = json.Marshal(body.ShippingAddress)
@@ -510,6 +526,9 @@ type shopItemFields struct {
 	// cents. A grant's price follows from them, so price is ignored.
 	GrantCents        optional[int32] `json:"grant_cents"`
 	GrantCentsPerHour optional[int32] `json:"grant_cents_per_hour"`
+	// Where it can go: {"rule": "only", "countries": ["US"]} or
+	// {"rule": "except", "countries": ["IN"]}, or everywhere.
+	Regions *regionsJSON `json:"regions"`
 }
 
 func (f shopItemFields) apply(item *db.ShopItem, stampsPerHour int) string {
@@ -557,6 +576,14 @@ func (f shopItemFields) apply(item *db.ShopItem, stampsPerHour int) string {
 	}
 	if f.GrantCentsPerHour.Set {
 		item.GrantCentsPerHour = f.GrantCentsPerHour.Value
+	}
+	if item.RegionRule == "" {
+		item.RegionRule = regionsEverywhere
+	}
+	if f.Regions != nil {
+		if problem := applyRegions(item, *f.Regions); problem != "" {
+			return problem
+		}
 	}
 	isGrant := item.Kind == db.ShopItemKindGrant
 	if isGrant && item.GrantCents != nil && item.GrantCentsPerHour != nil && *item.GrantCents > 0 && *item.GrantCentsPerHour > 0 {
@@ -653,6 +680,7 @@ func (a *API) adminCreateShopItem(w http.ResponseWriter, r *http.Request) {
 		StipendCents: item.StipendCents, Stock: item.Stock, MaxPerUser: item.MaxPerUser, Active: item.Active,
 		Position: item.Position, BatchSize: item.BatchSize, BatchStep: item.BatchStep,
 		Emporium: item.Emporium, GrantCents: item.GrantCents, GrantCentsPerHour: item.GrantCentsPerHour,
+		RegionRule: item.RegionRule, RegionCountries: toRegionsJSON(item).Countries,
 	})
 	if err != nil {
 		respond.ServerError(w, r, err)
@@ -698,6 +726,7 @@ func (a *API) adminUpdateShopItem(w http.ResponseWriter, r *http.Request) {
 		StipendCents: item.StipendCents, Stock: item.Stock, MaxPerUser: item.MaxPerUser, Active: item.Active,
 		Position: item.Position, BatchSize: item.BatchSize, BatchStep: item.BatchStep,
 		Emporium: item.Emporium, GrantCents: item.GrantCents, GrantCentsPerHour: item.GrantCentsPerHour,
+		RegionRule: item.RegionRule, RegionCountries: toRegionsJSON(item).Countries,
 	})
 	if err != nil {
 		respond.ServerError(w, r, err)

@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { api, get } from '#lib/api.js';
 	import { session, refresh } from '#lib/session.svelte.js';
-	import { stampHours } from '#lib/format.js';
+	import { stampHours, homeCountry } from '#lib/format.js';
 	import Station from '#lib/Station.svelte';
 	import StampIcon from '#lib/StampIcon.svelte';
 
@@ -123,6 +123,7 @@
 		<div class="stack-sm">
 			<h1>Shop</h1>
 			<p>You have {stamps}<StampIcon /> tickets. You earn {rate} per approved hour.</p>
+			{#if homeCountry(session.me)}<p class="small muted">Showing what can be sent to {homeCountry(session.me)}, where your Hack Club address is.</p>{/if}
 		</div>
 		<a class="btn ghost" href="/shop/orders">My orders</a>
 	</div>

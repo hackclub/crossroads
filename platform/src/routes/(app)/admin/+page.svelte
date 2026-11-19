@@ -18,7 +18,7 @@
 	const tabs = $derived({
 		people: ['People', People],
 		review: ['Review', ReviewSettings],
-		reviewers: ['Reviewer stats', ReviewerStats],
+		reviewers: ['Admin review stats', ReviewerStats],
 		blocked: ["Can't ship again", BlockedProjects],
 		stats: ['Stats', Stats],
 		orders: ['Orders', Orders],

@@ -112,6 +112,9 @@ func (a *API) signedInRoutes(r chi.Router) {
 		r.Use(auth.RequireRole(db.UserRoleReviewer, db.UserRoleAdmin))
 		r.Get("/queue", a.reviewQueue)
 		r.Get("/stats", a.reviewStats)
+		r.Get("/reviewer-stats", a.reviewReviewerStats)
+		r.Get("/reviews", a.reviewReviewLog)
+		r.Get("/insights", a.reviewInsights)
 		r.Post("/next", a.claimNext)
 		r.Route("/submissions/{submissionID}", func(r chi.Router) {
 			r.Get("/", a.getSubmissionForReview)

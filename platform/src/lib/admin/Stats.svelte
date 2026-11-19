@@ -8,6 +8,7 @@
 	import { get } from '../api.js';
 	import { hours, date, utcDay } from '../format.js';
 	import DailyChart from './DailyChart.svelte';
+	import HoursSankey from './HoursSankey.svelte';
 
 	const RANGES = [
 		[7, '7 days'],
@@ -45,6 +46,11 @@
 	const span = $derived(!data ? '' : data.days.length === range ? `in the last ${range} days` : `since ${utcDay(data.days[0].day)}`);
 	const hoursOf = (d) => d.seconds / 3600;
 	const formatHours = (h) => (Number.isInteger(h) ? h : h.toFixed(1)) + 'h';
+	const shippedOf = (d) => d.shipped_seconds / 3600;
+
+	// The hours flow (all time): a node's numbers by key.
+	const flow = $derived(data ? Object.fromEntries(data.hours.nodes.map((n) => [n.key, n])) : {});
+	const ofLogged = (seconds) => (flow.logged?.seconds ? `${((seconds / flow.logged.seconds) * 100).toFixed(1)}%` : '–');
 </script>
 
 <div class="stack">
@@ -96,7 +102,33 @@
 					<span class="big">{hours(sum('seconds'))}</span>
 					<span class="small muted">{span}; {hours(today.seconds)} today</span>
 				</div>
+				<div class="card tile">
+					<span class="small muted">In the Unified YSWS DB</span>
+					<span class="big">{hours(flow.unified.seconds)}</span>
+					<span class="small muted">all time; {ofLogged(flow.unified.seconds)} of every hour logged, on {flow.unified.ships.toLocaleString()} ship{flow.unified.ships === 1 ? '' : 's'}</span>
+				</div>
 			</div>
+
+			<section class="card people">
+				<div><h3>How far people get</h3><p class="small muted">Participants who ever reached each step. All time, whatever the range above.</p></div>
+				<ol class="steps">
+					{#each data.people as step, i (step.key)}
+						{@const first = data.people[0].people}
+						{@const before = i ? data.people[i - 1].people : 0}
+						<li>
+							<span class="step-label">{step.label}</span>
+							<span class="track" title="{step.people} of {first} participants"><span class="fill" style:width="{first ? (step.people / first) * 100 : 0}%"></span></span>
+							<span class="count">{step.people.toLocaleString()}</span>
+							<span class="rate">{first ? `${Math.round((step.people / first) * 100)}%` : '–'}{#if i}<span class="muted"> · {before ? `${Math.round((step.people / before) * 100)}% of the step before` : '–'}</span>{/if}</span>
+						</li>
+					{/each}
+				</ol>
+			</section>
+
+			<section class="card hours">
+				<div><h3>Where every hour went</h3><p class="small muted">Every hour logged on a linked project, from shipping to the Unified YSWS DB. All time, whatever the range above.</p></div>
+				<HoursSankey nodes={data.hours.nodes} links={data.hours.links} />
+			</section>
 
 			<div class="charts">
 				<section class="card">
@@ -104,12 +136,8 @@
 					<DailyChart days={data.days} value={(d) => d.visitors} label="on the platform" />
 				</section>
 				<section class="card">
-					<div><h3>Sign-ups</h3><p class="small muted">New participants each day</p></div>
+					<div><h3>Sign-ups</h3><p class="small muted">New participants each day; {today.participants.toLocaleString()} in all by today</p></div>
 					<DailyChart days={data.days} value={(d) => d.sign_ups} label="signed up" />
-				</section>
-				<section class="card">
-					<div><h3>Participants</h3><p class="small muted">Signed up by the end of each day</p></div>
-					<DailyChart days={data.days} value={(d) => d.participants} kind="area" label="participants" />
 				</section>
 				<section class="card">
 					<div><h3>Working on projects</h3><p class="small muted">Participants whose linked projects got {THRESHOLDS.find(([m]) => m === minMinutes)[1]}</p></div>
@@ -123,14 +151,19 @@
 					<div><h3>Hours logged</h3><p class="small muted">Hackatime time on linked projects</p></div>
 					<DailyChart days={data.days} value={hoursOf} format={formatHours} integer={false} label="logged" />
 				</section>
+				<section class="card">
+					<div><h3>Hours shipped</h3><p class="small muted">Hours claimed by the ships each day, whatever became of them</p></div>
+					<DailyChart days={data.days} value={shippedOf} format={formatHours} integer={false} label="shipped" />
+				</section>
 			</div>
 
-			<div class="card table-wrap">
+			<details class="card days">
+				<summary class="small">Every day as a table, newest first</summary>
+				<div class="table-wrap">
 				<table>
-					<caption class="small muted">Every day, newest first</caption>
 					<thead>
 						<tr>
-							<th>Day (UTC)</th><th>On the platform</th><th>Signed up</th><th>Participants</th><th>Working on projects</th><th>Projects worked on</th><th>Hours</th>
+							<th>Day (UTC)</th><th>On the platform</th><th>Signed up</th><th>Participants</th><th>Working on projects</th><th>Projects worked on</th><th>Hours</th><th>Hours shipped</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -138,12 +171,13 @@
 							<tr>
 								<td>{utcDay(d.day)}</td><td>{d.visitors}</td><td>{d.sign_ups}</td><td>{d.participants}</td><td>{d.active_participants}</td><td
 									>{d.active_projects}</td
-								><td>{hours(d.seconds)}</td>
+								><td>{hours(d.seconds)}</td><td>{hours(d.shipped_seconds)}</td>
 							</tr>
 						{/each}
 					</tbody>
 				</table>
-			</div>
+				</div>
+			</details>
 			<p class="small muted">
 				Participants only; reviewers and admins aren't counted. Days are UTC. Project time is refreshed every 30 minutes ({data.updated_at
 					? `last ${date(data.updated_at)}`
@@ -204,8 +238,25 @@
 		font-size: 30px;
 	}
 
-	caption {
-		padding: 10px 16px;
-		text-align: left;
+
+	.hours { gap: 12px; }
+
+	/* How far people get: one bar per step, all out of everyone signed up,
+	   in the daily charts' blue. */
+	.people { gap: 12px; }
+	.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+	.steps li { display: grid; grid-template-columns: minmax(9em, 14em) minmax(0, 1fr) 4em minmax(12em, 18em); align-items: center; gap: 14px; }
+	.step-label { font-size: 18px; }
+	.track { height: 12px; border-radius: 4px; background: rgb(255 255 255 / 0.06); overflow: hidden; }
+	.fill { display: block; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; background: #3987e5; }
+	.count { text-align: right; font-size: 22px; font-variant-numeric: tabular-nums; }
+	.rate { font-size: 16px; font-variant-numeric: tabular-nums; }
+	@media (max-width: 720px) {
+		.steps li { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; }
+		.track { grid-column: 1 / -1; grid-row: 2; }
+		.rate { grid-column: 1 / -1; }
 	}
+
+	.days summary { cursor: pointer; color: var(--muted); }
+	.days[open] summary { margin-bottom: 8px; }
 </style>
