@@ -197,7 +197,7 @@ func ReviewOf(row db.ListSubmissionsToSyncRow, hoursStart time.Time) unified.Rev
 		ReviewerDeflation: deref(row.ReviewerDeflation), TechnicalFeatures: deref(sub.TechnicalFeatures),
 		Notes: deref(sub.InternalNotes), OverrideReason: deref(sub.OverrideReason),
 		FraudReasons: sub.FraudReasons, FraudReviewer: row.FraudReviewerName, FraudSeconds: row.FraudSeconds,
-		FraudDeflation: deref(row.FraudDeflation), HQName: row.HqReviewerName, HQDeflation: deref(row.HqDeflation),
+		FraudDeflation: deref(row.FraudDeflation), FraudNotes: deref(row.FraudNotes), HQName: row.HqReviewerName, HQDeflation: deref(row.HqDeflation),
 		EarlierApproval: row.EarlierApprovals > 0,
 	}
 	if row.ReviewerSeconds != nil {

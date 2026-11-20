@@ -22,6 +22,10 @@ select sqlc.embed(submissions), sqlc.embed(projects), sqlc.embed(users),
     (select ship_events.deflation_reason from ship_events
         where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
         order by ship_events.id desc limit 1) as fraud_deflation,
+    -- What the fraud reviewer wrote about what they checked.
+    (select ship_events.internal from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
+        order by ship_events.id desc limit 1) as fraud_notes,
     (select ship_events.deflation_reason from ship_events
         where ship_events.submission_id = submissions.id and ship_events.kind = 'final_approval'
         order by ship_events.id desc limit 1) as hq_deflation
@@ -64,6 +68,10 @@ select sqlc.embed(submissions), sqlc.embed(projects), sqlc.embed(users),
     (select ship_events.deflation_reason from ship_events
         where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
         order by ship_events.id desc limit 1) as fraud_deflation,
+    -- What the fraud reviewer wrote about what they checked.
+    (select ship_events.internal from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
+        order by ship_events.id desc limit 1) as fraud_notes,
     (select ship_events.deflation_reason from ship_events
         where ship_events.submission_id = submissions.id and ship_events.kind = 'final_approval'
         order by ship_events.id desc limit 1) as hq_deflation

@@ -16,7 +16,8 @@ import (
 // each is), and the groups they're in, for checking filters.
 func auditKinds() []string {
 	kinds := []string{"request", "sign_in", "special_stamp", "special_stamp.issued", "special_stamp.used",
-		"box", "box.granted", "stamps", "role", "role.changed", "order"}
+		"box", "box.granted", "stamps", "role", "role.changed", "order",
+		"review_pay", "review_pay.tickets", "review_pay.usd"}
 	for _, kind := range db.AllStampEntryKindValues() {
 		kinds = append(kinds, "stamps."+string(kind))
 	}

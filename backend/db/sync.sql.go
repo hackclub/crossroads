@@ -125,7 +125,7 @@ func (q *Queries) ListOrdersToSync(ctx context.Context) ([]ListOrdersToSyncRow, 
 }
 
 const listSubmissionsToSubmitUnified = `-- name: ListSubmissionsToSubmitUnified :many
-select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, submissions.notes_for_reviewers, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, projects.resubmit_blocked_at, projects.resubmit_blocked_by, projects.resubmit_block_reason, projects.hours_start, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized, users.dms_enabled, users.on_landing_page,
+select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, submissions.notes_for_reviewers, submissions.returned_to, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, projects.resubmit_blocked_at, projects.resubmit_blocked_by, projects.resubmit_block_reason, projects.hours_start, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized, users.dms_enabled, users.on_landing_page,
     (select count(*) from submissions earlier
         where earlier.project_id = submissions.project_id
             and earlier.status = 'approved'
@@ -147,6 +147,10 @@ select submissions.id, submissions.project_id, submissions.status, submissions.h
     (select ship_events.deflation_reason from ship_events
         where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
         order by ship_events.id desc limit 1) as fraud_deflation,
+    -- What the fraud reviewer wrote about what they checked.
+    (select ship_events.internal from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
+        order by ship_events.id desc limit 1) as fraud_notes,
     (select ship_events.deflation_reason from ship_events
         where ship_events.submission_id = submissions.id and ship_events.kind = 'final_approval'
         order by ship_events.id desc limit 1) as hq_deflation
@@ -176,6 +180,7 @@ type ListSubmissionsToSubmitUnifiedRow struct {
 	ReviewerDeflation *string
 	FraudSeconds      *int32
 	FraudDeflation    *string
+	FraudNotes        *string
 	HqDeflation       *string
 }
 
@@ -221,6 +226,7 @@ func (q *Queries) ListSubmissionsToSubmitUnified(ctx context.Context) ([]ListSub
 			&i.Submission.TechnicalFeatures,
 			&i.Submission.DeflationReason,
 			&i.Submission.NotesForReviewers,
+			&i.Submission.ReturnedTo,
 			&i.Project.ID,
 			&i.Project.UserID,
 			&i.Project.Name,
@@ -268,6 +274,7 @@ func (q *Queries) ListSubmissionsToSubmitUnified(ctx context.Context) ([]ListSub
 			&i.ReviewerDeflation,
 			&i.FraudSeconds,
 			&i.FraudDeflation,
+			&i.FraudNotes,
 			&i.HqDeflation,
 		); err != nil {
 			return nil, err
@@ -281,7 +288,7 @@ func (q *Queries) ListSubmissionsToSubmitUnified(ctx context.Context) ([]ListSub
 }
 
 const listSubmissionsToSync = `-- name: ListSubmissionsToSync :many
-select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, submissions.notes_for_reviewers, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, projects.resubmit_blocked_at, projects.resubmit_blocked_by, projects.resubmit_block_reason, projects.hours_start, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized, users.dms_enabled, users.on_landing_page,
+select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, submissions.notes_for_reviewers, submissions.returned_to, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, projects.resubmit_blocked_at, projects.resubmit_blocked_by, projects.resubmit_block_reason, projects.hours_start, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized, users.dms_enabled, users.on_landing_page,
     (select count(*) from submissions earlier
         where earlier.project_id = submissions.project_id
             and earlier.status = 'approved'
@@ -303,6 +310,10 @@ select submissions.id, submissions.project_id, submissions.status, submissions.h
     (select ship_events.deflation_reason from ship_events
         where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
         order by ship_events.id desc limit 1) as fraud_deflation,
+    -- What the fraud reviewer wrote about what they checked.
+    (select ship_events.internal from ship_events
+        where ship_events.submission_id = submissions.id and ship_events.kind = 'fraud_pass'
+        order by ship_events.id desc limit 1) as fraud_notes,
     (select ship_events.deflation_reason from ship_events
         where ship_events.submission_id = submissions.id and ship_events.kind = 'final_approval'
         order by ship_events.id desc limit 1) as hq_deflation
@@ -329,6 +340,7 @@ type ListSubmissionsToSyncRow struct {
 	ReviewerDeflation *string
 	FraudSeconds      *int32
 	FraudDeflation    *string
+	FraudNotes        *string
 	HqDeflation       *string
 }
 
@@ -369,6 +381,7 @@ func (q *Queries) ListSubmissionsToSync(ctx context.Context) ([]ListSubmissionsT
 			&i.Submission.TechnicalFeatures,
 			&i.Submission.DeflationReason,
 			&i.Submission.NotesForReviewers,
+			&i.Submission.ReturnedTo,
 			&i.Project.ID,
 			&i.Project.UserID,
 			&i.Project.Name,
@@ -416,6 +429,7 @@ func (q *Queries) ListSubmissionsToSync(ctx context.Context) ([]ListSubmissionsT
 			&i.ReviewerDeflation,
 			&i.FraudSeconds,
 			&i.FraudDeflation,
+			&i.FraudNotes,
 			&i.HqDeflation,
 		); err != nil {
 			return nil, err

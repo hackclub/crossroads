@@ -227,13 +227,40 @@ func TestSendingBack(t *testing.T) {
 	if status != http.StatusOK || result.Submission.Status != "pending" || result.Submission.ApprovedSeconds != nil || result.Submission.ReviewerID != nil {
 		t.Fatalf("sending back: got %d %+v", status, result.Submission)
 	}
-	// It's back with the reviewers, and the approval's still in the history.
-	status, result = e.decide(t, reviewer, id, map[string]any{"action": "approve", "approved_seconds": 3600})
+	// It's back with the reviewer who approved it, to change their review:
+	// their queue says who sent it back and why, and nobody else gets it
+	// from Next, though they can still see it.
+	other := e.newStageReviewer(t, "UOTHER", true, false, false)
+	var q queueResponse
+	e.mustCall(t, other, http.StatusOK, "GET", "/api/review/queue?stage=review", nil, &q)
+	if len(q.Items) != 1 || q.Items[0].Returned == nil {
+		t.Fatalf("queue: %+v", q.Items)
+	}
+	if r := q.Items[0].Returned; r.To.ID != reviewer.ID || r.ToMe || r.From != "hq" || r.Note != "hours look high" || r.By == "" {
+		t.Errorf("returned: %+v", r)
+	}
+	if status := e.call(t, other, "POST", "/api/review/next", map[string]any{"stage": "review"}, nil); status != http.StatusNoContent {
+		t.Errorf("someone else's Next: got %d, want nothing (204)", status)
+	}
+	var next struct {
+		SubmissionID int64 `json:"submission_id"`
+	}
+	e.mustCall(t, reviewer, http.StatusOK, "POST", "/api/review/next", map[string]any{"stage": "review"}, &next)
+	if next.SubmissionID != id {
+		t.Errorf("the reviewer's Next gave %d, want %d", next.SubmissionID, id)
+	}
+	e.mustCall(t, reviewer, http.StatusNoContent, "DELETE", "/api/review/submissions/"+itoa(id)+"/claim", nil, nil)
+	status, result = e.decide(t, reviewer, id, map[string]any{"action": "approve", "approved_seconds": 3600, "deflation_reason": "fewer"})
 	if status != http.StatusOK || result.Submission.Status != "awaiting_hq" {
 		t.Errorf("approving again: got %d %q", status, result.Submission.Status)
 	}
 	if got := e.eventKinds(t, hq, id); !slices.Equal(got, []string{"approval", "sent_back", "approval"}) {
 		t.Errorf("events are %v", got)
+	}
+	var hqQueue queueResponse
+	e.mustCall(t, reviewer, http.StatusOK, "GET", "/api/review/queue?stage=hq", nil, &hqQueue)
+	if len(hqQueue.Items) != 1 || hqQueue.Items[0].Returned != nil {
+		t.Errorf("once approved again it isn't returned any more: %+v", hqQueue.Items)
 	}
 }
 
@@ -521,13 +548,32 @@ func TestTechnicalFeaturesAndDeflation(t *testing.T) {
 		t.Fatalf("approving: got %d %q", status, result.Error)
 	}
 	refused(map[string]any{"action": "approve", "approved_seconds": 7 * 3600, "deflation_reason": ""}, fraud, "a fraud cut without a reason")
+	refused(map[string]any{"action": "approve", "justification": "x"}, fraud, "the fraud check editing the justification")
 	if status, result := e.decide(t, fraud, ship, map[string]any{"action": "approve", "approved_seconds": 7 * 3600,
-		"deflation_reason": "Two hours with the IDE left open overnight"}); status != http.StatusOK {
+		"deflation_reason": "Two hours with the IDE left open overnight", "internal_notes": "Compared the commits with the heartbeats"}); status != http.StatusOK {
 		t.Fatalf("passing the fraud check: got %d %q", status, result.Error)
 	}
-	// HQ signs off at the same hours: no deflation, so no reason needed.
-	if status, result := e.decide(t, hq, ship, map[string]any{"action": "approve", "deflation_reason": ""}); status != http.StatusOK {
+	refused(map[string]any{"action": "reject", "feedback": "no", "justification": "x"}, hq, "editing the justification on a rejection")
+	// HQ signs off at the same hours (no deflation, so no reason needed),
+	// rewriting the first review as it goes.
+	if status, result := e.decide(t, hq, ship, map[string]any{"action": "approve", "deflation_reason": "",
+		"technical_features": "A level editor, online leaderboards and a physics engine",
+		"justification":      "Played five levels; commits match."}); status != http.StatusOK {
 		t.Fatalf("signing off: got %d %q", status, result.Error)
+	}
+	// The old words are kept on the timeline, for reviewers, and the sign-off
+	// is still the one paid review HQ made.
+	events := e.detail(t, hq, ship).Events
+	var kinds []string
+	for _, ev := range events {
+		kinds = append(kinds, ev.Kind)
+	}
+	if !slices.Equal(kinds, []string{"approval", "flagged", "fraud_pass", "internal_comment", "final_approval"}) {
+		t.Errorf("events are %v", kinds)
+	}
+	if note := events[3].Internal; note == nil || !strings.Contains(*note, "Technical features were: A level editor and online leaderboards") ||
+		!strings.Contains(*note, "Justification was: Played three levels; commits match.") {
+		t.Errorf("HQ's edit note: %v", note)
 	}
 
 	var d struct {
@@ -544,10 +590,10 @@ func TestTechnicalFeaturesAndDeflation(t *testing.T) {
 		t.Errorf("preview: %+v", p)
 	}
 	for _, want := range []string{
-		"Technical features: A level editor and online leaderboards.",
-		"approved 9.00h. Played three levels; commits match.",
+		"Technical features: A level editor, online leaderboards and a physics engine.",
+		"approved 9.00h. Played five levels; commits match.",
 		"Deflated from 10.00h to 9.00h by the reviewer: An hour was a tutorial.",
-		"passed it at 7.00h.",
+		"passed it at 7.00h. Compared the commits with the heartbeats.",
 		"Deflated from 9.00h to 7.00h in the fraud check: Two hours with the IDE left open overnight.",
 		"at 7.00h.",
 	} {

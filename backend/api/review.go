@@ -44,6 +44,8 @@ func toReviewerSubmissionJSON(s db.Submission) submissionJSON {
 	out.HQReviewerID = s.HqReviewerID
 	out.HQReviewedAt = s.HqReviewedAt
 	out.OverrideReason = s.OverrideReason
+	out.TechnicalFeatures = s.TechnicalFeatures
+	out.ReturnedTo = s.ReturnedTo
 	return out
 }
 
@@ -93,6 +95,17 @@ type queueItemJSON struct {
 	Claim             *claimJSON `json:"claim"`
 	SkippedByMe       bool       `json:"skipped_by_me"`
 	Mine              bool       `json:"mine"` // their own project: they can't review it
+	// Sent back by the fraud check or HQ to the reviewer who approved it, to
+	// change their review: who to, who by, from which stage, and why.
+	Returned *returnedJSON `json:"returned,omitempty"`
+}
+
+type returnedJSON struct {
+	To   personJSON `json:"to"`
+	By   string     `json:"by"`
+	From string     `json:"from"` // fraud or hq
+	Note string     `json:"note"`
+	ToMe bool       `json:"to_me"`
 }
 
 type queueCountsJSON struct {
@@ -170,12 +183,25 @@ func (a *API) reviewQueue(w http.ResponseWriter, r *http.Request) {
 			Claim:             activeClaim(row.ClaimedBy, row.ClaimExpiresAt, row.ClaimedByName),
 			SkippedByMe:       row.Skipped,
 			Mine:              row.UserID == viewer.ID,
+			Returned:          returned(row, viewer.ID),
 		})
 	}
 	respond.JSON(w, http.StatusOK, struct {
 		Counts queueCountsJSON `json:"counts"`
 		Items  []queueItemJSON `json:"items"`
 	}{counts, items})
+}
+
+func returned(row db.ListReviewQueueRow, viewerID int64) *returnedJSON {
+	if row.ReturnedTo == nil {
+		return nil
+	}
+	out := &returnedJSON{To: personJSON{ID: *row.ReturnedTo, Name: row.ReturnedToName}, By: row.ReturnedByName,
+		Note: deref(row.ReturnedNote), ToMe: *row.ReturnedTo == viewerID}
+	if row.ReturnedFrom != "" {
+		out.From = stageName(db.SubmissionStatus(row.ReturnedFrom))
+	}
+	return out
 }
 
 // claimNext is POST /review/next {"stage": "review"}: claims the next ship at

@@ -28,6 +28,7 @@ type Review struct {
 	FraudReviewer   string   // empty without a fraud check
 	FraudSeconds    *int32   // what the fraud check passed it at
 	FraudDeflation  string
+	FraudNotes      string // what the fraud reviewer wrote about what they checked
 	HQName          string // empty before sign-off
 	HQDeflation     string
 	EarlierApproval bool // an update to a project approved before
@@ -101,7 +102,11 @@ func Justification(r Review) string {
 			passedAt = *r.FraudSeconds
 			line += " at " + hours(passedAt)
 		}
-		lines = append(lines, line+".")
+		line += "."
+		if r.FraudNotes != "" {
+			line += " " + sentence(r.FraudNotes)
+		}
+		lines = append(lines, line)
 		if r.FraudSeconds != nil && *r.FraudSeconds < r.ReviewerSeconds {
 			lines = append(lines, deflated(r.ReviewerSeconds, *r.FraudSeconds, "in the fraud check", r.FraudDeflation))
 		}

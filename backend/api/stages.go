@@ -132,8 +132,12 @@ type decision struct {
 	OverrideReason string `json:"override_reason"`
 	// First stage: the specific technical features that account for the
 	// hours (required to approve, as on Ari). Reviewers only; it goes into
-	// the Unified YSWS justification.
+	// the Unified YSWS justification. HQ can send new ones when signing off.
 	TechnicalFeatures string `json:"technical_features"`
+	// HQ sign-off only: the first reviewer's justification, as HQ edited it.
+	// Left out, it isn't changed; empty clears it. The old text goes on the
+	// timeline as a note for reviewers.
+	Justification *string `json:"justification"`
 	// Why this stage approved fewer hours than came in (the ship's claim at
 	// the first stage, the last stage's number after that). Required
 	// whenever a stage cuts.
@@ -157,6 +161,9 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 	d.OverrideReason = strings.TrimSpace(d.OverrideReason)
 	d.TechnicalFeatures = strings.TrimSpace(d.TechnicalFeatures)
 	d.DeflationReason = strings.TrimSpace(d.DeflationReason)
+	if d.Justification != nil {
+		d.Justification = new(strings.TrimSpace(*d.Justification))
+	}
 	switch {
 	case d.Action != "approve" && d.Action != "reject" && d.Action != "send_back":
 		return out, problem(http.StatusUnprocessableEntity, `action has to be "approve", "reject" or "send_back".`)
@@ -180,8 +187,10 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		return out, problem(http.StatusUnprocessableEntity, "Only approvals can go over Hackatime's hours.")
 	case d.Action != "approve" && (d.TechnicalFeatures != "" || d.DeflationReason != ""):
 		return out, problem(http.StatusUnprocessableEntity, "Only approvals take technical features or a deflation reason.")
+	case d.Action != "approve" && d.Justification != nil:
+		return out, problem(http.StatusUnprocessableEntity, "Only a sign-off can edit the reviewer's justification.")
 	case len(d.Feedback) > 5000 || len(d.InternalNotes) > 5000 || len(d.OverrideReason) > 5000 ||
-		len(d.TechnicalFeatures) > 5000 || len(d.DeflationReason) > 5000:
+		len(d.TechnicalFeatures) > 5000 || len(d.DeflationReason) > 5000 || (d.Justification != nil && len(*d.Justification) > 5000):
 		return out, problem(http.StatusUnprocessableEntity, "Keep feedback and notes under 5,000 characters.")
 	}
 
@@ -241,7 +250,10 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 
 	now := time.Now()
 	event := db.AddShipEventParams{SubmissionID: s.ID, ActorID: &reviewer.ID, Stage: s.Status,
-		Message: nonEmpty(d.Feedback), Internal: nonEmpty(d.InternalNotes)}
+		Message: nonEmpty(d.Feedback), Internal: nonEmpty(d.InternalNotes),
+		// The reviewer it was sent back to, changing their own review: not a
+		// new review, so reviewer pay doesn't pay for it again.
+		Redo: s.Status == db.SubmissionStatusPending && s.ReturnedTo != nil && *s.ReturnedTo == reviewer.ID}
 	// deflate records why this approval is lower than what came in, and
 	// refuses one that doesn't say.
 	deflate := func(from, to int32) error {
@@ -255,11 +267,16 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		return nil
 	}
 	var flagged *db.AddShipEventParams
+	var edited *db.AddShipEventParams // HQ's changes to the first review, before its sign-off
 	finalize := false
+	if d.Justification != nil && s.Status != db.SubmissionStatusAwaitingHq {
+		return out, problem(http.StatusUnprocessableEntity, "Only HQ can edit the reviewer's justification, when signing off.")
+	}
 
 	switch {
 	case d.Action == "reject":
 		event.Kind = db.ShipEventKindRejection
+		s.ReturnedTo = nil
 		switch s.Status {
 		case db.SubmissionStatusPending:
 			s.ReviewerID, s.ReviewedAt = &reviewer.ID, &now
@@ -281,10 +298,15 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		if s.Status == db.SubmissionStatusPending {
 			return out, problem(http.StatusConflict, "It's already waiting for a reviewer.")
 		}
+		// Back to the reviewer who approved it, to change their review,
+		// with what they wrote to start from. The note says what to change.
 		event.Kind = db.ShipEventKindSentBack
+		reviewerID, features, notes := s.ReviewerID, s.TechnicalFeatures, s.InternalNotes
 		s = sentBack(s)
+		s.ReturnedTo, s.TechnicalFeatures, s.InternalNotes = reviewerID, features, notes
 
 	case s.Status == db.SubmissionStatusPending: // approving the hours
+		s.ReturnedTo = nil
 		seconds := s.NewSeconds
 		if d.ApprovedSeconds != nil {
 			seconds = *d.ApprovedSeconds
@@ -360,6 +382,22 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		if err := deflate(*s.ApprovedSeconds, seconds); err != nil {
 			return out, err
 		}
+		// Edits to the first review: what goes to the Unified YSWS DB is the
+		// ship's, so that's what changes. Its approval event keeps what the
+		// reviewer wrote, and a note says what it was.
+		var was []string
+		if d.TechnicalFeatures != "" && d.TechnicalFeatures != deref(s.TechnicalFeatures) {
+			was = append(was, "Technical features were: "+orNone(s.TechnicalFeatures))
+			s.TechnicalFeatures = &d.TechnicalFeatures
+		}
+		if d.Justification != nil && *d.Justification != deref(s.InternalNotes) {
+			was = append(was, "Justification was: "+orNone(s.InternalNotes))
+			s.InternalNotes = nonEmpty(*d.Justification)
+		}
+		if len(was) > 0 {
+			edited = &db.AddShipEventParams{SubmissionID: s.ID, Kind: db.ShipEventKindInternalComment, ActorID: &reviewer.ID,
+				Stage: db.SubmissionStatusAwaitingHq, Internal: new("Edited the review when signing off.\n" + strings.Join(was, "\n"))}
+		}
 		event.Kind, event.Seconds = db.ShipEventKindFinalApproval, &seconds
 		if d.OverrideReason != "" {
 			event.Internal = withOverride(event.Internal, s, seconds)
@@ -377,11 +415,17 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		ReviewerID: s.ReviewerID, ReviewedAt: s.ReviewedAt, Checks: s.Checks, FraudReasons: s.FraudReasons,
 		FraudReviewerID: s.FraudReviewerID, FraudReviewedAt: s.FraudReviewedAt, HqReviewerID: s.HqReviewerID, HqReviewedAt: s.HqReviewedAt,
 		OverrideReason: s.OverrideReason, TechnicalFeatures: s.TechnicalFeatures, DeflationReason: s.DeflationReason,
+		ReturnedTo: s.ReturnedTo,
 	})
 	if err != nil {
 		return out, err
 	}
 	out.Submission = saved
+	if edited != nil {
+		if _, err := q.AddShipEvent(ctx, *edited); err != nil {
+			return out, err
+		}
+	}
 	event.Stage = before
 	if out.Event, err = q.AddShipEvent(ctx, event); err != nil {
 		return out, err
@@ -420,6 +464,7 @@ func sentBack(s db.Submission) db.Submission {
 	s.FraudReviewerID, s.FraudReviewedAt = nil, nil
 	s.HqReviewerID, s.HqReviewedAt = nil, nil
 	s.OverrideReason, s.TechnicalFeatures, s.DeflationReason = nil, nil, nil
+	s.ReturnedTo = nil
 	return s
 }
 

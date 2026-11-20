@@ -59,6 +59,12 @@ select
     users.slack_id,
     coalesce(reviewer.name, '')::text as reviewer_name,
     coalesce(claimer.name, '')::text as claimed_by_name,
+    submissions.returned_to,
+    coalesce(returned_to.name, '')::text as returned_to_name,
+    -- Who sent it back and why: its latest sent_back event.
+    coalesce(back.actor_name, '')::text as returned_by_name,
+    coalesce(back.stage::text, '')::text as returned_from,
+    back.internal as returned_note,
     exists (
         select 1 from special_stamps
         join special_stamp_types on special_stamp_types.id = special_stamps.special_stamp_type_id
@@ -75,6 +81,15 @@ join projects on projects.id = submissions.project_id
 join users on users.id = projects.user_id
 left join users reviewer on reviewer.id = submissions.reviewer_id
 left join users claimer on claimer.id = submissions.claimed_by
+left join users returned_to on returned_to.id = submissions.returned_to
+left join lateral (
+    select ship_events.stage, ship_events.internal, actor.name as actor_name
+    from ship_events
+    left join users actor on actor.id = ship_events.actor_id
+    where ship_events.submission_id = submissions.id and ship_events.kind = 'sent_back'
+        and submissions.returned_to is not null
+    order by ship_events.id desc limit 1
+) back on true
 where submissions.status = sqlc.arg(status)
 order by priority desc, submissions.submitted_at, submissions.id;
 
@@ -85,8 +100,10 @@ group by status;
 
 -- name: ClaimNextSubmission :one
 -- Claims the next ship at a stage for a reviewer: their own live claim if they
--- have one, otherwise the first one nobody's holding that isn't theirs and
--- that they haven't skipped lately, priority review first, then oldest first.
+-- have one, then ships sent back to them to change their review, otherwise
+-- the first one nobody's holding that isn't theirs, wasn't sent back to
+-- someone else, and that they haven't skipped lately, priority review
+-- first, then oldest first.
 -- SKIP LOCKED keeps two reviewers asking at once from getting the same ship.
 update submissions set claimed_by = sqlc.arg(user_id), claim_expires_at = now() + interval '30 minutes'
 where submissions.id = (
@@ -95,6 +112,7 @@ where submissions.id = (
     where s.status = sqlc.arg(status)
         and p.user_id <> sqlc.arg(user_id)
         and (s.claimed_by is null or s.claimed_by = sqlc.arg(user_id) or s.claim_expires_at <= now())
+        and (s.returned_to is null or s.returned_to = sqlc.arg(user_id))
         and not exists (
             select 1 from review_skips k
             where k.submission_id = s.id and k.user_id = sqlc.arg(user_id)
@@ -102,6 +120,7 @@ where submissions.id = (
         )
     order by
         coalesce(s.claimed_by = sqlc.arg(user_id) and s.claim_expires_at > now(), false) desc,
+        s.returned_to is not null desc,
         exists (
             select 1 from special_stamps
             join special_stamp_types on special_stamp_types.id = special_stamps.special_stamp_type_id
@@ -158,6 +177,7 @@ update submissions set
     override_reason = $14,
     technical_features = $15,
     deflation_reason = $16,
+    returned_to = $17,
     claimed_by = null,
     claim_expires_at = null
 where id = $1
@@ -222,8 +242,8 @@ where project_id = $1 and day >= sqlc.arg(since)::date
 order by day;
 
 -- name: AddShipEvent :one
-insert into ship_events (submission_id, kind, actor_id, stage, seconds, message, internal, deflation_reason, blocks_resubmit)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+insert into ship_events (submission_id, kind, actor_id, stage, seconds, message, internal, deflation_reason, blocks_resubmit, redo)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 returning *;
 
 -- name: ListProjectShipEvents :many

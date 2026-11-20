@@ -11,9 +11,9 @@ import (
 )
 
 const addShipEvent = `-- name: AddShipEvent :one
-insert into ship_events (submission_id, kind, actor_id, stage, seconds, message, internal, deflation_reason, blocks_resubmit)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-returning id, submission_id, kind, actor_id, stage, seconds, message, internal, created_at, edited_at, deflation_reason, blocks_resubmit
+insert into ship_events (submission_id, kind, actor_id, stage, seconds, message, internal, deflation_reason, blocks_resubmit, redo)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+returning id, submission_id, kind, actor_id, stage, seconds, message, internal, created_at, edited_at, deflation_reason, blocks_resubmit, redo
 `
 
 type AddShipEventParams struct {
@@ -26,6 +26,7 @@ type AddShipEventParams struct {
 	Internal        *string
 	DeflationReason *string
 	BlocksResubmit  bool
+	Redo            bool
 }
 
 func (q *Queries) AddShipEvent(ctx context.Context, arg AddShipEventParams) (ShipEvent, error) {
@@ -39,6 +40,7 @@ func (q *Queries) AddShipEvent(ctx context.Context, arg AddShipEventParams) (Shi
 		arg.Internal,
 		arg.DeflationReason,
 		arg.BlocksResubmit,
+		arg.Redo,
 	)
 	var i ShipEvent
 	err := row.Scan(
@@ -54,6 +56,7 @@ func (q *Queries) AddShipEvent(ctx context.Context, arg AddShipEventParams) (Shi
 		&i.EditedAt,
 		&i.DeflationReason,
 		&i.BlocksResubmit,
+		&i.Redo,
 	)
 	return i, err
 }
@@ -95,6 +98,7 @@ where submissions.id = (
     where s.status = $2
         and p.user_id <> $1
         and (s.claimed_by is null or s.claimed_by = $1 or s.claim_expires_at <= now())
+        and (s.returned_to is null or s.returned_to = $1)
         and not exists (
             select 1 from review_skips k
             where k.submission_id = s.id and k.user_id = $1
@@ -102,6 +106,7 @@ where submissions.id = (
         )
     order by
         coalesce(s.claimed_by = $1 and s.claim_expires_at > now(), false) desc,
+        s.returned_to is not null desc,
         exists (
             select 1 from special_stamps
             join special_stamp_types on special_stamp_types.id = special_stamps.special_stamp_type_id
@@ -111,7 +116,7 @@ where submissions.id = (
     limit 1
     for update of s skip locked
 )
-returning id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at, override_reason, technical_features, deflation_reason, notes_for_reviewers
+returning id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at, override_reason, technical_features, deflation_reason, notes_for_reviewers, returned_to
 `
 
 type ClaimNextSubmissionParams struct {
@@ -120,8 +125,10 @@ type ClaimNextSubmissionParams struct {
 }
 
 // Claims the next ship at a stage for a reviewer: their own live claim if they
-// have one, otherwise the first one nobody's holding that isn't theirs and
-// that they haven't skipped lately, priority review first, then oldest first.
+// have one, then ships sent back to them to change their review, otherwise
+// the first one nobody's holding that isn't theirs, wasn't sent back to
+// someone else, and that they haven't skipped lately, priority review
+// first, then oldest first.
 // SKIP LOCKED keeps two reviewers asking at once from getting the same ship.
 func (q *Queries) ClaimNextSubmission(ctx context.Context, arg ClaimNextSubmissionParams) (Submission, error) {
 	row := q.db.QueryRow(ctx, claimNextSubmission, arg.UserID, arg.Status)
@@ -153,6 +160,7 @@ func (q *Queries) ClaimNextSubmission(ctx context.Context, arg ClaimNextSubmissi
 		&i.TechnicalFeatures,
 		&i.DeflationReason,
 		&i.NotesForReviewers,
+		&i.ReturnedTo,
 	)
 	return i, err
 }
@@ -162,7 +170,7 @@ update submissions set claimed_by = $1, claim_expires_at = now() + interval '30 
 where id = $2
     and status in ('pending', 'fraud_check', 'awaiting_hq')
     and (claimed_by is null or claimed_by = $1 or claim_expires_at <= now())
-returning id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at, override_reason, technical_features, deflation_reason, notes_for_reviewers
+returning id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at, override_reason, technical_features, deflation_reason, notes_for_reviewers, returned_to
 `
 
 type ClaimSubmissionParams struct {
@@ -201,6 +209,7 @@ func (q *Queries) ClaimSubmission(ctx context.Context, arg ClaimSubmissionParams
 		&i.TechnicalFeatures,
 		&i.DeflationReason,
 		&i.NotesForReviewers,
+		&i.ReturnedTo,
 	)
 	return i, err
 }
@@ -276,7 +285,7 @@ func (q *Queries) DeleteFeedbackTemplate(ctx context.Context, id int64) (int64, 
 const editShipEvent = `-- name: EditShipEvent :one
 update ship_events set seconds = $2, message = $3, internal = $4, edited_at = now()
 where id = $1
-returning id, submission_id, kind, actor_id, stage, seconds, message, internal, created_at, edited_at, deflation_reason, blocks_resubmit
+returning id, submission_id, kind, actor_id, stage, seconds, message, internal, created_at, edited_at, deflation_reason, blocks_resubmit, redo
 `
 
 type EditShipEventParams struct {
@@ -307,6 +316,7 @@ func (q *Queries) EditShipEvent(ctx context.Context, arg EditShipEventParams) (S
 		&i.EditedAt,
 		&i.DeflationReason,
 		&i.BlocksResubmit,
+		&i.Redo,
 	)
 	return i, err
 }
@@ -330,7 +340,7 @@ func (q *Queries) GetReviewSettings(ctx context.Context) (ReviewSetting, error) 
 }
 
 const getSubmissionForReview = `-- name: GetSubmissionForReview :one
-select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, submissions.notes_for_reviewers, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, projects.resubmit_blocked_at, projects.resubmit_blocked_by, projects.resubmit_block_reason, projects.hours_start, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized, users.dms_enabled, users.on_landing_page
+select submissions.id, submissions.project_id, submissions.status, submissions.hackatime_projects, submissions.hackatime_seconds, submissions.new_seconds, submissions.approved_seconds, submissions.reviewer_id, submissions.reviewed_at, submissions.feedback, submissions.internal_notes, submissions.submitted_at, submissions.airtable_record_id, submissions.checks, submissions.fraud_reasons, submissions.fraud_reviewer_id, submissions.fraud_reviewed_at, submissions.hq_reviewer_id, submissions.hq_reviewed_at, submissions.claimed_by, submissions.claim_expires_at, submissions.unified_submitted_at, submissions.override_reason, submissions.technical_features, submissions.deflation_reason, submissions.notes_for_reviewers, submissions.returned_to, projects.id, projects.user_id, projects.name, projects.description, projects.repo_url, projects.demo_url, projects.screenshot_url, projects.created_at, projects.updated_at, projects.resubmit_blocked_at, projects.resubmit_blocked_by, projects.resubmit_block_reason, projects.hours_start, users.id, users.hca_id, users.slack_id, users.email, users.name, users.verification_status, users.ysws_eligible, users.role, users.stamps, users.created_at, users.updated_at, users.first_name, users.last_name, users.birthday, users.phone_number, users.address, users.can_review, users.can_fraud_review, users.can_hq_review, users.reviewer_note, users.emporium_access_at, users.emporium_note, users.emporium_granted_by, users.name_customized, users.dms_enabled, users.on_landing_page
 from submissions
 join projects on projects.id = submissions.project_id
 join users on users.id = projects.user_id
@@ -373,6 +383,7 @@ func (q *Queries) GetSubmissionForReview(ctx context.Context, id int64) (GetSubm
 		&i.Submission.TechnicalFeatures,
 		&i.Submission.DeflationReason,
 		&i.Submission.NotesForReviewers,
+		&i.Submission.ReturnedTo,
 		&i.Project.ID,
 		&i.Project.UserID,
 		&i.Project.Name,
@@ -714,7 +725,7 @@ func (q *Queries) ListProjectDays(ctx context.Context, arg ListProjectDaysParams
 }
 
 const listProjectShipEvents = `-- name: ListProjectShipEvents :many
-select ship_events.id, ship_events.submission_id, ship_events.kind, ship_events.actor_id, ship_events.stage, ship_events.seconds, ship_events.message, ship_events.internal, ship_events.created_at, ship_events.edited_at, ship_events.deflation_reason, ship_events.blocks_resubmit, actor.name as actor_name, actor.slack_id as actor_slack_id, actor.hca_id as actor_hca_id
+select ship_events.id, ship_events.submission_id, ship_events.kind, ship_events.actor_id, ship_events.stage, ship_events.seconds, ship_events.message, ship_events.internal, ship_events.created_at, ship_events.edited_at, ship_events.deflation_reason, ship_events.blocks_resubmit, ship_events.redo, actor.name as actor_name, actor.slack_id as actor_slack_id, actor.hca_id as actor_hca_id
 from ship_events
 join submissions on submissions.id = ship_events.submission_id
 left join users actor on actor.id = ship_events.actor_id
@@ -752,6 +763,7 @@ func (q *Queries) ListProjectShipEvents(ctx context.Context, projectID int64) ([
 			&i.ShipEvent.EditedAt,
 			&i.ShipEvent.DeflationReason,
 			&i.ShipEvent.BlocksResubmit,
+			&i.ShipEvent.Redo,
 			&i.ActorName,
 			&i.ActorSlackID,
 			&i.ActorHcaID,
@@ -844,6 +856,12 @@ select
     users.slack_id,
     coalesce(reviewer.name, '')::text as reviewer_name,
     coalesce(claimer.name, '')::text as claimed_by_name,
+    submissions.returned_to,
+    coalesce(returned_to.name, '')::text as returned_to_name,
+    -- Who sent it back and why: its latest sent_back event.
+    coalesce(back.actor_name, '')::text as returned_by_name,
+    coalesce(back.stage::text, '')::text as returned_from,
+    back.internal as returned_note,
     exists (
         select 1 from special_stamps
         join special_stamp_types on special_stamp_types.id = special_stamps.special_stamp_type_id
@@ -860,6 +878,15 @@ join projects on projects.id = submissions.project_id
 join users on users.id = projects.user_id
 left join users reviewer on reviewer.id = submissions.reviewer_id
 left join users claimer on claimer.id = submissions.claimed_by
+left join users returned_to on returned_to.id = submissions.returned_to
+left join lateral (
+    select ship_events.stage, ship_events.internal, actor.name as actor_name
+    from ship_events
+    left join users actor on actor.id = ship_events.actor_id
+    where ship_events.submission_id = submissions.id and ship_events.kind = 'sent_back'
+        and submissions.returned_to is not null
+    order by ship_events.id desc limit 1
+) back on true
 where submissions.status = $2
 order by priority desc, submissions.submitted_at, submissions.id
 `
@@ -888,6 +915,11 @@ type ListReviewQueueRow struct {
 	SlackID           *string
 	ReviewerName      string
 	ClaimedByName     string
+	ReturnedTo        *int64
+	ReturnedToName    string
+	ReturnedByName    string
+	ReturnedFrom      string
+	ReturnedNote      *string
 	Priority          bool
 	Skipped           bool
 }
@@ -922,6 +954,11 @@ func (q *Queries) ListReviewQueue(ctx context.Context, arg ListReviewQueueParams
 			&i.SlackID,
 			&i.ReviewerName,
 			&i.ClaimedByName,
+			&i.ReturnedTo,
+			&i.ReturnedToName,
+			&i.ReturnedByName,
+			&i.ReturnedFrom,
+			&i.ReturnedNote,
 			&i.Priority,
 			&i.Skipped,
 		); err != nil {
@@ -936,7 +973,7 @@ func (q *Queries) ListReviewQueue(ctx context.Context, arg ListReviewQueueParams
 }
 
 const lockLatestShipEvent = `-- name: LockLatestShipEvent :one
-select id, submission_id, kind, actor_id, stage, seconds, message, internal, created_at, edited_at, deflation_reason, blocks_resubmit from ship_events
+select id, submission_id, kind, actor_id, stage, seconds, message, internal, created_at, edited_at, deflation_reason, blocks_resubmit, redo from ship_events
 where submission_id = $1 and kind = $2 and actor_id = $3
 order by id desc
 limit 1
@@ -966,12 +1003,13 @@ func (q *Queries) LockLatestShipEvent(ctx context.Context, arg LockLatestShipEve
 		&i.EditedAt,
 		&i.DeflationReason,
 		&i.BlocksResubmit,
+		&i.Redo,
 	)
 	return i, err
 }
 
 const lockSubmission = `-- name: LockSubmission :one
-select id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at, override_reason, technical_features, deflation_reason, notes_for_reviewers from submissions where id = $1 for update
+select id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at, override_reason, technical_features, deflation_reason, notes_for_reviewers, returned_to from submissions where id = $1 for update
 `
 
 func (q *Queries) LockSubmission(ctx context.Context, id int64) (Submission, error) {
@@ -1004,6 +1042,7 @@ func (q *Queries) LockSubmission(ctx context.Context, id int64) (Submission, err
 		&i.TechnicalFeatures,
 		&i.DeflationReason,
 		&i.NotesForReviewers,
+		&i.ReturnedTo,
 	)
 	return i, err
 }
@@ -1098,10 +1137,11 @@ update submissions set
     override_reason = $14,
     technical_features = $15,
     deflation_reason = $16,
+    returned_to = $17,
     claimed_by = null,
     claim_expires_at = null
 where id = $1
-returning id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at, override_reason, technical_features, deflation_reason, notes_for_reviewers
+returning id, project_id, status, hackatime_projects, hackatime_seconds, new_seconds, approved_seconds, reviewer_id, reviewed_at, feedback, internal_notes, submitted_at, airtable_record_id, checks, fraud_reasons, fraud_reviewer_id, fraud_reviewed_at, hq_reviewer_id, hq_reviewed_at, claimed_by, claim_expires_at, unified_submitted_at, override_reason, technical_features, deflation_reason, notes_for_reviewers, returned_to
 `
 
 type SaveSubmissionReviewParams struct {
@@ -1121,6 +1161,7 @@ type SaveSubmissionReviewParams struct {
 	OverrideReason    *string
 	TechnicalFeatures *string
 	DeflationReason   *string
+	ReturnedTo        *int64
 }
 
 // Writes a ship's whole review state, worked out in Go (api/stages.go), and
@@ -1143,6 +1184,7 @@ func (q *Queries) SaveSubmissionReview(ctx context.Context, arg SaveSubmissionRe
 		arg.OverrideReason,
 		arg.TechnicalFeatures,
 		arg.DeflationReason,
+		arg.ReturnedTo,
 	)
 	var i Submission
 	err := row.Scan(
@@ -1172,6 +1214,7 @@ func (q *Queries) SaveSubmissionReview(ctx context.Context, arg SaveSubmissionRe
 		&i.TechnicalFeatures,
 		&i.DeflationReason,
 		&i.NotesForReviewers,
+		&i.ReturnedTo,
 	)
 	return i, err
 }

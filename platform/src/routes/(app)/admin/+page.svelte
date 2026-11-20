@@ -10,6 +10,7 @@
 	import Stats from '#lib/admin/Stats.svelte';
 	import ReviewSettings from '#lib/admin/ReviewSettings.svelte';
 	import ReviewerStats from '#lib/admin/ReviewerStats.svelte';
+	import ReviewerPay from '#lib/admin/ReviewerPay.svelte';
 	import BlockedProjects from '#lib/admin/BlockedProjects.svelte';
 	import AuditLog from '#lib/admin/AuditLog.svelte';
 	import Announce from '#lib/admin/Announce.svelte';
@@ -27,7 +28,7 @@
 		boxes: ['Box types', BoxTypes],
 		milestones: ['Milestones', Milestones],
 		// Only superadmins can use these; the backend checks too.
-		...(isSuperadmin() ? { announce: ['Announce', Announce], audit: ['Audit log', AuditLog] } : {})
+		...(isSuperadmin() ? { pay: ['Reviewer pay', ReviewerPay], announce: ['Announce', Announce], audit: ['Audit log', AuditLog] } : {})
 	});
 	const tab = $derived(tabs[page.url.searchParams.get('tab')] ? page.url.searchParams.get('tab') : 'people');
 	const Current = $derived(tabs[tab][1]);
