@@ -170,6 +170,8 @@ func (a *API) signedInRoutes(r chi.Router) {
 	r.Route("/superadmin", func(r chi.Router) {
 		r.Use(auth.RequireRole(db.UserRoleSuperadmin))
 		r.Get("/audit-log", a.superadminAuditLog)
+		r.Get("/reviewer-pay", a.adminReviewerPay)
+		r.Post("/reviewer-pay", a.adminPayReviewers)
 		r.Get("/announcements", a.listAnnouncements)
 		r.Post("/announcements", a.createAnnouncement)
 		r.Post("/announcements/test", a.testAnnouncement)

@@ -78,6 +78,11 @@ type submissionJSON struct {
 	HQReviewedAt    *time.Time      `json:"hq_reviewed_at,omitempty"`
 	// Why it's approved for more than Hackatime tracked.
 	OverrideReason *string `json:"override_reason,omitempty"`
+	// What the first reviewer said accounts for the hours.
+	TechnicalFeatures *string `json:"technical_features,omitempty"`
+	// The reviewer the fraud check or HQ sent it back to, to change their
+	// review (the latest sent_back event says why).
+	ReturnedTo *int64 `json:"returned_to,omitempty"`
 }
 
 // messageJSON is something a reviewer said to the participant.

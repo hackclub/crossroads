@@ -34,6 +34,13 @@
 	// a stage approved fewer hours than came in.
 	let technicalFeatures = $state('');
 	let deflationReason = $state('');
+	// HQ: changing the first review as it signs off.
+	let editing = $state(false);
+	let editFeatures = $state('');
+	let editJustification = $state('');
+	// The ship whose form was filled in from its returned review, so reloads
+	// (after a claim, say) don't overwrite what's been typed since.
+	let prefilled = null;
 	let busy = $state(false);
 	let formError = $state('');
 	let result = $state(null);
@@ -70,6 +77,19 @@
 		return evs.slice(lastBack + 1);
 	});
 	const approval = $derived(shipEvents.findLast((e) => e.kind === 'approval'));
+	// Sent back to the reviewer who approved it, to change their review:
+	// the send-back that says why, and the approval it undid.
+	const returnedBy = $derived.by(() => {
+		if (!sub?.returned_to || !d) return null;
+		return d.events.findLast((e) => e.submission_id === sub.id && e.kind === 'sent_back') ?? null;
+	});
+	const returnedApproval = $derived.by(() => {
+		if (!returnedBy) return null;
+		return d.events.findLast((e) => e.submission_id === sub.id && e.kind === 'approval' && e.id < returnedBy.id) ?? null;
+	});
+	const FROM = { fraud_check: 'the fraud check', awaiting_hq: 'HQ sign-off' };
+	// Who "Back to review" returns it to.
+	const approvedBy = $derived(approval?.actor?.name ?? 'the reviewer');
 	const fraudPass = $derived(shipEvents.findLast((e) => e.kind === 'fraud_pass'));
 	const failing = $derived(d?.checks.filter((c) => c.status !== 'pass') ?? []);
 	const passing = $derived(d?.checks.filter((c) => c.status === 'pass') ?? []);
@@ -98,6 +118,19 @@
 			approvedHours = toHours(start);
 			// At HQ, a reviewer's override carries over until HQ changes it.
 			overrideReason = d.stage === 'hq' && d.submission.override_reason ? d.submission.override_reason : '';
+			// Sent back to change: start from the review it was.
+			if (d.stage === 'review' && d.submission.returned_to && prefilled !== d.submission.id) {
+				prefilled = d.submission.id;
+				const back = d.events.findLast((e) => e.submission_id === d.submission.id && e.kind === 'sent_back');
+				const before = d.events.findLast((e) => e.submission_id === d.submission.id && e.kind === 'approval' && (!back || e.id < back.id));
+				technicalFeatures = d.submission.technical_features ?? '';
+				notes = d.submission.internal_notes ?? '';
+				if (before) {
+					if (before.seconds != null) approvedHours = toHours(before.seconds);
+					feedback = before.message ?? '';
+					deflationReason = before.deflation_reason ?? '';
+				}
+			}
 		} catch (e) {
 			error = e.message;
 		}
@@ -109,6 +142,8 @@
 		feedback = notes = '';
 		sendToFraud = true;
 		overrideReason = technicalFeatures = deflationReason = '';
+		editing = false;
+		prefilled = null;
 		tab = 'checks';
 		load();
 	});
@@ -243,12 +278,21 @@
 			if (stage === 'review' && sendToFraud) body.send_to_fraud = true;
 			if (stage === 'review') body.technical_features = technicalFeatures.trim();
 			if (deflatedBy > 0) body.deflation_reason = deflationReason.trim();
+			if (stage === 'hq' && editing) {
+				if (!editFeatures.trim()) {
+					formError = 'The technical features can\'t be empty: they go to the Unified YSWS DB.';
+					return;
+				}
+				body.technical_features = editFeatures.trim();
+				body.justification = editJustification.trim();
+			}
 		}
 		busy = true;
 		try {
 			result = await api('POST', `/review/submissions/${sub.id}`, body);
 			result.stage = stage;
 			feedback = notes = technicalFeatures = deflationReason = '';
+			editing = false;
 			await load();
 		} catch (err) {
 			formError = err.message;
@@ -256,6 +300,12 @@
 		} finally {
 			busy = false;
 		}
+	}
+
+	function startEditing() {
+		editFeatures = sub.technical_features ?? '';
+		editJustification = sub.internal_notes ?? '';
+		editing = true;
 	}
 
 	async function postComment(e) {
@@ -616,11 +666,34 @@
 						<h2>{STAGES[stage].label}</h2>
 						<div class="form-cols">
 							<div class="form-a">
+								{#if stage === 'review' && returnedBy}
+									<div class="callout info small returned" role="note">
+										<strong>{returnedBy.actor?.name ?? 'Someone'} sent this back from {FROM[returnedBy.stage] ?? 'a later stage'}{sub.returned_to === session.me.id ? ' for you to change' : ` for ${returnedApproval?.actor?.name ?? 'its reviewer'} to change`}:</strong>
+										<p class="pre">{returnedBy.internal}</p>
+										{#if returnedApproval}<span class="muted">The review it had is filled in below{returnedApproval.seconds != null ? `: ${hours(returnedApproval.seconds)}` : ''}.</span>{/if}
+									</div>
+								{/if}
 								{#if stage !== 'review'}
 									<div class="chain small">
 										{#if approval}<p>{approval.actor?.name ?? 'A reviewer'} approved <strong>{hours(approval.seconds)}</strong> of {hours(sub.new_seconds)} · {date(approval.created_at)}</p>{/if}
-										{#if sub.technical_features}<p><span class="muted">Technical features:</span> {sub.technical_features}</p>{/if}
-										{#if approval?.internal}<p class="pre"><span class="muted">Justification:</span> {approval.internal}</p>{/if}
+										{#if editing}
+											<div class="edit-review">
+												<label class="field grow">
+													<span>Technical features</span>
+													<textarea bind:value={editFeatures} required></textarea>
+												</label>
+												<label class="field grow">
+													<span>Justification</span>
+													<textarea bind:value={editJustification}></textarea>
+													<small>Both go to the Unified YSWS DB. The old text stays on the timeline.</small>
+												</label>
+												<button type="button" class="btn small ghost" onclick={() => (editing = false)}>Keep the review as it was</button>
+											</div>
+										{:else}
+											{#if sub.technical_features}<p><span class="muted">Technical features:</span> {sub.technical_features}</p>{/if}
+											{#if sub.internal_notes}<p class="pre"><span class="muted">Justification:</span> {sub.internal_notes}</p>{/if}
+										{/if}
+										{#if sub.feedback}<p class="pre"><span class="muted">Feedback for them:</span> {sub.feedback}</p>{/if}
 										{#if approval?.deflation_reason}<p><span class="muted">Deflated because:</span> {approval.deflation_reason}</p>{/if}
 										{#if sub.override_reason}
 											<p class="override">Approved for <strong>more than Hackatime tracked</strong> ({hours(sub.approved_seconds)} of {hours(sub.new_seconds)}): {sub.override_reason}</p>
@@ -629,22 +702,28 @@
 											<p>Sent to the fraud check for: {#each sub.fraud_reasons as r, i}{i ? ', ' : ''}<span class="badge warn">{reasonLabel(r)}</span>{/each}</p>
 										{/if}
 										{#if fraudPass}
-											<p>{fraudPass.actor?.name} {fraudPass.seconds < approval?.seconds ? `cut it to ${hours(fraudPass.seconds)}` : 'passed it'} in the fraud check{fraudPass.deflation_reason ? `: ${fraudPass.deflation_reason}` : ''}{fraudPass.internal ? ` (${fraudPass.internal})` : ''}</p>
+											<p>{fraudPass.actor?.name} {fraudPass.seconds < approval?.seconds ? `cut it to ${hours(fraudPass.seconds)}` : 'passed it'} in the fraud check{fraudPass.deflation_reason ? `: ${fraudPass.deflation_reason}` : ''}</p>
+											{#if fraudPass.internal}<p class="pre"><span class="muted">Fraud check addition:</span> {fraudPass.internal}</p>{/if}
 										{:else if stage === 'hq'}
 											<p class="muted">No fraud check: nothing was flagged.</p>
 										{/if}
 									</div>
+									{#if stage === 'hq' && !editing && action === 'approve'}
+										<button type="button" class="btn small ghost edit-btn" onclick={startEditing}>Edit the review</button>
+									{/if}
 								{/if}
 								<div class="row actions">
 									<label class="check"><input type="radio" bind:group={action} value="approve" /> {approveWord}</label>
 									<label class="check" title="They can change the project and ship it again."><input type="radio" bind:group={action} value="reject" /> Soft reject</label>
 									{#if canHardReject(session.me)}<label class="check" title="For fraud: the project can't be shipped again unless HQ or an admin allows it."><input type="radio" bind:group={action} value="hard_reject" /> Hard reject</label>{/if}
-									{#if stage !== 'review'}<label class="check" title="Back to the first stage, for another reviewer."><input type="radio" bind:group={action} value="send_back" /> Back to review</label>{/if}
+									{#if stage !== 'review'}<label class="check" title="Back to {approvedBy}, who approved it, with a note saying what to change."><input type="radio" bind:group={action} value="send_back" /> Send back to {approvedBy}</label>{/if}
 								</div>
 								{#if action === 'reject'}
 									<p class="small muted">They can change the project and ship it again.</p>
 								{:else if action === 'hard_reject'}
 									<p class="small muted">For fraud. The project can't be shipped again unless HQ or an admin allows it.</p>
+								{:else if action === 'send_back'}
+									<p class="small muted">It goes back to {approvedBy}'s "Changes requested" list with your note, and their review filled in to change. Anyone can still pick it up if they're away.</p>
 								{/if}
 								{#if action === 'approve'}
 									<label class="field">
@@ -682,10 +761,10 @@
 									</label>
 								{/if}
 								<label class="field grow">
-									<span>{action === 'send_back' ? 'Why, for the reviewer who picks it up' : action === 'hard_reject' ? 'Why, for HQ and the admins' : stage === 'review' ? 'Additional justification' : 'Notes'}</span>
-									<textarea bind:value={notes} required={action === 'send_back' || action === 'hard_reject'} placeholder={stage === 'review' && action === 'approve' ? 'What you checked: you ran it, the commits match the time, the demo works.' : ''}></textarea>
+									<span>{action === 'send_back' ? `What should ${approvedBy} change?` : action === 'hard_reject' ? 'Why, for HQ and the admins' : stage === 'review' ? 'Additional justification' : stage === 'fraud' && action === 'approve' ? 'Review addition' : 'Notes'}</span>
+									<textarea bind:value={notes} required={action === 'send_back' || action === 'hard_reject'} placeholder={stage === 'review' && action === 'approve' ? 'What you checked: you ran it, the commits match the time, the demo works.' : stage === 'fraud' && action === 'approve' ? 'For example: the commits line up with the Hackatime heartbeats, and the repo is theirs.' : action === 'send_back' ? 'For example: the technical features don\'t say what took 12 hours.' : ''}></textarea>
 									<small>
-										{action === 'send_back' || action === 'hard_reject' ? 'Required. ' : 'Reviewers only. '}{stage === 'review' && action === 'approve' ? 'Goes to the Unified YSWS DB.' : ''}
+										{action === 'send_back' ? 'Required. They see it at the top of the review.' : action === 'hard_reject' ? 'Required.' : stage === 'review' && action === 'approve' ? 'Reviewers only. Goes to the Unified YSWS DB.' : stage === 'fraud' && action === 'approve' ? 'Reviewers only. HQ sees it, and it goes to the Unified YSWS DB.' : 'Reviewers only.'}
 									</small>
 								</label>
 								{#if action !== 'send_back'}
@@ -698,13 +777,13 @@
 											</select>
 										{/if}
 										<textarea bind:value={feedback} required={action === 'reject' || action === 'hard_reject'}></textarea>
-										<small>{action === 'reject' || action === 'hard_reject' ? 'Required. ' : 'Optional. '}They see this on their project page.</small>
+										<small>{action === 'reject' || action === 'hard_reject' ? 'Required. ' : 'Optional. '}They see this on their project page.{stage === 'hq' && action === 'approve' && sub.feedback ? " It replaces the reviewer's feedback." : ''}</small>
 									</label>
 								{/if}
 								{#if formError}<p class="callout warn small">{formError}</p>{/if}
 								{#if action === 'approve'}<p class="small muted next">{whatNext}</p>{/if}
 								<button class="btn primary submit" disabled={busy}>
-									{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Soft reject' : action === 'hard_reject' ? 'Hard reject' : 'Back to review'}
+									{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Soft reject' : action === 'hard_reject' ? 'Hard reject' : `Send back to ${approvedBy}`}
 								</button>
 							</div>
 						</div>
@@ -908,6 +987,12 @@
 	.next { margin: 0; }
 	.chain { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-radius: 10px; background: var(--rv-sunk); max-height: 150px; overflow-y: auto; scrollbar-width: thin; }
 	.chain p { margin: 0; }
+	/* HQ editing the review: room for the text boxes. */
+	.chain:has(.edit-review) { max-height: none; }
+	.edit-review { display: flex; flex-direction: column; gap: 8px; margin: 4px 0; }
+	.edit-review .btn, .edit-btn { align-self: flex-start; }
+	.returned { display: flex; flex-direction: column; gap: 4px; }
+	.returned p { margin: 0; }
 	.override { padding: 4px 8px; border: 1px solid var(--warn); background: var(--warn-bg); border-radius: 6px; }
 
 	.timeline { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }

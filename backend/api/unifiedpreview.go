@@ -68,6 +68,7 @@ func (a *API) unifiedPreview(ctx context.Context, row db.GetSubmissionForReviewR
 			}
 		case db.ShipEventKindFraudPass:
 			r.FraudReviewer, r.FraudSeconds, r.FraudDeflation = name, e.ShipEvent.Seconds, deref(e.ShipEvent.DeflationReason)
+			r.FraudNotes = deref(e.ShipEvent.Internal)
 		case db.ShipEventKindFinalApproval:
 			r.HQName, r.HQDeflation = name, deref(e.ShipEvent.DeflationReason)
 		}

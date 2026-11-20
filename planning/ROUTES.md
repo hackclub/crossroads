@@ -566,7 +566,7 @@ A ship goes through up to three stages before it counts. See [REVIEW_FLOW.md](RE
 | `fraud` | `fraud_check` | `can_fraud_review` | passes it, maybe cutting hours (never adding). Goes to `awaiting_hq`. |
 | `hq` | `awaiting_hq` | `can_hq_review` | signs it off at any hours up to `new_seconds`: `approved`, stamps and boxes paid, sent to Unified YSWS. |
 
-Admins can decide every stage. Reviewers can see every queue, but only decide the stages they have a flag for. Nobody can decide their own project. At every stage a ship can be **rejected** (feedback required), and at the fraud and HQ stages it can be **sent back** to `pending` (a reason for the next reviewer required), which clears every decision on it; the timeline keeps them.
+Admins can decide every stage. Reviewers can see every queue, but only decide the stages they have a flag for. Nobody can decide their own project. At every stage a ship can be **rejected** (feedback required), and at the fraud and HQ stages it can be **sent back** to `pending` (a note saying what to change required), which clears every decision on it; the timeline keeps them. It goes back to the reviewer who approved it (`returned_to`), with their technical features and justification kept to start from: it's in a "Changes requested" list at the top of the review queue, and only they get it from Next, though anyone can open it. Deciding it at the first stage again clears `returned_to`.
 
 A ship goes to the fraud check when a fraud check fails or can't run (`fraud: true` below), when the reviewer ticks `send_to_fraud`, or when an admin has switched on `fraud_check_everything`.
 
@@ -605,11 +605,14 @@ interface Queue {
     claim: Claim | null;   // who's on it right now
     skipped_by_me: boolean;
     mine: boolean;         // their own project
+    // Sent back by the fraud check or HQ to the reviewer who approved it:
+    // who to, who by, from which stage, and the note saying what to change.
+    returned?: { to: { id: number; name: string }; by: string; from: 'fraud' | 'hq'; note: string; to_me: boolean };
   }[];
 }
 ```
 
-Priority review first, then oldest first. `422` for an unknown stage.
+Priority review first, then oldest first. `422` for an unknown stage. `POST /api/review/next` gives a reviewer the ships sent back to them first, and never someone else's.
 
 ### `GET /api/review/stats`
 
@@ -703,7 +706,8 @@ interface ShipEvent {
 - `stage`: optional, the status the reviewer was looking at. If the ship has moved on since, `409` instead of applying the decision to a stage they didn't mean. The review pages always send it.
 - `approved_seconds`: approvals only. Defaults to all of `new_seconds` at the first stage and to the current `approved_seconds` after that. The fraud check can only lower it; HQ can set anything up to `new_seconds`.
 - `feedback`: shown to the participant. Required to reject.
-- `internal_notes`: reviewers only. Required to send back.
+- `internal_notes`: reviewers only. Required to send back. On a fraud-check pass, it's what the fraud reviewer checked: HQ sees it and it goes into the Unified YSWS justification.
+- `justification`: HQ sign-off only. The first reviewer's justification, as HQ edited it (empty clears it). With `technical_features`, HQ can rewrite the first review as it signs off; the ship's copies change (which is what goes to the Unified YSWS DB), and an `internal_comment` by HQ keeps the old text on the timeline. Technical features sent at the fraud check are ignored.
 - `send_to_fraud`: first-stage approvals only.
 - `override_reason`: approving more than Hackatime tracked (`new_seconds`) needs a reason, at the first stage or at HQ. At HQ the reviewer's reason carries over, so it's only needed for a new one. The fraud check can't go over. An approval over Hackatime always waits for HQ sign-off, even from someone who could sign off themselves. The reason isn't shown to the participant; it goes to HQ, the timeline and the Unified YSWS justification.
 
@@ -771,6 +775,12 @@ interface AdminUser {
 `GET /api/admin/reviewer-stats?from=2026-11-09&to=2026-11-15` counts each person's reviews (as defined under `GET /api/review/stats`) for those days, both included, midnight to midnight Eastern. Without `from` and `to` it's this week. Each row has `name`, `email`, `slack_id`, `reviews` (the total), `first_reviews` with `first_approvals` and `first_rejections`, `fraud_checks`, `hq_decisions`, `later_sent_back` (first reviews whose approval was later sent back; they still count), `seconds_first_reviewed` and `last_review_at`. Ships can't be deleted and events never are, so a finished period's counts never change.
 
 `GET /api/admin/reviews?from=&to=[&reviewer=ID]` lists the reviews behind the counts, oldest first. Add `&format=csv` to either for a spreadsheet; cells a spreadsheet would read as a formula get a leading apostrophe. The admin page shows these as **Admin review stats**.
+
+### Reviewer pay
+
+Superadmins only (`403` for anyone else). `GET /api/superadmin/reviewer-pay` lists everyone who has reviewed, each with `reviews`, `unpaid`, `paid_tickets` and `days` (`{day, reviews, unpaid}`, newest first, Eastern), and the latest 100 `payments`. It includes `paid_cents` and dollar payments.
+
+`POST /api/superadmin/reviewer-pay` with `{"currency": "tickets", "rate": 5, "payments": [{"reviewer_id": 3, "days": ["2026-11-17"], "reviews": 14}]}` pays each reviewer for their unpaid reviews on those days at `rate` per review, and marks those reviews paid (migration 38) so they can't be paid again in either currency. A reviewer changing a review that was sent back to them isn't paid for it again: that decision is marked `redo` (migration 39) and left out here, though someone else picking the ship up is a new review. `tickets` go to the reviewer as a stamp adjustment with a note; `usd` (rate in cents) is only recorded, and the money is sent some other way. `reviews` is the unpaid count the admin saw: if it's different now, `409` and nothing's paid. All the payments go through or none do. Nobody can pay themselves (`403`). Every payment is in the audit log as `review_pay.tickets` or `review_pay.usd`, and neither table can be changed afterwards. The admin page shows this to superadmins as **Reviewer pay**. `201` → the payments made.
 
 The review page's **Review stats** tab has reviewer versions of both. `GET /api/review/reviewer-stats` is the same counts for everyone, but `email` and `slack_id` are left out unless you're an admin, and its CSV is admins only (`403`). `GET /api/review/reviews` lists only your own reviews, CSV included; asking for someone else's with `&reviewer=` is a `403` unless you're an admin.
 

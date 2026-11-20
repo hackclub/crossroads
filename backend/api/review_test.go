@@ -44,6 +44,15 @@ type queueResponse struct {
 			UserID int64 `json:"user_id"`
 		} `json:"claim"`
 		SkippedByMe bool `json:"skipped_by_me"`
+		Returned    *struct {
+			To struct {
+				ID int64 `json:"id"`
+			} `json:"to"`
+			By   string `json:"by"`
+			From string `json:"from"`
+			Note string `json:"note"`
+			ToMe bool   `json:"to_me"`
+		} `json:"returned"`
 	} `json:"items"`
 }
 

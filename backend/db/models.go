@@ -746,6 +746,24 @@ type ProjectHackatimeProject struct {
 	ProjectID        int64
 }
 
+type ReviewPayment struct {
+	ID         int64
+	ReviewerID int64
+	PaidBy     int64
+	Currency   string
+	Reviews    int32
+	Rate       int32
+	Amount     int32
+	LedgerID   *int64
+	Note       string
+	CreatedAt  time.Time
+}
+
+type ReviewPaymentEvent struct {
+	ShipEventID int64
+	PaymentID   int64
+}
+
 type ReviewSetting struct {
 	ID                     bool
 	FraudCheckEverything   bool
@@ -789,6 +807,7 @@ type ShipEvent struct {
 	EditedAt        *time.Time
 	DeflationReason *string
 	BlocksResubmit  bool
+	Redo            bool
 }
 
 type ShipPrereview struct {
@@ -902,6 +921,7 @@ type Submission struct {
 	TechnicalFeatures  *string
 	DeflationReason    *string
 	NotesForReviewers  *string
+	ReturnedTo         *int64
 }
 
 type User struct {

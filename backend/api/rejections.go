@@ -279,6 +279,7 @@ func (a *API) reopen(r *http.Request, viewer *db.User, id int64, reason string) 
 		ReviewerID: s.ReviewerID, ReviewedAt: s.ReviewedAt, Checks: s.Checks, FraudReasons: s.FraudReasons,
 		FraudReviewerID: s.FraudReviewerID, FraudReviewedAt: s.FraudReviewedAt, HqReviewerID: s.HqReviewerID, HqReviewedAt: s.HqReviewedAt,
 		OverrideReason: s.OverrideReason, TechnicalFeatures: s.TechnicalFeatures, DeflationReason: s.DeflationReason,
+		ReturnedTo: s.ReturnedTo,
 	}); err != nil {
 		return err
 	}
