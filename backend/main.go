@@ -54,6 +54,7 @@ var superadmins = []string{
 	"U083W5CCFDG", // Joaquin
 	"U078ZJHUKFW", // Max
 	"U08RVF1BAN4", // Barnav
+	"U0BAAHY7AQK", // Max (alt)
 }
 
 // Announcements from the admin page's Announce tab go to #crossroads-station
