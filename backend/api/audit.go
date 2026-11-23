@@ -17,7 +17,7 @@ import (
 func auditKinds() []string {
 	kinds := []string{"request", "sign_in", "special_stamp", "special_stamp.issued", "special_stamp.used",
 		"box", "box.granted", "stamps", "role", "role.changed", "order",
-		"review_pay", "review_pay.tickets", "review_pay.usd"}
+		"review_pay", "review_pay.tickets", "review_pay.usd", "shop_item", "shop_item.changed"}
 	for _, kind := range db.AllStampEntryKindValues() {
 		kinds = append(kinds, "stamps."+string(kind))
 	}

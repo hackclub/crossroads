@@ -91,18 +91,33 @@ func (a *API) adminActivity(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
+	countryRows, err := a.Queries.ParticipantCountries(r.Context())
+	if err != nil {
+		respond.ServerError(w, r, err)
+		return
+	}
+	type countryJSON struct {
+		Country string `json:"country"`
+		People  int64  `json:"people"`
+		Shipped int64  `json:"shipped"`
+	}
+	countries := make([]countryJSON, len(countryRows))
+	for i, c := range countryRows {
+		countries[i] = countryJSON{c.Country, c.People, c.Shipped}
+	}
 	type rangeJSON struct {
 		Visitors           int32 `json:"visitors"`
 		ActiveParticipants int32 `json:"active_participants"`
 	}
 	respond.JSON(w, http.StatusOK, struct {
-		Days       []dayJSON    `json:"days"`
-		Range      rangeJSON    `json:"range"`
-		Hours      hoursFlow    `json:"hours"`
-		People     []funnelStep `json:"people"`
-		MinMinutes int          `json:"min_minutes"`
-		UpdatedAt  *time.Time   `json:"updated_at"`
-	}{out, rangeJSON{visitors, active}, hoursFlowFrom(flow), peopleFunnel(people), minMinutes, updatedAt})
+		Days       []dayJSON     `json:"days"`
+		Range      rangeJSON     `json:"range"`
+		Hours      hoursFlow     `json:"hours"`
+		People     []funnelStep  `json:"people"`
+		Countries  []countryJSON `json:"countries"`
+		MinMinutes int           `json:"min_minutes"`
+		UpdatedAt  *time.Time    `json:"updated_at"`
+	}{out, rangeJSON{visitors, active}, hoursFlowFrom(flow), peopleFunnel(people), countries, minMinutes, updatedAt})
 }
 
 // queryInt reads an optional whole-number query parameter from lo to hi,

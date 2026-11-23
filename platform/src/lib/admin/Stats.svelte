@@ -51,6 +51,29 @@
 	// The hours flow (all time): a node's numbers by key.
 	const flow = $derived(data ? Object.fromEntries(data.hours.nodes.map((n) => [n.key, n])) : {});
 	const ofLogged = (seconds) => (flow.logged?.seconds ? `${((seconds / flow.logged.seconds) * 100).toFixed(1)}%` : '–');
+
+	// Where participants are from: the country on their Hack Club Auth home
+	// address. Codes get their English name; anything else (no address, or a
+	// country typed out instead of a code) goes last, since the shop's
+	// region rules can't judge those people either.
+	const COUNTRY_LIMIT = 15;
+	let allCountries = $state(false);
+	const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+	const isCode = (c) => /^[A-Z]{2}$/.test(c);
+	const countryName = (c) => {
+		if (!c) return 'No address';
+		if (!isCode(c)) return `“${c}” (not a code)`;
+		try {
+			return regionNames.of(c) ?? c;
+		} catch {
+			return c;
+		}
+	};
+	const countries = $derived(data ? [...data.countries.filter((c) => isCode(c.country)), ...data.countries.filter((c) => !isCode(c.country))] : []);
+	const countryTotal = $derived(countries.reduce((t, c) => t + c.people, 0));
+	const countryMax = $derived(Math.max(1, ...countries.map((c) => c.people)));
+	const coded = $derived(countries.filter((c) => isCode(c.country)));
+	const pct = (n, of) => (of ? `${Math.round((n / of) * 100)}%` : '–');
 </script>
 
 <div class="stack">
@@ -157,6 +180,37 @@
 				</section>
 			</div>
 
+			<section class="card people">
+				<div>
+					<h3>Where participants are from</h3>
+					<p class="small muted">
+						The country on each participant's Hack Club Auth home address. {coded.length.toLocaleString()} countr{coded.length === 1 ? 'y' : 'ies'}; {pct(
+							coded.reduce((t, c) => t + c.people, 0),
+							countryTotal
+						)} of participants have one the shop's region rules can check. All time, whatever the range above.
+					</p>
+				</div>
+				{#if !countries.length}
+					<p class="small muted">No participants yet.</p>
+				{:else}
+					<ol class="steps">
+						{#each allCountries ? countries : countries.slice(0, COUNTRY_LIMIT) as c (c.country)}
+							<li>
+								<span class="step-label" title={isCode(c.country) ? c.country : ''}>{countryName(c.country)}</span>
+								<span class="track" title="{c.people} of {countryTotal} participants"><span class="fill" style:width="{(c.people / countryMax) * 100}%"></span></span>
+								<span class="count">{c.people.toLocaleString()}</span>
+								<span class="rate">{pct(c.people, countryTotal)}<span class="muted"> · {c.shipped.toLocaleString()} shipped ({pct(c.shipped, c.people)})</span></span>
+							</li>
+						{/each}
+					</ol>
+					{#if countries.length > COUNTRY_LIMIT}
+						<button class="btn small more" onclick={() => (allCountries = !allCountries)}>
+							{allCountries ? 'Show fewer' : `Show all ${countries.length}`}
+						</button>
+					{/if}
+				{/if}
+			</section>
+
 			<details class="card days">
 				<summary class="small">Every day as a table, newest first</summary>
 				<div class="table-wrap">
@@ -256,6 +310,8 @@
 		.track { grid-column: 1 / -1; grid-row: 2; }
 		.rate { grid-column: 1 / -1; }
 	}
+
+	.more { align-self: flex-start; }
 
 	.days summary { cursor: pointer; color: var(--muted); }
 	.days[open] summary { margin-bottom: 8px; }

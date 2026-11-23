@@ -251,3 +251,28 @@ func TestAuditLogRecordsPayoutsWithWhoSignedOff(t *testing.T) {
 		t.Errorf("the payout is %+v", got)
 	}
 }
+
+// Changing a shop item's price, regions or whether it's sold is in the audit
+// log with the old and new values; a purchase changing its stock isn't.
+func TestAuditLogRecordsShopItemChanges(t *testing.T) {
+	e := newEnv(t)
+	admin := e.newAdmin(t)
+	superadmin := e.newSuperadmin(t)
+	id := e.newItem(t, admin, map[string]any{"kind": "physical", "name": "Flipper", "price": 900, "stock": 5}).ID
+	e.mustCall(t, admin, http.StatusOK, "PATCH", "/api/admin/shop-items/"+itoa(id), map[string]any{
+		"price": 1000, "regions": map[string]any{"rule": "except", "countries": []string{"IN", "BR"}}}, nil)
+	e.mustCall(t, admin, http.StatusOK, "PATCH", "/api/admin/shop-items/"+itoa(id), map[string]any{"stock": 4}, nil)
+
+	events := e.auditLog(t, superadmin, "?kind=shop_item")
+	if len(events) != 1 || events[0].Kind != "shop_item.changed" {
+		t.Fatalf("?kind=shop_item is %+v, want one change (stock isn't watched)", events)
+	}
+	d := events[0].Details
+	changes, _ := d["changes"].(map[string]any)
+	price, _ := changes["price"].(map[string]any)
+	regions, _ := changes["regions"].(map[string]any)
+	to, _ := regions["to"].(map[string]any)
+	if d["item"] != "Flipper" || price["from"] != float64(900) || price["to"] != float64(1000) || to["rule"] != "except" || len(changes) != 2 {
+		t.Errorf("the change: %+v", d)
+	}
+}

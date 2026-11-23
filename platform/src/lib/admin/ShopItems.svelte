@@ -5,6 +5,7 @@
 	import { money } from '../format.js';
 	import { session } from '../session.svelte.js';
 	import RegionalPrices from './RegionalPrices.svelte';
+	import ShopReview from './ShopReview.svelte';
 	import { regionalPrices } from './regional-prices.js';
 
 	let items = $state([]);
@@ -124,6 +125,7 @@
 
 <div class="stack">
 	{#if msg}<p class="callout {msg.tone} small">{msg.text}</p>{/if}
+	<ShopReview {items} onapplied={load} />
 	<div class="card table-wrap">
 		<table>
 			<thead><tr><th>Order</th><th>Name</th><th>Kind</th><th>Price</th><th>Stock</th><th>Per person</th><th>Active</th><th>Regional prices</th><th></th></tr></thead>

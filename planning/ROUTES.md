@@ -733,7 +733,7 @@ interface ReviewResult {
 ### Comments, notes and templates
 
 - **`POST /api/review/submissions/{id}/comments`** `{"message": "Can you add a README?", "internal": false}` → `201 ShipEvent`. Not internal: the participant sees it on their project. `422` for an empty or 5,000+ character message, `403` on their own project.
-- **`POST /api/review/submissions/{id}`** with `"action": "reject", "block_resubmit": true` is a hard reject: the project can't be shipped again (`403` from `POST /api/projects/{id}/submissions`, `409` for changing its Hackatime projects) until HQ or an admin allows it. Needs `internal_notes`; `403` unless the reviewer can do the fraud check or HQ sign-off. Projects say `resubmit_blocked`; the review page says who blocked it and why (`resubmit_block: {at, by, reason}`), and the event `blocks_resubmit`.
+- **`POST /api/review/submissions/{id}`** with `"action": "reject", "block_resubmit": true` is a hard reject: the project can't be shipped again (`403` from `POST /api/projects/{id}/submissions`, `409` for changing its Hackatime projects) until HQ or an admin allows it. Needs `internal_notes`; any reviewer who can decide the ship's stage can do it. Projects say `resubmit_blocked`; the review page says who blocked it and why (`resubmit_block: {at, by, reason}`), and the event `blocks_resubmit`.
 - **`GET /api/review/past?scope=mine|all&status=approved|rejected`** → `200 {all, items}`: decided ships, the latest decided first, at most 200. Each item: `{id, project_id, project_name, user_id, user_name, status, new_seconds, approved_seconds, submitted_at, decided_at, decided_by, feedback, resubmit_blocked, shipped_again}`. Reviewers get the ships they made a decision on whatever `scope` says; HQ and admins get everyone's unless `scope=mine`.
 - **`GET /api/review/prereviews/prompt?limit=10&all=1`** → `200 {prompt, ship_ids, waiting}`: the instructions and up to `limit` (default 10, at most 25) ships in review without a pre-review, oldest first (`all=1`: with one too). `waiting` is how many have none. The fraud check, HQ and admins; reviewers with only Review when `prereviews_for_reviewers` is on (`403` otherwise, for all three of these). The ship detail's `prereviews_visible` says the same, and `prereview` is null when it's false.
 - **`GET /api/review/prereviews/batch`** (or `GET /api/prereviews` with `Authorization: Bearer $PREREVIEW_TOKEN`) → `200 {instructions, ships: [{id, name, repo_url, demo_url, context}]}`: the same ships, with instructions for one cloned repo, for `scripts/prereview.mjs`.
@@ -1066,6 +1066,7 @@ interface AuditEvent {
 | `stamps.adjustment` | An admin's adjustment | `ledger_id`, `amount`, `balance`, `note` |
 | `role.changed` | Any role change: an admin, a role invite, the superadmin list, dev sign-in | `from`, `to` |
 | `order.fulfilled`, `order.cancelled` | An admin, the Airtable sync or a price lock refund | `order_id`, `item`, `price`, `from`, `to` |
+| `shop_item.changed` | An admin editing an item (migration 41) | `item_id`, `item`, `changes`: each changed field (`price`, `active`, `regions`, `name`, `emporium`, `stipend_cents`, `grant_cents`, `grant_cents_per_hour`, `max_per_user`) as `{from, to}`. Stock isn't watched. |
 
 Names in `details` are as they were then. The log can't be edited or deleted, even from SQL, without dropping its trigger.
 

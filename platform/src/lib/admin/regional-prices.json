@@ -1,10 +1,10 @@
 {
- "about": "Regional price research for the shop, checked 2026-11-06 and 2026-11-19: what each item really costs, delivered, in the USA, India, Brazil and Europe (Germany), with stores, links and notes. The admin page's Shop items shows it per item (regional-prices.js); the shop itself charges everyone the same. Rates: 1 USD = 94.5 INR = 5.50 BRL; 1 EUR = 1.1164 USD. Card grants aren't listed: they're worth the same everywhere. Items are matched by name, ignoring case, accents and punctuation; add aliases for other spellings. planning/shop-price-per-hour-2026-11-19.csv was made from this.",
+ "about": "Regional price research for the shop, checked 2026-11-06 and 2026-11-19: what each item really costs, delivered, in each country researched so far (the USA, India, Brazil, and Germany standing in for the EU), with stores, links and notes. regions and each item's regions are keyed by lower-case ISO 3166-1 country code, the same codes the shop's region rules and the admin Stats tab's countries use; to research another country, add its code to regions and to the items (an item without it shows no price there). The admin page's Shop items shows it per item (regional-prices.js); the shop itself charges everyone the same. Rates: 1 USD = 94.5 INR = 5.50 BRL; 1 EUR = 1.1164 USD. Card grants aren't listed: they're worth the same everywhere. Items are matched by name, ignoring case, accents and punctuation; add aliases for other spellings. planning/shop-price-per-hour-2026-11-19.csv was made from this.",
  "regions": {
   "us": "USA",
   "in": "India",
   "br": "Brazil",
-  "eu": "Europe (DE)"
+  "de": "Germany (EU)"
  },
  "items": [
   {
@@ -49,7 +49,7 @@
      "url": "https://www.kabum.com.br/produto/989639",
      "notes": "Pix price in Ninja Friday sale (ends 24 Nov); card R$505.87, normal R$549.99. Bluetooth Edition (no Bolt receiver). 199 in stock."
     },
-    "eu": {
+    "de": {
      "store": "reichelt.de",
      "currency": "EUR",
      "price_local": 79.95,
@@ -105,7 +105,7 @@
      "url": "https://www.kabum.com.br/produto/1086064",
      "notes": "Pix; card R$585. 'Sem Garantia', no Anatel code; KaBuM itself only sells the wired F75 (R$299.99), so the wireless one may not be Anatel-homologated."
     },
-    "eu": {
+    "de": {
      "store": "joybuy.de (JD.com Europe)",
      "currency": "EUR",
      "price_local": 79.99,
@@ -161,7 +161,7 @@
      "url": "https://www.aliexpress.com/item/1005010659073776.html",
      "notes": "Not sold by any reachable Brazilian retailer; Nothing has no BR store. AliExpress ~US$31-34 delivered (June, to AU), unverified for BR. +20% II +17% ICMS. Anatel status unknown."
     },
-    "eu": {
+    "de": {
      "store": "pccomponentes.de (marketplace: LOMIVOX)",
      "currency": "EUR",
      "price_local": 38.0,
@@ -217,7 +217,7 @@
      "url": "https://www.factorio.com/buy",
      "notes": "Steam Brazil R$101.99 (cheaper)."
     },
-    "eu": {
+    "de": {
      "store": "factorio.com",
      "currency": "EUR",
      "price_local": 32.0,
@@ -273,7 +273,7 @@
      "url": "https://www.yubico.com/br/product/yubikey-5-series/yubikey-5c-nfc/",
      "notes": "US$58 + shipping (at checkout) + ~93% import tax (60% II + ICMS) + 3.5% IOF; CPF needed. Local reseller KriptoBR R$759-799, imported on demand 45-60 days."
     },
-    "eu": {
+    "de": {
      "store": "reichelt.de",
      "currency": "EUR",
      "price_local": 60.95,
@@ -329,7 +329,7 @@
      "url": "https://www.minecraft.net/pt-br/store/minecraft-java-bedrock-edition-pc",
      "notes": "Official BRL price, no IOF."
     },
-    "eu": {
+    "de": {
      "store": "Microsoft Store / minecraft.net (DE)",
      "currency": "EUR",
      "price_local": 29.99,
@@ -385,7 +385,7 @@
      "url": "https://www.lexaloffle.com/pico-8.php",
      "notes": "US$14.99; +3.5% IOF on BR cards."
     },
-    "eu": {
+    "de": {
      "store": "lexaloffle.com",
      "currency": "EUR",
      "price_local": 13.43,
@@ -441,7 +441,7 @@
      "url": "https://www.rihappy.com.br/brinquedo-para-bebe-patinho-de-banho-buba/p",
      "notes": "6-pack of ~5 cm ducks (closest verified). Single duck R$19.99 out of stock. Toys need Inmetro certification."
     },
-    "eu": {
+    "de": {
      "store": "duckshop.de",
      "currency": "EUR",
      "price_local": 1.39,
@@ -497,7 +497,7 @@
      "url": "https://www.kabum.com.br/produto/97765",
      "notes": "Pix; card R$635.18. No free shipping (quote needs CEP). Amazon.com.br ~R$284 per comparator, unverified."
     },
-    "eu": {
+    "de": {
      "store": "galaxus.de",
      "currency": "EUR",
      "price_local": 38.9,
@@ -553,7 +553,7 @@
      "url": "https://www.kalunga.com.br/prod/cartao-de-memoria-microsd-128gb-ultra-com-adaptador-classe-10-sdsqunr-sandisk-bt-1-un/259444",
      "notes": "SDSQUNR with adapter, 3 business days. KaBuM marketplace SGMAX R$144 (less reliable); Amazon ~R$144 unverified."
     },
-    "eu": {
+    "de": {
      "store": "reichelt.de",
      "currency": "EUR",
      "price_local": 24.95,
@@ -609,7 +609,7 @@
      "url": "https://ameridroid.com/products/pinetime-smart-watch",
      "notes": "US$39.95 + US$19.95 Global Post (uninsured) + 60% II + ICMS + IOF. Pine Store offers no Brazil shipping. BLE, no Anatel homologation found."
     },
-    "eu": {
+    "de": {
      "store": "pine64.com (ships from China/HK)",
      "currency": "EUR",
      "price_local": 24.17,
@@ -665,7 +665,7 @@
      "url": "https://ameridroid.com/products/pinecil-v2-soldering-iron",
      "notes": "US$41.95 + US$25.95 shipping + 60% II + ICMS. Pine64 says AliExpress Pinecils are fake. BLE chip, no Anatel homologation found."
     },
-    "eu": {
+    "de": {
      "store": "pine64.com (ships from China/HK)",
      "currency": "EUR",
      "price_local": 23.28,
@@ -721,7 +721,7 @@
      "url": "https://www.kalunga.com.br/prod/kit-de-chaves-de-precisao-c-6-pecas-41905306-tramontina-bt-1-un/224181",
      "notes": "SUBSTITUTE: Moray not sold in BR and iFixit doesn't ship to BR. Closer bit kit: Lelong 32-in-1 R$72.55 (KaBuM marketplace)."
     },
-    "eu": {
+    "de": {
      "store": "iFixit EU store (de-de)",
      "currency": "EUR",
      "price_local": 19.95,
@@ -777,7 +777,7 @@
      "url": "",
      "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
     },
-    "eu": {
+    "de": {
      "store": "",
      "currency": "USD",
      "price_local": null,
@@ -833,7 +833,7 @@
      "url": "",
      "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
     },
-    "eu": {
+    "de": {
      "store": "",
      "currency": "USD",
      "price_local": null,
@@ -892,7 +892,7 @@
      "url": "",
      "notes": "Worked back from the Nov 6 $/hour figure; store details weren't kept."
     },
-    "eu": {
+    "de": {
      "store": "",
      "currency": "USD",
      "price_local": null,
@@ -948,7 +948,7 @@
      "url": "",
      "notes": "No price found on Nov 6."
     },
-    "eu": {
+    "de": {
      "store": "",
      "currency": "USD",
      "price_local": null,
@@ -1004,7 +1004,7 @@
      "url": "https://www.image-line.com/fl-studio/pricing",
      "notes": "R$199 regional price; the fee is 3.5% IOF on a Brazilian card. No import duty on a digital licence."
     },
-    "eu": {
+    "de": {
      "store": "Image-Line official store (Germany)",
      "currency": "EUR",
      "price_local": 99,
@@ -1060,7 +1060,7 @@
      "url": "https://circuitmess.com/products/soldr-deluxe-soldering-kit",
      "notes": "soldr.pro doesn't ship to Brazil, and CircuitMess is sold out ($449). Fees are estimates: 60% import tax, 17% ICMS and 3.5% IOF."
     },
-    "eu": {
+    "de": {
      "store": "soldr.pro (official, ships from Sweden)",
      "currency": "EUR",
      "price_local": 319,
@@ -1116,7 +1116,7 @@
      "url": "https://www.amazon.com.br/dp/B0CQ3RWQQZ",
      "notes": "Import with prepaid taxes, 2 left, arrives Dec 7–22; no Anatel approval found. A marketplace seller has the 1TB for R$7,599."
     },
-    "eu": {
+    "de": {
      "store": "Steam (Valve), Germany",
      "currency": "EUR",
      "price_local": 779.0,
@@ -1174,7 +1174,7 @@
      "url": "https://www.amazon.com.br/dp/B09C66FYCR",
      "notes": "Official, Anatel-approved model; below the R$5,998 MSRP. Free delivery shown for São Paulo."
     },
-    "eu": {
+    "de": {
      "store": "MediaMarkt.de (ASUS eStore same price)",
      "currency": "EUR",
      "price_local": 599.0,
@@ -1230,7 +1230,7 @@
      "url": "https://repebble.com/watch",
      "notes": "Estimated 60% import tax, 20% ICMS and Pebble's handling fee. Not confirmed that it ships to Brazil; likely no Anatel certification."
     },
-    "eu": {
+    "de": {
      "store": "Core Devices (repebble.com)",
      "currency": "USD",
      "price_local": 225,
@@ -1286,7 +1286,7 @@
      "url": "https://www.aliexpress.us/item/3256805088210060.html",
      "notes": "Price and shipping unverified (cached US listing); fees estimated at 60% tax less the $20 allowance plus 20% ICMS. Not on Amazon.com.br; likely no Anatel certification."
     },
-    "eu": {
+    "de": {
      "store": "Audiophonics (France, ships EU-wide)",
      "currency": "EUR",
      "price_local": 99.0,
@@ -1342,7 +1342,7 @@
      "url": "https://shop.trmnl.com/products/trmnl",
      "notes": "Not confirmed that TRMNL ships to Brazil; the total leaves out shipping, so it's a lower bound. 60% import tax, 20% ICMS, 3.5% IOF. No Anatel certification found (Wi-Fi), so customs could hold it."
     },
-    "eu": {
+    "de": {
      "store": "tink.de (German reseller)",
      "currency": "EUR",
      "price_local": 130.9,
@@ -1398,7 +1398,7 @@
      "url": "https://shop.trmnl.com/products/trmnl-bwry",
      "notes": "Not confirmed that TRMNL ships to Brazil; a lower bound without shipping. No Anatel certification found, so customs could hold it."
     },
-    "eu": {
+    "de": {
      "store": "tink.de (German reseller)",
      "currency": "EUR",
      "price_local": 130.9,
@@ -1454,7 +1454,7 @@
      "url": "",
      "notes": ""
     },
-    "eu": {
+    "de": {
      "store": "Amp credits (digital)",
      "currency": "USD",
      "price_local": 600,
