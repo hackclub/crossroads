@@ -14,7 +14,8 @@
 		['box', 'Boxes', [['box.granted', 'Granted']]],
 		['stamps', 'Tickets', [['stamps.payout', 'Payouts'], ['stamps.bonus', 'Bonuses'], ['stamps.purchase', 'Purchases'], ['stamps.refund', 'Refunds'], ['stamps.adjustment', 'Adjustments']]],
 		['role', 'Roles', [['role.changed', 'Changed']]],
-		['order', 'Orders', [['order.fulfilled', 'Fulfilled'], ['order.cancelled', 'Cancelled']]]
+		['order', 'Orders', [['order.fulfilled', 'Fulfilled'], ['order.cancelled', 'Cancelled']]],
+		['shop_item', 'Shop items', [['shop_item.changed', 'Changed']]]
 	];
 	const LABELS = Object.fromEntries(GROUPS.flatMap(([key, label, kinds]) => [[key, label], ...kinds.map(([k, l]) => [k, `${label}: ${l.toLowerCase()}`])]));
 	const PAGE = 100;
@@ -60,6 +61,9 @@
 	const signed = (n) => (n > 0 ? `+${n}` : `${n}`);
 	const tone = (status) => (status < 300 ? 'good' : status < 500 ? 'warn' : 'info');
 
+	// A shop item's changed field as a word: regions read "except IN, BR".
+	const shopValue = (v) => (v && typeof v === 'object' ? (v.rule === 'everywhere' ? 'everywhere' : `${v.rule} ${(v.countries ?? []).join(', ')}`) : String(v));
+
 	// One line saying what happened; the raw details are a click away.
 	function summary(e) {
 		const d = e.details;
@@ -95,6 +99,7 @@
 			return `${signed(d.amount)} tickets ${what ?? ''}, now ${d.balance}`;
 		}
 		if (e.kind.startsWith('order.')) return `Order #${d.order_id} (${d.item}): ${d.from} → ${d.to}`;
+		if (e.kind === 'shop_item.changed') return `${d.item} (item #${d.item_id}): ${Object.entries(d.changes ?? {}).map(([field, c]) => `${field} ${shopValue(c.from)} → ${shopValue(c.to)}`).join('; ')}`;
 		return e.kind;
 	}
 </script>

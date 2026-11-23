@@ -109,3 +109,28 @@ func TestItemRegions(t *testing.T) {
 		t.Errorf("buying it in the US: %d %q", status, o.Error)
 	}
 }
+
+// The admin Stats tab counts participants by home country, and only counts.
+func TestParticipantCountries(t *testing.T) {
+	e := newEnv(t)
+	admin := e.newAdmin(t)
+	e.livesIn(t, e.newUser(t, "U1"), "BR")
+	e.livesIn(t, e.newUser(t, "U2"), " br ")
+	e.livesIn(t, e.newUser(t, "U3"), "IN")
+	e.newUser(t, "U4") // no address
+	var stats struct {
+		Countries []struct {
+			Country string `json:"country"`
+			People  int64  `json:"people"`
+			Shipped int64  `json:"shipped"`
+		} `json:"countries"`
+	}
+	e.mustCall(t, admin, http.StatusOK, "GET", "/api/admin/activity", nil, &stats)
+	got := map[string]int64{}
+	for _, c := range stats.Countries {
+		got[c.Country] = c.People
+	}
+	if got["BR"] != 2 || got["IN"] != 1 || len(stats.Countries) < 2 || stats.Countries[0].Country != "BR" {
+		t.Errorf("countries: %+v", stats.Countries)
+	}
+}

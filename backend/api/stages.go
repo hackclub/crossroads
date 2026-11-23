@@ -109,8 +109,9 @@ type decision struct {
 	// approve, reject or send_back. What approving means depends on the
 	// stage: deciding the hours, passing the fraud check, or signing off.
 	Action string `json:"action"`
-	// Rejections: a hard reject, for fraud. The project can't be shipped
-	// again until HQ or an admin allows it (PUT
+	// Rejections: a hard reject, for fraud. Any reviewer who can decide the
+	// stage can do it. The project can't be shipped again until HQ or an
+	// admin allows it (PUT
 	// /review/projects/{id}/resubmit-block). Without it, a rejection is soft:
 	// they change the project and ship it again. Needs internal_notes.
 	BlockResubmit bool `json:"block_resubmit"`
@@ -173,8 +174,6 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		return out, problem(http.StatusUnprocessableEntity, "Tell them why it was rejected.")
 	case d.BlockResubmit && d.Action != "reject":
 		return out, problem(http.StatusUnprocessableEntity, "Only a rejection can stop a project being shipped again.")
-	case d.BlockResubmit && !perms.FraudReview && !perms.HQReview:
-		return out, problem(http.StatusForbidden, "Only fraud reviewers, HQ and admins can hard reject. Send it to the fraud check instead.")
 	case d.BlockResubmit && d.InternalNotes == "":
 		return out, problem(http.StatusUnprocessableEntity, "Say why it's a hard reject, for HQ and the admins.")
 	case d.Action == "send_back" && d.InternalNotes == "":

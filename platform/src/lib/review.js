@@ -25,10 +25,10 @@ export const STAGES = {
 
 export const canDecideStage = (me, stage) => !!me?.[STAGES[stage]?.perm];
 
-// A hard reject (for fraud) stops the project being shipped again: the fraud
-// check, HQ and admins can do it. HQ and admins see every rejection, can let
-// a project be shipped again, and can undo a rejection.
-export const canHardReject = (me) => !!(me?.can_fraud_review || me?.can_hq_review);
+// A hard reject (for fraud) stops the project being shipped again: any
+// reviewer can do it, at any stage they can decide. HQ and admins see every
+// rejection, can let a project be shipped again, and can undo a rejection.
+export const canHardReject = (me) => !!(me?.can_review || me?.can_fraud_review || me?.can_hq_review);
 export const canManageRejections = (me) => !!me?.can_hq_review;
 // Pre-reviews (backend/api/prereview.go): the fraud check, HQ and admins,
 // and base reviewers when an admin turns that on. /api/me works it out.

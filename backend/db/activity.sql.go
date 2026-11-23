@@ -346,6 +346,49 @@ func (q *Queries) ListTrackedProjects(ctx context.Context) ([]ListTrackedProject
 	return items, nil
 }
 
+const participantCountries = `-- name: ParticipantCountries :many
+select
+    coalesce(upper(trim(u.address->>'country')), '')::text as country,
+    count(*)::bigint as people,
+    count(*) filter (where exists (
+        select 1 from projects p join submissions s on s.project_id = p.id where p.user_id = u.id
+    ))::bigint as shipped
+from users u
+where u.role = 'participant'
+group by 1
+order by people desc, country
+`
+
+type ParticipantCountriesRow struct {
+	Country string
+	People  int64
+	Shipped int64
+}
+
+// Where participants are from, all time: the country of their Hack Club Auth
+// home address, upper case (” with no address or no country), with how many
+// live there and how many of those have shipped. Only counts leave the
+// database, never an address.
+func (q *Queries) ParticipantCountries(ctx context.Context) ([]ParticipantCountriesRow, error) {
+	rows, err := q.db.Query(ctx, participantCountries)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ParticipantCountriesRow
+	for rows.Next() {
+		var i ParticipantCountriesRow
+		if err := rows.Scan(&i.Country, &i.People, &i.Shipped); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const participantFunnel = `-- name: ParticipantFunnel :one
 select
     count(*)::bigint as signed_up,

@@ -47,10 +47,11 @@ func TestSoftAndHardRejects(t *testing.T) {
 		t.Fatalf("shipping again after a soft reject: %d", status)
 	}
 
-	// A hard reject: only the fraud check, HQ and admins, and it needs a reason.
+	// A hard reject: any reviewer can, first stage included (asked for a
+	// reason rather than refused), but it needs a reason.
 	hard := map[string]any{"action": "reject", "feedback": "This time was made by a script.", "block_resubmit": true}
-	if status, _ := e.decide(t, reviewer, second, hard); status != http.StatusForbidden {
-		t.Errorf("a first-stage reviewer hard rejected: %d", status)
+	if status, _ := e.decide(t, reviewer, second, hard); status != http.StatusUnprocessableEntity {
+		t.Errorf("a first-stage reviewer's hard reject without a reason: %d, want 422", status)
 	}
 	if status, _ := e.decide(t, fraud, second, hard); status != http.StatusUnprocessableEntity {
 		t.Errorf("hard reject without a reason: %d, want 422", status)
@@ -132,6 +133,21 @@ func TestSoftAndHardRejects(t *testing.T) {
 	}
 	if status := e.call(t, user, "GET", "/api/review/past", nil, nil); status != http.StatusForbidden {
 		t.Errorf("a participant listed past reviews: %d", status)
+	}
+}
+
+// Every reviewer can hard reject, not just the fraud check and HQ.
+func TestFirstStageReviewerHardRejects(t *testing.T) {
+	e := newEnv(t)
+	reviewer := e.newStageReviewer(t, "UREV", true, false, false)
+	user, id := e.shipFor(t, "U1", 3)
+	projectID := e.projectOf(t, id)
+	hard := map[string]any{"action": "reject", "feedback": "This time was made by a script.", "internal_notes": "Script.", "block_resubmit": true}
+	if status, result := e.decide(t, reviewer, id, hard); status != http.StatusOK || result.Submission.Status != "rejected" {
+		t.Fatalf("a first-stage reviewer's hard reject: %d %+v", status, result)
+	}
+	if status, _, _ := e.submit(t, user, projectID); status != http.StatusForbidden {
+		t.Errorf("shipping again after a first-stage hard reject: %d, want 403", status)
 	}
 }
 

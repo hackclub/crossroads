@@ -180,3 +180,19 @@ select
     ))::bigint as rail_pass
 from users u
 where u.role = 'participant';
+
+-- name: ParticipantCountries :many
+-- Where participants are from, all time: the country of their Hack Club Auth
+-- home address, upper case ('' with no address or no country), with how many
+-- live there and how many of those have shipped. Only counts leave the
+-- database, never an address.
+select
+    coalesce(upper(trim(u.address->>'country')), '')::text as country,
+    count(*)::bigint as people,
+    count(*) filter (where exists (
+        select 1 from projects p join submissions s on s.project_id = p.id where p.user_id = u.id
+    ))::bigint as shipped
+from users u
+where u.role = 'participant'
+group by 1
+order by people desc, country;

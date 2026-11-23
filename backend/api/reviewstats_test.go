@@ -271,7 +271,7 @@ func TestReviewInsightsAndHoursFunnel(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	rita := e.newStageReviewer(t, "URITA", true, false, false)
-	hugo := e.newStageReviewer(t, "UHUGO", true, false, true) // can review first, so can hard reject
+	hugo := e.newStageReviewer(t, "UHUGO", true, false, true) // can review first and hard reject
 	admin := e.newAdmin(t)
 	_, signed := e.shipFor(t, "U1", 5)
 	_, soft := e.shipFor(t, "U2", 3)
