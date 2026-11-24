@@ -226,7 +226,7 @@ A lock doesn't hold a ticket. When the tickets sell out, `RefundPriceLocks` canc
 
 ## Audit log
 
-Superadmins (the Slack IDs in `superadmins`, `main.go`) can read everything that's happened at `GET /api/superadmin/audit-log`, the Audit log tab in Admin. Changing who's on the list takes a commit; `SyncSuperadmins` applies it when the server starts and whenever anyone signs in. A superadmin is an admin in every other way: `RequireRole` lets them through wherever admins are allowed, and Go code asks `user.Role.IsAdmin()` rather than comparing with `UserRoleAdmin`.
+Superadmins (the Slack IDs in `superadmins`, `main.go`, plus `devSuperadmins` on every build but the real site) can read everything that's happened at `GET /api/superadmin/audit-log`, the Audit log tab in Admin. Changing who's on the list takes a commit; `SyncSuperadmins` applies it when the server starts and whenever anyone signs in. A superadmin is an admin in every other way: `RequireRole` lets them through wherever admins are allowed, and Go code asks `user.Role.IsAdmin()` rather than comparing with `UserRoleAdmin`.
 
 Rows come from three places:
 

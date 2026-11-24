@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestRunsLocally(t *testing.T) {
 	t.Setenv("KUBERNETES_SERVICE_HOST", "")
@@ -24,5 +27,20 @@ func TestRunsLocally(t *testing.T) {
 	t.Setenv("KUBERNETES_SERVICE_HOST", "10.96.0.1")
 	if runsLocally("http://localhost:8080/auth/hcacallback") {
 		t.Error("runsLocally is true inside Kubernetes")
+	}
+}
+
+func TestDevSuperadminsStayOffTheRealSite(t *testing.T) {
+	for _, site := range []string{realSite, realSite + "/"} {
+		for _, id := range devSuperadmins {
+			if slices.Contains(superadminsFor(site), id) {
+				t.Errorf("%s is a superadmin on %s", id, site)
+			}
+		}
+	}
+	for _, site := range []string{"https://crossroads-crossroads-aa59b7.k.hackclub.dev", "http://localhost:8080"} {
+		if got := superadminsFor(site); !slices.Equal(got, slices.Concat(superadmins, devSuperadmins)) {
+			t.Errorf("superadmins on %s: got %v", site, got)
+		}
 	}
 }

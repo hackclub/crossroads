@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -52,9 +53,24 @@ var communityGoal = api.CommunityGoal{
 // change it: adding someone takes a commit here.
 var superadmins = []string{
 	"U083W5CCFDG", // Joaquin
+	"U0A3V0EN3AQ", // Joaquin (guacreview)
 	"U078ZJHUKFW", // Max
 	"U08RVF1BAN4", // Barnav
 	"U0BAAHY7AQK", // Max (alt)
+}
+
+// Superadmins on every build but the real site, dev and local, on top of
+// those above. dev-db is a copy of the real database, so they see what's in it.
+var devSuperadmins = []string{
+	"U091S33V9JB", // Carlos
+}
+
+// superadminsFor is the superadmin list for the site at publicURL.
+func superadminsFor(publicURL string) []string {
+	if strings.TrimSuffix(publicURL, "/") == realSite {
+		return superadmins
+	}
+	return slices.Concat(superadmins, devSuperadmins)
 }
 
 // Announcements from the admin page's Announce tab go to #crossroads-station
@@ -94,20 +110,32 @@ func main() {
 	if err := db.Migrate(ctx, pool); err != nil {
 		log.Fatalf("migrating: %v", err)
 	}
-	if err := db.New(pool).SyncSuperadmins(ctx, superadmins); err != nil {
-		log.Fatalf("setting superadmins: %v", err)
-	}
 
 	clientID, clientSecret, redirectURL := os.Getenv("HCA_CLIENT_ID"), os.Getenv("HCA_CLIENT_SECRET"), os.Getenv("HCA_REDIRECT_URL")
 	if clientID == "" || clientSecret == "" || redirectURL == "" {
 		log.Fatal("HCA_CLIENT_ID, HCA_CLIENT_SECRET and HCA_REDIRECT_URL have to be set")
+	}
+	// The site's public address, which defaults to the site the sign-in
+	// redirect points at. It's how the real site knows it's the real one.
+	publicURL := os.Getenv("PUBLIC_URL")
+	if publicURL == "" {
+		u, err := url.Parse(redirectURL)
+		if err != nil || u.Host == "" {
+			log.Fatal("HCA_REDIRECT_URL has to be a full URL, or set PUBLIC_URL")
+		}
+		publicURL = u.Scheme + "://" + u.Host
+	}
+
+	siteSuperadmins := superadminsFor(publicURL)
+	if err := db.New(pool).SyncSuperadmins(ctx, siteSuperadmins); err != nil {
+		log.Fatalf("setting superadmins: %v", err)
 	}
 	hcaClient := hca.New(hca.Config{ClientID: clientID, ClientSecret: clientSecret, RedirectURL: redirectURL})
 	a := &auth.Auth{
 		Queries:       db.New(pool),
 		HCA:           hcaClient,
 		SecureCookies: strings.HasPrefix(redirectURL, "https://"),
-		Superadmins:   superadmins,
+		Superadmins:   siteSuperadmins,
 	}
 
 	// DEV_MODE=1 adds a sign-in that skips Hack Club Auth and a fake Hackatime,
@@ -129,16 +157,7 @@ func main() {
 		log.Fatal("STAMPS_PER_HOUR has to be set to a whole number above 0")
 	}
 	// Uploaded screenshots are stored on disk and served at /uploads/. Their
-	// URLs are absolute (project links have to be), built from PUBLIC_URL,
-	// which defaults to the site the sign-in redirect points at.
-	publicURL := os.Getenv("PUBLIC_URL")
-	if publicURL == "" {
-		u, err := url.Parse(redirectURL)
-		if err != nil || u.Host == "" {
-			log.Fatal("HCA_REDIRECT_URL has to be a full URL, or set PUBLIC_URL")
-		}
-		publicURL = u.Scheme + "://" + u.Host
-	}
+	// URLs are absolute (project links have to be), built from publicURL.
 	uploadStore := &uploads.Store{
 		Dir:     cmp.Or(os.Getenv("UPLOADS_DIR"), "data/uploads"),
 		BaseURL: strings.TrimSuffix(publicURL, "/") + "/uploads/",
