@@ -611,8 +611,9 @@ func (a *API) reviewSubmission(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, struct {
 		Submission   submissionJSON `json:"submission"`
 		StampsPaid   int64          `json:"stamps_paid"`
+		Forfeited    int64          `json:"stamps_forfeited"`
 		BoxesGranted []boxJSON      `json:"boxes_granted"`
-	}{toReviewerSubmissionJSON(out.Submission), out.StampsPaid, boxes})
+	}{toReviewerSubmissionJSON(out.Submission), out.StampsPaid, out.StampsForfeited, boxes})
 }
 
 // commentOnSubmission is POST /review/submissions/{id}/comments

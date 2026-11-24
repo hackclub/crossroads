@@ -51,7 +51,13 @@
 	const reviewH = $derived(
 		projects ? projects.reduce((t, p) => t + (inReview(p.submissions[0]?.status) ? (p.submissions[0].approved_seconds ?? p.submissions[0].new_seconds) : 0), 0) / 3600 : 0
 	);
-	const unshippedH = $derived(Object.values(details).reduce((t, d) => t + (d.unsubmitted_seconds ?? 0), 0) / 3600);
+	// Time that counted toward two projects at once is unshipped on both, so
+	// the sum stops at what they have unshipped overall.
+	const unshippedH = $derived.by(() => {
+		const ds = Object.values(details);
+		const sum = ds.reduce((t, d) => t + (d.unsubmitted_seconds ?? 0), 0);
+		return Math.min(sum, ...ds.map((d) => d.owner_unsubmitted_seconds ?? Infinity)) / 3600;
+	});
 
 	const goal = $derived(ticket ? ticket.price / session.me.stamps_per_hour : GOAL_HOURS);
 	const pct = (h) => Math.min((h / goal) * 100, 100);
@@ -127,7 +133,7 @@
 				<a class="project-row" href="/projects/{p.id}">
 					<span class="stack-sm">
 						<span class="name">{p.name}</span>
-						<span class="meta">{hours(p.approved_seconds)} approved{#if details[p.id]?.unsubmitted_seconds} · {hours(details[p.id].unsubmitted_seconds)} not shipped{/if}</span>
+						<span class="meta">{hours(p.approved_seconds)} {p.resubmit_blocked ? 'forfeited' : 'approved'}{#if details[p.id]?.unsubmitted_seconds} · {hours(details[p.id].unsubmitted_seconds)} not shipped{/if}</span>
 					</span>
 					<span class="badge {s.tone}">{s.label}</span>
 				</a>

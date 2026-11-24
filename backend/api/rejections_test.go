@@ -106,12 +106,18 @@ func TestSoftAndHardRejects(t *testing.T) {
 		t.Errorf("the fraud check unblocked it: %d", status)
 	}
 	e.mustCall(t, hq, http.StatusOK, "PUT", block, map[string]any{"blocked": false}, nil)
-	if status, _ := shipAgain(); status != http.StatusCreated {
+	status, third := shipAgain()
+	if status != http.StatusCreated {
 		t.Errorf("shipping again once allowed: %d", status)
 	}
 	if status := e.call(t, hq, "PUT", block, map[string]any{"blocked": true}, nil); status != http.StatusUnprocessableEntity {
 		t.Errorf("blocking without a reason: %d, want 422", status)
 	}
+	// A ship in review has to be hard-rejected instead.
+	if status := e.call(t, hq, "PUT", block, map[string]any{"blocked": true, "reason": "Same script again."}, nil); status != http.StatusConflict {
+		t.Errorf("blocking it by hand with a ship in review: %d, want 409", status)
+	}
+	e.approveAllTheWay(t, e.newStageReviewer(t, "UALL", true, true, true), third)
 	e.mustCall(t, hq, http.StatusOK, "PUT", block, map[string]any{"blocked": true, "reason": "Same script again."}, nil)
 	e.mustCall(t, user, http.StatusOK, "GET", "/api/projects/"+itoa(projectID), nil, &p)
 	if !p.ResubmitBlocked {
@@ -148,6 +154,129 @@ func TestFirstStageReviewerHardRejects(t *testing.T) {
 	}
 	if status, _, _ := e.submit(t, user, projectID); status != http.StatusForbidden {
 		t.Errorf("shipping again after a first-stage hard reject: %d, want 403", status)
+	}
+}
+
+// A hard-rejected project's time can't be shipped, so none of it is
+// unsubmitted until it's allowed to be shipped again.
+func TestHardRejectedTimeIsntUnsubmitted(t *testing.T) {
+	e := newEnv(t)
+	reviewer := e.newReviewer(t)
+	user, id := e.shipFor(t, "U1", 3)
+	projectID := e.projectOf(t, id)
+	unsubmitted := func() int {
+		t.Helper()
+		var p project
+		e.mustCall(t, user, http.StatusOK, "GET", "/api/projects/"+itoa(projectID), nil, &p)
+		if p.UnsubmittedSeconds == nil {
+			t.Fatalf("no unsubmitted time: %q", p.HackatimeError)
+		}
+		return *p.UnsubmittedSeconds
+	}
+
+	hard := map[string]any{"action": "reject", "feedback": "This time was made by a script.", "internal_notes": "Script.", "block_resubmit": true}
+	if status, result := e.decide(t, reviewer, id, hard); status != http.StatusOK || result.Submission.Status != "rejected" {
+		t.Fatalf("hard reject: %d %+v", status, result)
+	}
+	if got := unsubmitted(); got != 0 {
+		t.Errorf("hard-rejected project shows %d seconds unsubmitted, want none", got)
+	}
+
+	e.mustCall(t, reviewer, http.StatusOK, "PUT", "/api/review/projects/"+itoa(projectID)+"/resubmit-block", map[string]any{"blocked": false}, nil)
+	if got := unsubmitted(); got != 3*3600 {
+		t.Errorf("once allowed again it shows %d seconds unsubmitted, want its 3 hours back", got)
+	}
+}
+
+// A hard reject takes back every ticket the project earned. Undoing it gives
+// them back only if asked to, and nothing is ever taken or given twice.
+func TestHardRejectForfeitsTickets(t *testing.T) {
+	e := newEnv(t)
+	reviewer := e.newReviewer(t)
+	user := e.newUser(t, "U1")
+	p := e.createProject(t, user, completeProject("racer"))
+	e.approveAllTheWay(t, reviewer, e.submitHours(t, user, "U1", p, "racer", 3*3600))
+	if got := e.stamps(t, user); got != 30 {
+		t.Fatalf("balance after 3 approved hours is %d, want 30", got)
+	}
+	balance := func(want int, when string) {
+		t.Helper()
+		if got := e.stamps(t, user); got != want {
+			t.Errorf("%s: balance is %d, want %d", when, got, want)
+		}
+	}
+	forfeited := func() int {
+		t.Helper()
+		var detail struct {
+			ResubmitBlock *struct {
+				ForfeitedStamps int `json:"forfeited_stamps"`
+			} `json:"resubmit_block"`
+		}
+		e.mustCall(t, reviewer, http.StatusOK, "GET", "/api/review/submissions/"+itoa(p.Submissions[0].ID), nil, &detail)
+		if detail.ResubmitBlock == nil {
+			return -1
+		}
+		return detail.ResubmitBlock.ForfeitedStamps
+	}
+
+	second := e.submitHours(t, user, "U1", p, "racer", 5*3600)
+	hard := map[string]any{"action": "reject", "feedback": "This time was made by a script.", "internal_notes": "Script.", "block_resubmit": true}
+	if status, result := e.decide(t, reviewer, second, hard); status != http.StatusOK || result.StampsForfeited != 30 {
+		t.Fatalf("hard reject: %d %+v, want the 30 tickets taken back", status, result)
+	}
+	balance(0, "after the hard reject")
+	e.mustCall(t, user, http.StatusOK, "GET", "/api/projects/"+itoa(p.ID), nil, &p)
+	if got := forfeited(); got != 30 {
+		t.Errorf("the ship page says %d tickets were taken back, want 30", got)
+	}
+	var actor int64
+	if err := e.pool.QueryRow(context.Background(), "select actor_id from audit_log where kind = 'stamps.forfeit'").Scan(&actor); err != nil || actor != reviewer.ID {
+		t.Errorf("the forfeit's audit row is by %d (%v), want the reviewer", actor, err)
+	}
+
+	block := "/api/review/projects/" + itoa(p.ID) + "/resubmit-block"
+	e.mustCall(t, reviewer, http.StatusOK, "PUT", block, map[string]any{"blocked": true, "reason": "Again."}, nil)
+	balance(0, "blocking it again")
+	e.mustCall(t, reviewer, http.StatusOK, "PUT", block, map[string]any{"blocked": false}, nil)
+	balance(0, "letting it ship again without giving them back")
+	e.mustCall(t, reviewer, http.StatusOK, "PUT", block, map[string]any{"blocked": true, "reason": "Again."}, nil)
+	balance(0, "blocking it after they weren't given back")
+	e.mustCall(t, reviewer, http.StatusOK, "PUT", block, map[string]any{"blocked": false, "restore_stamps": true}, nil)
+	balance(30, "giving them back")
+	e.mustCall(t, reviewer, http.StatusOK, "PUT", block, map[string]any{"blocked": false, "restore_stamps": true}, nil)
+	balance(30, "giving them back twice")
+
+	e.mustCall(t, reviewer, http.StatusOK, "PUT", block, map[string]any{"blocked": true, "reason": "Again."}, nil)
+	balance(0, "blocking it once they were given back")
+	e.mustCall(t, reviewer, http.StatusNoContent, "POST", "/api/review/submissions/"+itoa(second)+"/reopen",
+		map[string]any{"reason": "It was fine.", "restore_stamps": true}, nil)
+	balance(30, "undoing the rejection and giving them back")
+	if status := e.call(t, reviewer, "PUT", block, map[string]any{"blocked": true, "reason": "Again."}, nil); status != http.StatusConflict {
+		t.Errorf("blocking it with a ship in review: %d, want 409", status)
+	}
+	balance(30, "the refused block")
+}
+
+// A hard-rejected project's time is forfeit, so time that also counted
+// toward another project can't be shipped there instead.
+func TestHardRejectedTimeCantMove(t *testing.T) {
+	e := newEnv(t)
+	reviewer := e.newReviewer(t)
+	user := e.newUser(t, "U1")
+	e.hackatime.set("U1", "client", 10*3600)
+	e.hackatime.set("U1", "server", 4*3600)
+	e.hackatime.overlaps = []fakeOverlap{{"U1", "client", "server", 3 * 3600}}
+	client := e.createProject(t, user, completeProject("client"))
+	server := e.createProject(t, user, completeProject("server"))
+
+	_, ship, _ := e.submit(t, user, client.ID)
+	hard := map[string]any{"action": "reject", "feedback": "This time was made by a script.", "internal_notes": "Script.", "block_resubmit": true}
+	if status, _ := e.decide(t, reviewer, ship.ID, hard); status != http.StatusOK {
+		t.Fatalf("hard reject: %d", status)
+	}
+	_, shipped, _ := e.submit(t, user, server.ID)
+	if shipped.NewSeconds != 3600 {
+		t.Errorf("server claimed %d seconds, want only the 1 hour that didn't overlap the forfeit time", shipped.NewSeconds)
 	}
 }
 

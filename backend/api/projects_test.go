@@ -255,6 +255,7 @@ type project struct {
 	ApprovedSeconds    int          `json:"approved_seconds"`
 	HackatimeSeconds   *int         `json:"hackatime_seconds"`
 	UnsubmittedSeconds *int         `json:"unsubmitted_seconds"`
+	OwnerUnsubmitted   *int         `json:"owner_unsubmitted_seconds"`
 	HackatimeError     string       `json:"hackatime_error"`
 	Submissions        []submission `json:"submissions"`
 }
@@ -430,6 +431,79 @@ func TestSubmitAndResubmit(t *testing.T) {
 	if detail.ApprovedSeconds != 5*3600 || len(detail.Submissions) != 2 {
 		t.Errorf("got %d approved seconds over %d submissions, want 5 hours over 2", detail.ApprovedSeconds, len(detail.Submissions))
 	}
+}
+
+// Time in a ship that's still in review is in review, not unsubmitted, even
+// when its owner has unsubmitted time on another project.
+func TestTimeInReviewIsntUnsubmitted(t *testing.T) {
+	e := newEnv(t)
+	reviewer := e.newReviewer(t)
+	user := e.newUser(t, "U1")
+	e.hackatime.set("U1", "racer", 10*3600)
+	e.hackatime.set("U1", "kart", 5*3600)
+	racer := e.createProject(t, user, completeProject("racer"))
+	kart := e.createProject(t, user, completeProject("kart"))
+
+	unsubmitted := func(p project) int {
+		t.Helper()
+		var detail project
+		e.call(t, user, "GET", "/api/projects/"+itoa(p.ID), nil, &detail)
+		if detail.UnsubmittedSeconds == nil {
+			t.Fatalf("%s shows no unsubmitted time: %q", detail.Name, detail.HackatimeError)
+		}
+		return *detail.UnsubmittedSeconds
+	}
+	_, ship, _ := e.submit(t, user, racer.ID)
+	if got := unsubmitted(racer); got != 0 {
+		t.Errorf("racer waiting for review shows %d seconds unsubmitted, want none", got)
+	}
+	if got := unsubmitted(kart); got != 5*3600 {
+		t.Errorf("kart shows %d seconds unsubmitted, want its 5 hours", got)
+	}
+
+	// Both projects share a repo link, so the ship goes through the fraud check.
+	if status, result := e.decide(t, reviewer, ship.ID, map[string]any{"action": "approve"}); status != http.StatusOK || result.Submission.Status == "approved" {
+		t.Fatalf("approving: got %d %+v, want it sent on to the fraud check", status, result)
+	}
+	if got := unsubmitted(racer); got != 0 {
+		t.Errorf("racer in its final check shows %d seconds unsubmitted, want none", got)
+	}
+
+	e.hackatime.set("U1", "racer", 12*3600)
+	if got := unsubmitted(racer); got != 2*3600 {
+		t.Errorf("racer shows %d seconds unsubmitted, want the 2 hours since it shipped", got)
+	}
+}
+
+// Time Hackatime counted toward two projects at once is unsubmitted on both,
+// since either could claim it, but the owner's total counts it once.
+func TestOwnerUnsubmittedCountsOverlapOnce(t *testing.T) {
+	e := newEnv(t)
+	user := e.newUser(t, "U1")
+	e.hackatime.set("U1", "client", 10*3600)
+	e.hackatime.set("U1", "server", 4*3600)
+	e.hackatime.overlaps = []fakeOverlap{{"U1", "client", "server", 3 * 3600}}
+	client := e.createProject(t, user, completeProject("client"))
+	server := e.createProject(t, user, completeProject("server"))
+
+	check := func(p project, want, wantOwner int) {
+		t.Helper()
+		var detail project
+		e.call(t, user, "GET", "/api/projects/"+itoa(p.ID), nil, &detail)
+		if detail.UnsubmittedSeconds == nil || detail.OwnerUnsubmitted == nil {
+			t.Fatalf("%s is missing its unsubmitted time: %q", detail.Name, detail.HackatimeError)
+		}
+		if *detail.UnsubmittedSeconds != want || *detail.OwnerUnsubmitted != wantOwner {
+			t.Errorf("project %d shows %d seconds unsubmitted of its owner's %d, want %d of %d",
+				p.ID, *detail.UnsubmittedSeconds, *detail.OwnerUnsubmitted, want, wantOwner)
+		}
+	}
+	check(client, 10*3600, 11*3600)
+	check(server, 4*3600, 11*3600)
+
+	e.submit(t, user, client.ID)
+	check(client, 0, 3600)
+	check(server, 3600, 3600)
 }
 
 func TestNotesForReviewers(t *testing.T) {

@@ -84,21 +84,35 @@ func boxesText(n int) string {
 // rejectedDM is for a rejection with feedback. A hard reject (blocked) means
 // the project can't be shipped again. The blank line after the feedback ends
 // the quote, so what follows isn't read as the reviewer's.
-func (a *API) rejectedDM(project db.Project, feedback string, blocked bool) string {
+func (a *API) rejectedDM(project db.Project, feedback string, blocked bool, forfeited int64) string {
 	if blocked {
-		return fmt.Sprintf("Sorry, %s was rejected and can't be shipped again :pensivecowboy: Your reviewer said:\n%s\n\nIf you think that's a mistake, ask an organizer, like guac or max.",
-			a.projectLink(project), quoted(feedback))
+		taken := ""
+		if forfeited > 0 {
+			taken = fmt.Sprintf(", and the %d ticket%s it earned were taken back", forfeited, plural(int(forfeited)))
+		}
+		return fmt.Sprintf("Sorry, %s was rejected and can't be shipped again%s :pensivecowboy: Your reviewer said:\n%s\n\nIf you think that's a mistake, ask an organizer, like guac or max.",
+			a.projectLink(project), taken, quoted(feedback))
 	}
 	return fmt.Sprintf("%s wasn't approved this time. Your reviewer said:\n%s\n\nMake some changes and ship it again!",
 		a.projectLink(project), quoted(feedback))
 }
 
-func (a *API) reopenedDM(project db.Project) string {
-	return fmt.Sprintf("Good news: the rejection of %s was undone, so it's back in review. A reviewer will look it back over soon.", a.projectLink(project))
+func (a *API) reopenedDM(project db.Project, restored int64) string {
+	return fmt.Sprintf("Good news: the rejection of %s was undone, so it's back in review%s. A reviewer will look it back over soon.",
+		a.projectLink(project), givenBack(restored))
 }
 
-func (a *API) resubmitAllowedDM(project db.Project) string {
-	return fmt.Sprintf("Good news: %s can be shipped again. Ship it from its page whenever you're ready.", a.projectLink(project))
+func (a *API) resubmitAllowedDM(project db.Project, restored int64) string {
+	return fmt.Sprintf("Good news: %s can be shipped again%s. Ship it from its page whenever you're ready.", a.projectLink(project), givenBack(restored))
+}
+
+// givenBack ends a sentence about undoing a hard reject with the tickets it
+// gave back, if any.
+func givenBack(restored int64) string {
+	if restored == 0 {
+		return ""
+	}
+	return fmt.Sprintf(", and the %d ticket%s it earned are yours again", restored, plural(int(restored)))
 }
 
 // projectLink is the project's name in bold, linking to its page.

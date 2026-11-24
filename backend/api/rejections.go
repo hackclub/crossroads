@@ -4,9 +4,10 @@ package api
 //
 // A rejection is soft or hard. Soft: they change the project and ship it
 // again. Hard (decision.BlockResubmit, for fraud): the project can't be
-// shipped again until HQ or an admin allows it. HQ and admins see every
-// rejected ship, can switch a project between the two, and can put a rejected
-// ship back in the review queue.
+// shipped again until HQ or an admin allows it, and every ticket it earned is
+// forfeit. HQ and admins see every rejected ship, can switch a project between
+// the two, and can put a rejected ship back in the review queue. Undoing a
+// hard reject can give the forfeited tickets back.
 
 import (
 	"context"
@@ -39,6 +40,7 @@ type pastReviewJSON struct {
 	DecidedBy       *string   `json:"decided_by"` // who made the last decision
 	Feedback        *string   `json:"feedback"`
 	ResubmitBlocked bool      `json:"resubmit_blocked"` // a hard reject
+	ForfeitedStamps int64     `json:"forfeited_stamps"` // taken back by the hard reject, if it's one
 	ShippedAgain    bool      `json:"shipped_again"`    // the project has a newer ship
 }
 
@@ -75,7 +77,7 @@ func (a *API) pastReviews(w http.ResponseWriter, r *http.Request) {
 			ID: row.ID, ProjectID: row.ProjectID, ProjectName: row.ProjectName, UserID: row.UserID, UserName: row.UserName,
 			Status: string(row.Status), NewSeconds: row.NewSeconds, ApprovedSeconds: row.ApprovedSeconds,
 			SubmittedAt: row.SubmittedAt, DecidedAt: row.DecidedAt, DecidedBy: nonEmpty(row.DecidedByName),
-			Feedback: row.Feedback, ResubmitBlocked: row.ResubmitBlocked, ShippedAgain: row.ShippedAgain,
+			Feedback: row.Feedback, ResubmitBlocked: row.ResubmitBlocked, ForfeitedStamps: row.ForfeitedStamps, ShippedAgain: row.ShippedAgain,
 		})
 	}
 	respond.JSON(w, http.StatusOK, struct {
@@ -84,11 +86,13 @@ func (a *API) pastReviews(w http.ResponseWriter, r *http.Request) {
 	}{params.DecidedBy == nil, items})
 }
 
-// resubmitBlockJSON says who stopped a project being shipped again, and why.
+// resubmitBlockJSON says who stopped a project being shipped again, and why,
+// and how many of its tickets that took back.
 type resubmitBlockJSON struct {
-	At     time.Time `json:"at"`
-	By     *string   `json:"by"`
-	Reason *string   `json:"reason"`
+	At              time.Time `json:"at"`
+	By              *string   `json:"by"`
+	Reason          *string   `json:"reason"`
+	ForfeitedStamps int64     `json:"forfeited_stamps"`
 }
 
 func (a *API) resubmitBlock(r *http.Request, p db.Project) (*resubmitBlockJSON, error) {
@@ -96,6 +100,11 @@ func (a *API) resubmitBlock(r *http.Request, p db.Project) (*resubmitBlockJSON, 
 		return nil, nil
 	}
 	out := &resubmitBlockJSON{At: *p.ResubmitBlockedAt, Reason: p.ResubmitBlockReason}
+	forfeited, err := a.Queries.ForfeitedStampsForProject(r.Context(), p.ID)
+	if err != nil {
+		return nil, err
+	}
+	out.ForfeitedStamps = forfeited
 	if p.ResubmitBlockedBy != nil {
 		by, err := a.Queries.GetUser(r.Context(), *p.ResubmitBlockedBy)
 		if err != nil {
@@ -107,8 +116,10 @@ func (a *API) resubmitBlock(r *http.Request, p db.Project) (*resubmitBlockJSON, 
 }
 
 // setResubmitBlock is PUT /review/projects/{id}/resubmit-block
-// {"blocked": false} to let a project be shipped again, or
-// {"blocked": true, "reason": "..."} to stop it. HQ and admins only.
+// {"blocked": false} to let a project be shipped again (with
+// "restore_stamps": true, giving back the tickets the hard reject took), or
+// {"blocked": true, "reason": "..."} to stop it, which takes them. HQ and
+// admins only.
 func (a *API) setResubmitBlock(w http.ResponseWriter, r *http.Request) {
 	viewer := auth.User(r.Context())
 	if !canManageRejections(viewer) {
@@ -120,8 +131,9 @@ func (a *API) setResubmitBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Blocked *bool  `json:"blocked"`
-		Reason  string `json:"reason"`
+		Blocked       *bool  `json:"blocked"`
+		Reason        string `json:"reason"`
+		RestoreStamps bool   `json:"restore_stamps"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -153,12 +165,12 @@ func (a *API) setResubmitBlock(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case *body.Blocked:
-		err = a.Queries.BlockResubmit(r.Context(), db.BlockResubmitParams{ID: id, ResubmitBlockedBy: &viewer.ID, ResubmitBlockReason: &body.Reason})
+		err = a.blockResubmit(r.Context(), viewer, project, body.Reason)
 	case project.ResubmitBlockedAt != nil:
-		err = a.allowResubmit(r.Context(), id)
+		err = a.allowResubmit(r.Context(), viewer, project, body.RestoreStamps)
 	}
 	if err != nil {
-		respond.ServerError(w, r, err)
+		respondProblem(w, r, err)
 		return
 	}
 	if project, err = a.Queries.GetAnyProject(r.Context(), id); err != nil {
@@ -176,32 +188,95 @@ func (a *API) setResubmitBlock(w http.ResponseWriter, r *http.Request) {
 	}{block != nil, block})
 }
 
-// allowResubmit lets a hard-rejected project be shipped again, and DMs its
-// owner that it can be.
-func (a *API) allowResubmit(ctx context.Context, id int64) error {
+// blockResubmit stops a project being shipped again, by hand, and forfeits
+// its tickets. A ship in review has to be hard-rejected instead, so nothing
+// is paid on a project after its tickets were taken.
+func (a *API) blockResubmit(ctx context.Context, viewer *db.User, project db.Project, reason string) error {
 	tx, err := a.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 	q := a.Queries.WithTx(tx)
-	project, err := q.AllowResubmit(ctx, id)
+	if _, err := q.LockUser(ctx, project.UserID); err != nil {
+		return err
+	}
+	// Blocking first locks the project, so it can't be shipped meanwhile.
+	if err := q.BlockResubmit(ctx, db.BlockResubmitParams{ID: project.ID, ResubmitBlockedBy: &viewer.ID, ResubmitBlockReason: &reason}); err != nil {
+		return err
+	}
+	submissions, err := q.ListSubmissions(ctx, project.ID)
+	if err != nil {
+		return err
+	}
+	if hasPending(submissions) {
+		return problem(http.StatusConflict, "It has a ship in review. Hard-reject that ship instead.")
+	}
+	if _, err := forfeitStamps(ctx, q, project.ID, viewer.ID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// allowResubmit lets a hard-rejected project be shipped again, giving back
+// the tickets it forfeited if restore is set, and DMs its owner that it can
+// be.
+func (a *API) allowResubmit(ctx context.Context, viewer *db.User, project db.Project, restore bool) error {
+	tx, err := a.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	q := a.Queries.WithTx(tx)
+	if _, err := q.LockUser(ctx, project.UserID); err != nil {
+		return err
+	}
+	project, err = q.AllowResubmit(ctx, project.ID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil // someone else just did
 	}
 	if err != nil {
 		return err
 	}
-	if err := addProjectDM(ctx, q, project, nil, db.ProjectDmKindResubmitAllowed, a.resubmitAllowedDM(project)); err != nil {
+	var restored int64
+	if restore {
+		if restored, err = restoreStamps(ctx, q, project.ID, viewer.ID); err != nil {
+			return err
+		}
+	}
+	if err := addProjectDM(ctx, q, project, nil, db.ProjectDmKindResubmitAllowed, a.resubmitAllowedDM(project, restored)); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
+// forfeitStamps takes back every ticket a hard-rejected project has earned,
+// as by, and returns how many. Its owner's row has to be locked.
+func forfeitStamps(ctx context.Context, q *db.Queries, projectID, by int64) (int64, error) {
+	entries, err := q.ForfeitProjectStamps(ctx, db.ForfeitProjectStampsParams{ProjectID: projectID, CreatedBy: by})
+	return -ledgerTotal(entries), err
+}
+
+// restoreStamps gives back the tickets a project forfeited, as by, and
+// returns how many. Its owner's row has to be locked.
+func restoreStamps(ctx context.Context, q *db.Queries, projectID, by int64) (int64, error) {
+	entries, err := q.RestoreProjectStamps(ctx, db.RestoreProjectStampsParams{ProjectID: projectID, CreatedBy: by})
+	return ledgerTotal(entries), err
+}
+
+func ledgerTotal(entries []db.StampLedger) int64 {
+	var total int64
+	for _, e := range entries {
+		total += int64(e.Amount)
+	}
+	return total
+}
+
 // reopenSubmission is POST /review/submissions/{id}/reopen {"reason": "..."}:
 // undoes a rejection, putting the ship back in the review queue as if it had
-// just been shipped, and lets its project be shipped again. HQ and admins
-// only. It isn't a review, so it doesn't count toward pay.
+// just been shipped, and lets its project be shipped again. With
+// "restore_stamps": true, it gives back the tickets a hard reject took. HQ
+// and admins only. It isn't a review, so it doesn't count toward pay.
 func (a *API) reopenSubmission(w http.ResponseWriter, r *http.Request) {
 	viewer := auth.User(r.Context())
 	if !canManageRejections(viewer) {
@@ -213,7 +288,8 @@ func (a *API) reopenSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Reason string `json:"reason"`
+		Reason        string `json:"reason"`
+		RestoreStamps bool   `json:"restore_stamps"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -227,14 +303,14 @@ func (a *API) reopenSubmission(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusUnprocessableEntity, "Keep the reason under 5,000 characters.")
 		return
 	}
-	if err := a.reopen(r, viewer, id, body.Reason); err != nil {
+	if err := a.reopen(r, viewer, id, body.Reason, body.RestoreStamps); err != nil {
 		respondProblem(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *API) reopen(r *http.Request, viewer *db.User, id int64, reason string) error {
+func (a *API) reopen(r *http.Request, viewer *db.User, id int64, reason string, restore bool) error {
 	ctx := r.Context()
 	row, err := a.Queries.GetSubmissionForReview(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -290,9 +366,15 @@ func (a *API) reopen(r *http.Request, viewer *db.User, id int64, reason string) 
 	if _, err := q.AllowResubmit(ctx, s.ProjectID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
+	var restored int64
+	if restore {
+		if restored, err = restoreStamps(ctx, q, s.ProjectID, viewer.ID); err != nil {
+			return err
+		}
+	}
 	// One DM, even if it was a hard reject: being back in review says it
 	// can be shipped again.
-	if err := addProjectDM(ctx, q, row.Project, &s.ID, db.ProjectDmKindReopened, a.reopenedDM(row.Project)); err != nil {
+	if err := addProjectDM(ctx, q, row.Project, &s.ID, db.ProjectDmKindReopened, a.reopenedDM(row.Project, restored)); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

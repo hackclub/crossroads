@@ -80,7 +80,7 @@ Responses always use explicit JSON structs with `snake_case` tags. Never return 
 | `review_skips` | Who skipped which ship when, so Next leaves it alone for 3 hours. |
 | `feedback_templates` | Shared feedback snippets. |
 | `review_settings` | One row: `fraud_check_everything`, `large_ship_seconds`, `long_day_seconds`. |
-| `stamp_ledger` | Every stamp change ever: `payout` (a submission), `purchase` and `refund` (an order), `adjustment` (an admin, with a note). Append-only. |
+| `stamp_ledger` | Every stamp change ever: `payout` and `bonus` (a submission), `forfeit` and `restore` (a submission's tickets taken back by a hard reject, and given back), `purchase` and `refund` (an order), `adjustment` (an admin, with a note). Append-only. |
 | `special_stamp_types` | Collectible kinds: `rarity`, `effect` (`none` or `priority_review`), optional `supply_cap`, `issued_count`. |
 | `box_types`, `box_drops` | Box kinds, and their loot tables (a weight per stamp type). |
 | `milestones` | Approved seconds → box type. `per_project` ones count one project's hours, not the person's total. |
@@ -108,7 +108,7 @@ Rules live in the database wherever possible, so a bug in Go can't break them. S
 | Two Nexts never claim the same ship | `FOR UPDATE SKIP LOCKED` in `ClaimNextSubmission` |
 | A reviewer can't approve more than the submission claimed | check `submissions_approved_within_new` |
 | A Hackatime project counts toward one project, and only one of its owner's | primary key on `project_hackatime_projects`, plus a composite foreign key to `projects (id, user_id)` |
-| A submission pays out once | unique index `stamp_ledger_one_payout_per_submission` |
+| A submission pays out once, with at most one bonus | partial unique index `stamp_ledger_one_entry_per_submission_kind` |
 | An order is charged once and refunded at most once | unique index `stamp_ledger_one_entry_per_order_kind` |
 | The ledger is never edited | trigger `stamp_ledger_append_only` |
 | The audit log is never edited | trigger `audit_log_append_only` |
@@ -134,7 +134,7 @@ Time comes from Hackatime's `GET /api/v1/users/{slack_id}/stats?features=project
 
 A submission's `new_seconds` is `hackatimeTotals.unclaimed`, the smaller of two limits, and never below zero:
 
-1. **The project's limit:** its Hackatime total minus what its approved submissions have already covered (`accountedFor`: the sum of their `new_seconds`). That sum deliberately uses `new_seconds`, not `approved_seconds`, so time a reviewer cut can't be claimed again.
+1. **The project's limit:** its Hackatime total minus what its approved submissions and its ship in review have already covered (`accountedFor`: the sum of their `new_seconds`). Shipping waits until nothing is in review, but the project page shows this before then, and counting the ship in review keeps its time out of "not shipped". That sum deliberately uses `new_seconds`, not `approved_seconds`, so time a reviewer cut can't be claimed again.
 2. **The person's limit:** their Hackatime total across **every** Hackatime project they've linked to any project (overlaps counted once) minus everything their pending and approved submissions have claimed (`ClaimedSecondsForUser`).
 
 The second limit catches:
@@ -142,7 +142,13 @@ The second limit catches:
 - renaming a Hackatime project, which moves its time under a new name
 - linking the same time somewhere else after it's paid
 
-Rejected submissions aren't counted as claimed, so their time goes back into the pool.
+Rejected submissions aren't counted as claimed, so their time goes back into the pool, except on a hard-rejected project: its time is forfeit, so every ship it made counts as claimed and none of it can be shipped on another project.
+
+### Hard rejects forfeit tickets
+
+A hard reject (a reviewer's, or HQ blocking a project by hand) takes back every ticket the project's ships were paid, payouts and Golden Spike bonuses, as one `forfeit` entry per ship (`ForfeitProjectStamps`). It takes what each ship still holds, so blocking again never takes twice. That can leave a balance below zero if they've been spent. Blocking by hand is refused while a ship is in review, so nothing is paid on a blocked project. The project's approved hours stop counting toward the running total that payouts and milestones use (`ApprovedSecondsForUser`), and the home page's bar leaves them out.
+
+Letting the project ship again, or undoing the rejection, gives the tickets back only if HQ or the admin ticks the box for it (`restore_stamps`): one `restore` entry per ship for what it forfeited (`RestoreProjectStamps`). Otherwise they stay taken; an admin can still credit someone by hand with an adjustment. Migration 43 forfeited the tickets of every project already hard-rejected when it ran.
 
 To keep this airtight under concurrency, `submit` asks Hackatime first (it's slow), then locks the person's `users` row, re-reads all their links, and gives up with `409` if they changed in the meantime. Creating, editing and deleting projects also lock the `users` row, so links and submissions for one person change one at a time. `api/dupes_test.go` holds two submissions at a barrier to prove the lock matters.
 
@@ -156,7 +162,7 @@ Other protections:
 ## Stamps
 
 - Every change goes through `stamp_ledger`. Its trigger adds the amount to `users.stamps` and refuses a purchase that would go below zero. **Never update `users.stamps` directly, and never edit ledger rows**; add an adjustment instead.
-- Only purchases are blocked from going negative. Adjustments can take someone below zero, which is how stamps from a fraudulent project are clawed back after they've been spent.
+- Only purchases are blocked from going negative. Adjustments and forfeits can take someone below zero, which is how stamps from a fraudulent project are clawed back after they've been spent.
 - **Payouts** happen when a submission is approved. `stampsFor(s) = s × STAMPS_PER_HOUR / 3600`, rounded down, and each approval pays `stampsFor(total after) − stampsFor(total before)` over the person's approved seconds. Working from the running total means rounding never costs anyone a stamp: 60 approved hours is always exactly 60 hours' worth, however it was split. If the rate changes, only new hours use the new rate.
 
 ## Reviewing
@@ -244,7 +250,7 @@ Superadmins write announcements on Admin's Announce tab and post them to the sta
 
 ## Tickets, Please
 
-The same bot DMs people when something happens to one of their projects, under the name **Tickets, Please** (`api/dms.go`). Four changes get a DM: a ship signed off (its hours, the tickets it paid, any boxes, and the feedback), a rejection (the feedback, and for a hard reject that it can't be shipped again), a rejection undone, and a project allowed to ship again. Nothing in between: a first approval waiting for the final check, comments and reviewer link fixes aren't DMed, and neither is HQ blocking a project by hand.
+The same bot DMs people when something happens to one of their projects, under the name **Tickets, Please** (`api/dms.go`). Four changes get a DM: a ship signed off (its hours, the tickets it paid, any boxes, and the feedback), a rejection (the feedback, and for a hard reject that it can't be shipped again and the tickets it took back), a rejection undone, and a project allowed to ship again (each with any tickets given back). Nothing in between: a first approval waiting for the final check, comments and reviewer link fixes aren't DMed, and neither is HQ blocking a project by hand.
 
 - **An outbox.** The change writes its DM into `project_dms` in the same transaction (`addProjectDM`, from `decide`, `reopen` and `allowResubmit`), already worded, so there's a DM exactly when the change happened, whether it came from the review pages or Sidekick. `RunProjectDMs` sends what's due every 15 seconds.
 - **Only the real site DMs people.** Every other build sends every DM to #xr-station-test, saying who it was for (`DMRedirect`, set in `main.go` the way the announcement channel is), because dev-db is a copy of the real database with everyone's real Slack IDs.

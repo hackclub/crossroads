@@ -148,8 +148,10 @@ type decision struct {
 type decisionOutcome struct {
 	Submission db.Submission
 	StampsPaid int64
-	Boxes      []db.Box
-	Event      db.ShipEvent // the decision itself
+	// A hard reject takes back every ticket the project earned.
+	StampsForfeited int64
+	Boxes           []db.Box
+	Event           db.ShipEvent // the decision itself
 }
 
 // decide applies a decision to a ship at whatever stage it's at. perms are
@@ -289,6 +291,9 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		if d.BlockResubmit {
 			event.BlocksResubmit = true
 			if err := q.BlockResubmit(ctx, db.BlockResubmitParams{ID: s.ProjectID, ResubmitBlockedBy: &reviewer.ID, ResubmitBlockReason: &d.InternalNotes}); err != nil {
+				return out, err
+			}
+			if out.StampsForfeited, err = forfeitStamps(ctx, q, s.ProjectID, reviewer.ID); err != nil {
 				return out, err
 			}
 		}
@@ -446,7 +451,7 @@ func (a *API) decide(ctx context.Context, reviewer *db.User, id int64, d decisio
 		}
 	case saved.Status == db.SubmissionStatusRejected:
 		if err := addProjectDM(ctx, q, row.Project, &saved.ID, db.ProjectDmKindRejected,
-			a.rejectedDM(row.Project, d.Feedback, d.BlockResubmit)); err != nil {
+			a.rejectedDM(row.Project, d.Feedback, d.BlockResubmit, out.StampsForfeited)); err != nil {
 			return out, err
 		}
 	}

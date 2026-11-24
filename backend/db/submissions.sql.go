@@ -13,12 +13,12 @@ const claimedSecondsForUser = `-- name: ClaimedSecondsForUser :one
 select coalesce(sum(submissions.new_seconds), 0)::bigint
 from submissions
 join projects on projects.id = submissions.project_id
-where projects.user_id = $1 and submissions.status <> 'rejected'
+where projects.user_id = $1 and (submissions.status <> 'rejected' or projects.resubmit_blocked_at is not null)
 `
 
 // Time the user has already claimed: everything their submissions in review
 // (at any stage) and approved counted, including time a reviewer didn't
-// accept.
+// accept, and every ship of a hard-rejected project, whose time is forfeit.
 func (q *Queries) ClaimedSecondsForUser(ctx context.Context, userID int64) (int64, error) {
 	row := q.db.QueryRow(ctx, claimedSecondsForUser, userID)
 	var column_1 int64

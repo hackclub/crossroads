@@ -79,10 +79,11 @@ const approvedSecondsForUser = `-- name: ApprovedSecondsForUser :one
 select coalesce(sum(submissions.approved_seconds), 0)::bigint
 from submissions
 join projects on projects.id = submissions.project_id
-where projects.user_id = $1 and submissions.status = 'approved'
+where projects.user_id = $1 and submissions.status = 'approved' and projects.resubmit_blocked_at is null
 `
 
-// Only signed-off ships count.
+// Only signed-off ships count, and none on a hard-rejected project: they're
+// forfeit.
 func (q *Queries) ApprovedSecondsForUser(ctx context.Context, userID int64) (int64, error) {
 	row := q.db.QueryRow(ctx, approvedSecondsForUser, userID)
 	var column_1 int64
@@ -603,6 +604,12 @@ select
     submissions.feedback,
     projects.name as project_name,
     (projects.resubmit_blocked_at is not null)::boolean as resubmit_blocked,
+    case when projects.resubmit_blocked_at is not null then (
+        select coalesce(-sum(stamp_ledger.amount), 0)
+        from stamp_ledger
+        join submissions shipped on shipped.id = stamp_ledger.submission_id
+        where shipped.project_id = projects.id and stamp_ledger.kind in ('forfeit', 'restore')
+    ) else 0 end::bigint as forfeited_stamps,
     users.id as user_id,
     users.name as user_name,
     coalesce(decider.name, '')::text as decided_by_name,
@@ -642,6 +649,7 @@ type ListPastReviewsRow struct {
 	Feedback        *string
 	ProjectName     string
 	ResubmitBlocked bool
+	ForfeitedStamps int64
 	UserID          int64
 	UserName        string
 	DecidedByName   string
@@ -671,6 +679,7 @@ func (q *Queries) ListPastReviews(ctx context.Context, arg ListPastReviewsParams
 			&i.Feedback,
 			&i.ProjectName,
 			&i.ResubmitBlocked,
+			&i.ForfeitedStamps,
 			&i.UserID,
 			&i.UserName,
 			&i.DecidedByName,
