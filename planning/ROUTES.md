@@ -81,7 +81,7 @@ interface Project {
   updated_at: string;
   // Only on GET /api/projects/{id}, and only if it has Hackatime projects linked:
   hackatime_seconds?: number;   // its Hackatime time since the event started, right now
-  unsubmitted_seconds?: number; // how much a submission right now would claim (with a ship in review, the time since it)
+  unsubmitted_seconds?: number; // how much a submission right now would claim (with a ship in review, the time since it; 0 if hard-rejected)
   owner_unsubmitted_seconds?: number; // the most they have unsubmitted across all their projects together
   hackatime_error?: string;     // set instead of the three above if Hackatime couldn't be asked
   submissions: Submission[];    // newest first
@@ -386,7 +386,7 @@ Only `name` is required. Everything else can be filled in later, but submitting 
 
 ### `GET /api/projects/{id}`
 
-`200` → `Project`, including `hackatime_seconds`, `unsubmitted_seconds` and `owner_unsubmitted_seconds` (or `hackatime_error`) if it has Hackatime projects linked. `unsubmitted_seconds` is exactly what submitting now would claim, after both double-counting limits (see INTERNALS.md); while a ship is in review, its time isn't in it. `owner_unsubmitted_seconds` is the person's limit on its own. Time that counted toward two projects at once is unsubmitted on both, so a total of every project's `unsubmitted_seconds` should stop at `owner_unsubmitted_seconds`. Asking Hackatime makes this slower than the list.
+`200` → `Project`, including `hackatime_seconds`, `unsubmitted_seconds` and `owner_unsubmitted_seconds` (or `hackatime_error`) if it has Hackatime projects linked. `unsubmitted_seconds` is exactly what submitting now would claim, after both double-counting limits (see INTERNALS.md); while a ship is in review, its time isn't in it, and a project that can't be shipped again (a hard reject) has none. `owner_unsubmitted_seconds` is the person's limit on its own. Time that counted toward two projects at once is unsubmitted on both, so a total of every project's `unsubmitted_seconds` should stop at `owner_unsubmitted_seconds`. Asking Hackatime makes this slower than the list.
 
 `404` if it's not theirs.
 

@@ -426,6 +426,10 @@ func (a *API) getProject(w http.ResponseWriter, r *http.Request) {
 		} else {
 			accounted, _ := accountedFor(submissions)
 			unsubmitted := totals.unclaimed(accounted, int(claimed))
+			// A hard reject means none of it can be shipped.
+			if project.ResubmitBlockedAt != nil {
+				unsubmitted = 0
+			}
 			ownerUnsubmitted := max(0, totals.User-int(claimed))
 			out.HackatimeSeconds = &totals.Project
 			out.UnsubmittedSeconds = &unsubmitted

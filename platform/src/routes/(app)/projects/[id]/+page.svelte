@@ -330,7 +330,7 @@
 							<div class="tile"><span class="label">Tracked</span><span class="value">{hours(project.hackatime_seconds ?? 0)}</span></div>
 							<div class="tile"><span class="label">Approved</span><span class="value">{hours(project.approved_seconds)}</span></div>
 						</div>
-						{#if project.unsubmitted_seconds != null}<span class="small">{hours(project.unsubmitted_seconds)} not shipped yet.</span>{/if}
+						{#if project.unsubmitted_seconds != null && !project.resubmit_blocked}<span class="small">{hours(project.unsubmitted_seconds)} not shipped yet.</span>{/if}
 						<div class="pill-row">
 							{#each project.hackatime_projects as h}<span class="badge">{h}</span>{:else}<span class="small muted">No Hackatime projects linked. <a href="/projects/{project.id}/edit">Link some</a></span>{/each}
 						</div>

@@ -151,6 +151,37 @@ func TestFirstStageReviewerHardRejects(t *testing.T) {
 	}
 }
 
+// A hard-rejected project's time can't be shipped, so none of it is
+// unsubmitted until it's allowed to be shipped again.
+func TestHardRejectedTimeIsntUnsubmitted(t *testing.T) {
+	e := newEnv(t)
+	reviewer := e.newReviewer(t)
+	user, id := e.shipFor(t, "U1", 3)
+	projectID := e.projectOf(t, id)
+	unsubmitted := func() int {
+		t.Helper()
+		var p project
+		e.mustCall(t, user, http.StatusOK, "GET", "/api/projects/"+itoa(projectID), nil, &p)
+		if p.UnsubmittedSeconds == nil {
+			t.Fatalf("no unsubmitted time: %q", p.HackatimeError)
+		}
+		return *p.UnsubmittedSeconds
+	}
+
+	hard := map[string]any{"action": "reject", "feedback": "This time was made by a script.", "internal_notes": "Script.", "block_resubmit": true}
+	if status, result := e.decide(t, reviewer, id, hard); status != http.StatusOK || result.Submission.Status != "rejected" {
+		t.Fatalf("hard reject: %d %+v", status, result)
+	}
+	if got := unsubmitted(); got != 0 {
+		t.Errorf("hard-rejected project shows %d seconds unsubmitted, want none", got)
+	}
+
+	e.mustCall(t, reviewer, http.StatusOK, "PUT", "/api/review/projects/"+itoa(projectID)+"/resubmit-block", map[string]any{"blocked": false}, nil)
+	if got := unsubmitted(); got != 3*3600 {
+		t.Errorf("once allowed again it shows %d seconds unsubmitted, want its 3 hours back", got)
+	}
+}
+
 func TestUndoingARejection(t *testing.T) {
 	e := newEnv(t)
 	fraud := e.newStageReviewer(t, "UFRAUD", true, true, false)
