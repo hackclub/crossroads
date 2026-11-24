@@ -35,6 +35,11 @@ const NEEDS = [
 	[/^\/emporium$/, () => ['/emporium/items']],
 	[/^\/review$/, () => ['/review/queue?stage=review']],
 	[/^\/review\/templates$/, () => ['/review/templates']],
+	// A ship in review: only what the database knows. The evidence asks
+	// Hackatime, GitHub and Airtable, which have rate limits, so it waits for
+	// the ship to be opened: pointing down a queue of ships mustn't ask them
+	// about every one.
+	[/^\/review\/(\d+)$/, (m) => [`/review/submissions/${m[1]}?evidence=0`]]
 ];
 
 export function warmFor(pathname) {

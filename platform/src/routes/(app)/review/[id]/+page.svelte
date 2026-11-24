@@ -3,10 +3,10 @@
 	// timeline, and decide. Every decision sends the stage this page loaded,
 	// so a ship that moved on in the meantime is refused instead of decided
 	// at the wrong stage.
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, get } from '#lib/api.js';
+	import { api, get, peek } from '#lib/api.js';
 	import { session, isAdmin } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
 	import { STAGES, canDecideStage, canHardReject, reasonLabel, STATUS_LABELS, statusTone, EVENT_LABELS, eventLabel, time, toSeconds, toHours, fromHours, cutText } from '#lib/review.js';
@@ -17,7 +17,32 @@
 	import GitHubPanel from '#lib/review/GitHubPanel.svelte';
 	import HackatimePanel from '#lib/review/HackatimePanel.svelte';
 
-	let d = $state(null);
+	// The page comes in two parts.
+	//   core: what the database knows: the ship, the project, the timeline, the
+	//     claim. It comes back at once, and is asked again after every action.
+	//   evidence: the checks, Hackatime, GitHub and the Unified YSWS DB. Those
+	//     ask outside services, and the answer waits for the slowest of them,
+	//     so it's asked for once per ship (and again when a link is fixed) and
+	//     filled in when it comes.
+	// Both start from the last answers, if this ship has been opened (or its
+	// link pointed at) before.
+	const EVIDENCE = ['checks', 'projects_sharing_links', 'hackatime', 'hackatime_error', 'github', 'github_error', 'unified_records', 'unified_person', 'unified_person_error', 'days', 'commit_seconds', 'after_last_commit_seconds', 'commit_time_error', 'window_start', 'telescreen_hackatime_url'];
+	const NO_EVIDENCE = { ...Object.fromEntries(EVIDENCE.map((k) => [k, null])), checks: [], projects_sharing_links: [], days: [] };
+	const only = (from, keep) => Object.fromEntries(Object.entries(from).filter(([k]) => EVIDENCE.includes(k) === keep));
+	const corePath = (id) => `/review/submissions/${id}?evidence=0`;
+	const fullPath = (id) => `/review/submissions/${id}`;
+	let core = $state(null);
+	let evidence = $state(null); // { ship, fields, fresh }: fresh once this visit has run the checks
+	const hasEvidence = $derived(!!core && !!evidence && evidence.ship === core.submission.id);
+	const d = $derived(core ? { ...NO_EVIDENCE, ...(hasEvidence ? evidence.fields : {}), ...only(core, false) } : null);
+	let gathering = $state(false);
+	let evidenceError = $state('');
+	// There's no evidence to show yet: say so, rather than show "no data".
+	const waiting = $derived(!hasEvidence && !evidenceError);
+	// The checks on screen were run for this visit. Approving needs that: not
+	// checks remembered from an earlier look at the ship, and not an empty
+	// list because they couldn't be run.
+	const checked = $derived(hasEvidence && evidence.fresh && !evidenceError);
 	let error = $state('');
 	let templates = $state([]);
 
@@ -112,19 +137,22 @@
 
 	async function load() {
 		error = '';
+		const asked = id;
 		try {
-			d = await get(`/review/submissions/${id}`);
-			const start = d.stage === 'review' ? d.submission.new_seconds : (d.submission.approved_seconds ?? d.submission.new_seconds);
+			const got = await get(corePath(asked));
+			if (asked !== id) return; // they've moved on to another ship
+			core = got;
+			const start = core.stage === 'review' ? core.submission.new_seconds : (core.submission.approved_seconds ?? core.submission.new_seconds);
 			approvedHours = toHours(start);
 			// At HQ, a reviewer's override carries over until HQ changes it.
-			overrideReason = d.stage === 'hq' && d.submission.override_reason ? d.submission.override_reason : '';
+			overrideReason = core.stage === 'hq' && core.submission.override_reason ? core.submission.override_reason : '';
 			// Sent back to change: start from the review it was.
-			if (d.stage === 'review' && d.submission.returned_to && prefilled !== d.submission.id) {
-				prefilled = d.submission.id;
-				const back = d.events.findLast((e) => e.submission_id === d.submission.id && e.kind === 'sent_back');
-				const before = d.events.findLast((e) => e.submission_id === d.submission.id && e.kind === 'approval' && (!back || e.id < back.id));
-				technicalFeatures = d.submission.technical_features ?? '';
-				notes = d.submission.internal_notes ?? '';
+			if (core.stage === 'review' && core.submission.returned_to && prefilled !== core.submission.id) {
+				prefilled = core.submission.id;
+				const back = core.events.findLast((e) => e.submission_id === core.submission.id && e.kind === 'sent_back');
+				const before = core.events.findLast((e) => e.submission_id === core.submission.id && e.kind === 'approval' && (!back || e.id < back.id));
+				technicalFeatures = core.submission.technical_features ?? '';
+				notes = core.submission.internal_notes ?? '';
 				if (before) {
 					if (before.seconds != null) approvedHours = toHours(before.seconds);
 					feedback = before.message ?? '';
@@ -132,9 +160,28 @@
 				}
 			}
 		} catch (e) {
-			error = e.message;
+			if (asked === id) error = e.message;
 		}
 	}
+	// Asks the outside services. The page is already showing by then.
+	async function gather() {
+		const asked = id;
+		gathering = true;
+		evidenceError = '';
+		// What's on screen is from before, until this answers.
+		if (evidence) evidence = { ...evidence, fresh: false };
+		try {
+			const full = await get(fullPath(asked));
+			if (asked !== id) return;
+			evidence = { ship: full.submission.id, fields: only(full, true), fresh: true };
+		} catch (e) {
+			if (asked === id) evidenceError = e.message;
+		} finally {
+			if (asked === id) gathering = false;
+		}
+	}
+	// After a link is fixed, the checks on it have to run again.
+	const reloadAll = () => Promise.all([load(), gather()]);
 	$effect(() => {
 		id;
 		result = null;
@@ -145,7 +192,16 @@
 		editing = false;
 		prefilled = null;
 		tab = 'checks';
-		load();
+		// What's known about this ship already, then both halves afresh.
+		const before = peek(fullPath(id));
+		core = peek(corePath(id)) ?? null;
+		evidence = before ? { ship: before.submission.id, fields: only(before, true), fresh: false } : null;
+		// Untracked: this runs when the ship changes, not whenever something
+		// the two requests happen to read does.
+		untrack(() => {
+			load();
+			gather();
+		});
 	});
 	onMount(() => {
 		get('/review/templates').then((t) => (templates = t)).catch(() => {});
@@ -445,7 +501,7 @@
 						{#if p.demo_url}<a class="btn small primary" href={p.demo_url} target="_blank" rel="noreferrer">Try the demo</a>{/if}
 						{#if p.repo_url}<a class="btn small ghost" href={p.repo_url} target="_blank" rel="noreferrer">Repo</a>{/if}
 						<span class="muted small">shipped {date(sub.submitted_at)}</span>
-						{#if d.user.id !== session.me.id}<FixLinks project={p} onsaved={load} />{/if}
+						{#if d.user.id !== session.me.id}<FixLinks project={p} onsaved={reloadAll} />{/if}
 					</div>
 					<div class="maker small">
 						<strong>{d.user.name}</strong>
@@ -467,8 +523,20 @@
 				<div class="flags">
 					<div class="flags-head">
 						<h2>Checks</h2>
-						<span class="small" class:ok={failing.length === 0}>{failing.length ? `${failing.length} to look at · ${passing.length} passed` : `All ${passing.length} passed`}</span>
+						{#if waiting}
+							<span class="small" role="status">Running the checks…</span>
+						{:else if evidenceError}
+							<span class="small">Couldn't run them</span>
+						{:else}
+							<span class="small" class:ok={failing.length === 0 && checked}>{failing.length ? `${failing.length} to look at · ${passing.length} passed` : `All ${passing.length} passed`}{checked ? '' : ' · from earlier, running again…'}</span>
+						{/if}
 					</div>
+					{#if evidenceError}
+						<p class="callout warn small" role="alert">
+							The checks couldn't be run: {evidenceError}
+							<button class="link-btn" onclick={gather} disabled={gathering}>{gathering ? 'Trying…' : 'Try again'}</button>
+						</p>
+					{/if}
 					{#if failing.length}
 						<ul class="checks">
 							{#each failing as c (c.id)}
@@ -484,7 +552,7 @@
 							{/each}
 						</ul>
 					{:else}
-						<p class="small muted">Nothing flagged. The full list is below.</p>
+						<p class="small muted">{waiting ? 'Asking Hackatime, GitHub, the links and the Unified YSWS DB. The ship itself is ready to look at.' : evidenceError ? '' : 'Nothing flagged. The full list is below.'}</p>
 					{/if}
 				</div>
 			</section>
@@ -496,7 +564,8 @@
 						<button role="tab" id="tab-{key}" aria-selected={tab === key} aria-controls="panel-{key}" tabindex={tab === key ? 0 : -1}
 							onclick={() => (tab = key)} onkeydown={tabKeys}>
 							{label}
-							{#if key === 'checks'}<span class="count" class:bad={failing.length}>{failing.length ? `${failing.length} to look at` : 'all passed'}</span>
+							{#if waiting && key !== 'prereview'}<span class="count">…</span>
+							{:else if key === 'checks'}<span class="count" class:bad={failing.length}>{failing.length ? `${failing.length} to look at` : 'all passed'}</span>
 							{:else if key === 'prereview'}<span class="count" class:bad={d.prereview?.ai_usage?.level === 'medium' || d.prereview?.ai_usage?.level === 'high'}>{d.prereview ? (AI_COUNTS[d.prereview.ai_usage?.level] ?? 'ready') : 'none yet'}</span>
 							{:else if key === 'github'}<span class="count">{d.github ? `${d.github.commits.length}${d.github.truncated ? '+' : ''} commits` : 'no data'}</span>
 							{:else}<span class="count">{d.hackatime ? hours(d.hackatime.seconds) : 'no data'}</span>{/if}
@@ -510,7 +579,7 @@
 							<div class="stack">
 								<!-- What didn't pass is at the top, in full; here is the rest, names only. -->
 								<div class="stack-sm">
-									<h2>Passed <span class="muted h-count">{passing.length} of {d.checks.length}</span></h2>
+									<h2>Passed <span class="muted h-count">{waiting ? '…' : `${passing.length} of ${d.checks.length}`}</span></h2>
 									{#if passing.length}
 										<ul class="passed">
 											{#each passing as c (c.id)}
@@ -518,7 +587,7 @@
 											{/each}
 										</ul>
 									{:else}
-										<p class="small muted">None yet.</p>
+										<p class="small muted">{waiting ? 'Still running.' : 'None yet.'}</p>
 									{/if}
 								</div>
 								<div class="stack-sm">
@@ -539,7 +608,11 @@
 										</div>
 										{#if noteError}<p class="callout warn small">{noteError}</p>{/if}
 									{/if}
-									<UnifiedHistory person={d.unified_person} error={d.unified_person_error} />
+									{#if waiting}
+										<p class="small muted" role="status">Searching the Unified YSWS DB for their other projects…</p>
+									{:else}
+										<UnifiedHistory person={d.unified_person} error={d.unified_person_error} />
+									{/if}
 									{#if p.submissions.length > 1}
 										<h2 style="margin-top: 12px">Ships</h2>
 										<ul class="ships small">
@@ -627,13 +700,21 @@
 					</div>
 				{:else if tab === 'github'}
 					<div class="tab-panel part" role="tabpanel" id="panel-github" aria-labelledby="tab-github">
-						<GitHubPanel github={d.github} githubError={d.github_error} repoUrl={p.repo_url} days={d.days} windowStart={d.window_start} {reship}
-							commitSeconds={d.commit_seconds} afterLastCommit={d.after_last_commit_seconds} commitTimeError={d.commit_time_error} />
+						{#if waiting}
+							<p class="muted" role="status">Asking GitHub about the repo and its commits…</p>
+						{:else}
+							<GitHubPanel github={d.github} githubError={d.github_error} repoUrl={p.repo_url} days={d.days} windowStart={d.window_start} {reship}
+								commitSeconds={d.commit_seconds} afterLastCommit={d.after_last_commit_seconds} commitTimeError={d.commit_time_error} />
+						{/if}
 					</div>
 				{:else}
 					<div class="tab-panel part" role="tabpanel" id="panel-hackatime" aria-labelledby="tab-hackatime">
-						<HackatimePanel hackatime={d.hackatime} hackatimeError={d.hackatime_error} submission={sub} earlierSeconds={p.approved_seconds}
-							days={d.days} windowStart={d.window_start} {reship} checks={d.checks} telescreenUrl={d.telescreen_hackatime_url} />
+						{#if waiting}
+							<p class="muted" role="status">Asking Hackatime for their time…</p>
+						{:else}
+							<HackatimePanel hackatime={d.hackatime} hackatimeError={d.hackatime_error} submission={sub} earlierSeconds={p.approved_seconds}
+								days={d.days} windowStart={d.window_start} {reship} checks={d.checks} telescreenUrl={d.telescreen_hackatime_url} />
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -643,7 +724,7 @@
 				<dl class="numbers">
 					<div class="lead"><dt>Claimed</dt><dd>{hours(sub.new_seconds)}</dd></div>
 					{#if sub.approved_seconds != null}<div><dt>Approved so far</dt><dd>{hours(sub.approved_seconds)}</dd></div>{/if}
-					<div><dt>Hackatime now</dt><dd>{d.hackatime ? hours(d.hackatime.seconds) : '–'}</dd></div>
+					<div><dt>Hackatime now</dt><dd>{waiting ? '…' : d.hackatime ? hours(d.hackatime.seconds) : '–'}</dd></div>
 					<div><dt>Earlier ships</dt><dd>{hours(p.approved_seconds)}</dd></div>
 				</dl>
 
@@ -782,8 +863,13 @@
 									</label>
 								{/if}
 								{#if formError}<p class="callout warn small">{formError}</p>{/if}
-								{#if action === 'approve'}<p class="small muted next">{whatNext}</p>{/if}
-								<button class="btn primary submit" disabled={busy}>
+								{#if action === 'approve'}
+									<p class="small muted next">
+										{checked ? whatNext : evidenceError ? "The checks couldn't be run, so this can't be approved yet. Try them again above." : 'The checks are still running. You can approve once they are in.'}
+									</p>
+								{/if}
+								<!-- Rejecting or sending back needs no checks; approving waits for this visit's. -->
+								<button class="btn primary submit" disabled={busy || (action === 'approve' && !checked)}>
 									{busy ? 'Saving…' : action === 'approve' ? approveWord : action === 'reject' ? 'Soft reject' : action === 'hard_reject' ? 'Hard reject' : `Send back to ${approvedBy}`}
 								</button>
 							</div>
@@ -802,7 +888,7 @@
 		</div>
 	</div>
 {:else}
-	<p class="loading muted">Loading… (this asks Hackatime and GitHub, so it can take a moment)</p>
+	<p class="loading muted" role="status">Loading…</p>
 {/if}
 
 <style>
