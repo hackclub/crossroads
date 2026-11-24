@@ -1,36 +1,37 @@
 <script>
-	// The ticket car while you're on another page: how close you are to it.
-	// The full ticket, with buying, comes from the Shop page (see Station.svelte).
-	import { get } from '../api.js';
-	import { session } from '../session.svelte.js';
+	// The ticket car while you're on Home or Boxes: the same car Shop shows
+	// (ShopCar), drawn from the shop items last loaded, so it doesn't change
+	// as the train pulls away from Shop or back to it. Its buttons do nothing
+	// here; the train keeps cars that aren't the page's own inert.
+	import { get, peek } from '../api.js';
+	import ShopCar from './ShopCar.svelte';
 
-	let ticket = $state(null);
+	let items = $state(peek('/shop/items') ?? null);
+	let innerWidth = $state(1440);
 	$effect(() => {
 		get('/shop/items')
-			.then((items) => (ticket = items.find((i) => i.kind === 'ticket') ?? null))
+			.then((i) => (items = i))
 			.catch(() => {});
 	});
-	const stamps = $derived(session.me?.stamps ?? 0);
-	const pct = $derived(ticket ? Math.min(Math.max(stamps / ticket.price, 0), 1) * 100 : 0);
+	const ticket = $derived(items?.find((i) => i.kind === 'ticket') ?? null);
+	const lock = $derived(items?.find((i) => i.kind === 'price_lock') ?? null);
 </script>
 
-<div class="preview">
-	<span class="kind">The trip</span>
-	<h2>{ticket?.name ?? 'Crossroads rail pass'}</h2>
-	<span>Berlin, then across Europe by train · February 2027</span>
-	{#if ticket}
-		{#if ticket.bought > 0}
-			<span>You have your rail pass. See you in Berlin!</span>
-		{:else}
-			<span class="small">{Math.max(stamps, 0)} / {ticket.price} tickets</span>
-			<div class="bar" aria-hidden="true"><span class="seg approved" style="width: {pct}%"></span></div>
-		{/if}
-	{/if}
-</div>
+<svelte:window bind:innerWidth />
+
+{#if ticket}
+	<ShopCar {ticket} {lock} wide={innerWidth > 960} />
+{:else}
+	<!-- Before the shop has loaded once. -->
+	<div class="blank stack-sm">
+		<span class="kind">The trip</span>
+		<h2>Crossroads rail pass</h2>
+		<span>Berlin, then across Europe by train · February 2027</span>
+	</div>
+{/if}
 
 <style>
-	.preview { display: flex; flex-direction: column; justify-content: center; gap: 6px; height: 100%; padding: 24px 32px 28px; }
+	.blank { justify-content: center; height: 100%; padding: 20px 28px 22px; }
 	.kind { font-size: 24px; }
 	h2 { font-size: clamp(40px, 4vw, 64px); }
-	.bar { height: 20px; max-width: 520px; margin-top: 6px; }
 </style>

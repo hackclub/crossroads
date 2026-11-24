@@ -49,7 +49,7 @@
 	const active = (href) => page.url.pathname === href || page.url.pathname.startsWith(href + '/');
 </script>
 
-<header class="topbar" style="background-image: url({film})">
+<header class="topbar" data-press style="background-image: url({film})">
 	<div class="window w-left">
 		<!-- The logo goes to Hack Club; the name goes back to the landing page. -->
 		<a class="brand-logo" href="https://hackclub.com"><img src={logo} alt="Hack Club" width="60" height="60" /></a>

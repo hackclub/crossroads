@@ -3,7 +3,7 @@
 	// check, and for HQ sign-off. See backend/api/stages.go for the rules.
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, get } from '#lib/api.js';
+	import { api, get, peek } from '#lib/api.js';
 	import { session } from '#lib/session.svelte.js';
 	import { hours, date } from '#lib/format.js';
 	import { STAGES, canDecideStage, canManageRejections, canPrereview, reasonLabel, time } from '#lib/review.js';
@@ -32,10 +32,13 @@
 
 	async function load(s) {
 		error = '';
+		// The queue as it was last seen, while it's asked for again.
+		data = peek(`/review/queue?stage=${s}`) ?? null;
 		try {
-			data = await get(`/review/queue?stage=${s}`);
+			const got = await get(`/review/queue?stage=${s}`);
+			if (s === stage) data = got; // not if they've switched queue since
 		} catch (e) {
-			error = e.message;
+			if (s === stage) error = e.message;
 		}
 	}
 	$effect(() => {

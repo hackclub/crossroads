@@ -1,9 +1,9 @@
 <script>
 	import { onMount } from 'svelte';
-	import { get } from '#lib/api.js';
+	import { get, peek } from '#lib/api.js';
 	import { date } from '#lib/format.js';
 
-	let orders = $state(null);
+	let orders = $state(peek('/orders') ?? null);
 	let error = $state('');
 	onMount(async () => {
 		try {

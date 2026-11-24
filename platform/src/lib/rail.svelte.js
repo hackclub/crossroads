@@ -1,28 +1,20 @@
 // The one long train on Home, Shop and Boxes (see RailTrain.svelte).
 //
 // Home and Shop hand their live car content to the train with <Station>;
-// while a page isn't open, its car shows a small preview instead. The stamp
-// car loads its own stamps; bump stampsVersion to make it reload them.
+// while a page isn't open, its car shows the same car drawn from what was
+// last loaded (cars/HomePreview, cars/ShopPreview), so a car looks the same
+// before, during and after the train moves. The stamp car loads its own
+// stamps; bump stampsVersion to make it reload them.
 export const rail = $state({
 	home: null, // snippet from the Home page, while it's open
 	shop: null, // snippet from the Shop page, while it's open
 	stampsVersion: 0,
-	// Sequencing the train with the section above it on Home (CommunityBridge,
-	// once Repair Bridge, now the mountains under "Coming soon..."),
-	// as performance.now() times: when the train comes to rest after rolling
-	// in or moving, and when the bridge has finished folding away. The bridge
-	// opens only once the train has stopped; the train leaves Home only once
-	// the bridge has folded.
-	settle: 0,
-	foldUntil: 0,
-	// Whether the mountains above are showing, so the train can carry their
-	// black on down behind it.
-	mountains: false
+	// Whether they've moved between pages since the site loaded (the layout
+	// sets it). The train only rolls in when it arrives that way.
+	traveled: false
 });
 
-// How long the bridge takes to fold away (its closing transitions in
-// CommunityBridge.svelte end at 0.8s).
-export const BRIDGE_FOLD_MS = 800;
-
-// Front of the train on the right; it moves right to reach cars further back.
-export const STATIONS = ['/boxes', '/shop', '/home'];
+// The cars in order, left to right: the same order as Home, Shop and Boxes in
+// the top bar, so the train moves the way the nav reads. Home's car is the
+// front of the train, on the left.
+export const STATIONS = ['/home', '/shop', '/boxes'];

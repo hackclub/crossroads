@@ -5,10 +5,14 @@ package api
 // are in stages.go.
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -427,29 +431,45 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		respond.ServerError(w, r, err)
 		return
 	}
-	// Their history in the Unified YSWS DB, while the checks run.
+	// The evidence is everything that asks an outside service: Hackatime,
+	// GitHub, the two links and the Unified YSWS DB. They're asked together,
+	// but the answer still waits for the slowest. ?evidence=0 leaves it all
+	// out, for the review page to show the ship at once and fill the evidence
+	// in when it comes, and to reload after a comment or a claim, which
+	// change none of it.
 	var (
+		report    checkReport
 		person    *unified.Person
 		personErr string
-		personed  = make(chan struct{})
 	)
-	go func() {
-		defer close(personed)
-		if a.Unified == nil {
-			return
-		}
-		p, err := a.Unified.FindByPerson(r.Context(), row.User.Email, deref(row.User.SlackID))
+	if r.URL.Query().Get("evidence") != "0" {
+		// Their history in the Unified YSWS DB, while the checks run.
+		var personTook time.Duration
+		personed := make(chan struct{})
+		go func() {
+			defer close(personed)
+			if a.Unified == nil {
+				return
+			}
+			start := time.Now()
+			p, err := a.Unified.FindByPerson(r.Context(), row.User.Email, deref(row.User.SlackID))
+			personTook = time.Since(start)
+			if err != nil {
+				personErr = "Couldn't search the Unified YSWS DB: " + err.Error()
+				return
+			}
+			person = &p
+		}()
+		report, err = a.runChecks(r.Context(), row, settings)
+		<-personed
 		if err != nil {
-			personErr = "Couldn't search the Unified YSWS DB: " + err.Error()
+			respond.ServerError(w, r, err)
 			return
 		}
-		person = &p
-	}()
-	report, err := a.runChecks(r.Context(), row, settings)
-	<-personed
-	if err != nil {
-		respond.ServerError(w, r, err)
-		return
+		if a.Unified != nil {
+			report.Timings["unified-person"] = personTook
+		}
+		w.Header().Set("Server-Timing", serverTiming(report.Timings))
 	}
 	// The pre-review, for those who can see them (prereview.go).
 	var pre *prereviewJSON
@@ -585,6 +605,20 @@ func (a *API) getSubmissionForReview(w http.ResponseWriter, r *http.Request) {
 		CanDecide:              cantDecide == "",
 		CantDecideReason:       cantDecide,
 	})
+}
+
+// serverTiming writes how long each outside service took as a Server-Timing
+// header, slowest first, which browsers show in the network panel: the way to
+// see what a slow review page was waiting for.
+func serverTiming(timings map[string]time.Duration) string {
+	names := slices.SortedFunc(maps.Keys(timings), func(x, y string) int {
+		return cmp.Or(cmp.Compare(timings[y], timings[x]), strings.Compare(x, y))
+	})
+	parts := make([]string, len(names))
+	for i, name := range names {
+		parts[i] = fmt.Sprintf("%s;dur=%.0f", name, float64(timings[name].Microseconds())/1000)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // reviewSubmission is POST /review/submissions/{id}: a decision at whatever

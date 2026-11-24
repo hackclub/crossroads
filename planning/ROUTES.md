@@ -651,6 +651,8 @@ Claims are advisory but enforced at decision time: nobody can decide a ship some
 
 ### `GET /api/review/submissions/{id}`
 
+With `?evidence=0` it answers from the database alone, without asking Hackatime, GitHub, the links or the Unified YSWS DB: `checks`, `projects_sharing_links`, `hackatime`, `github`, `unified_records`, `unified_person`, `days`, `commit_seconds` and `after_last_commit_seconds` come back empty or null, and `window_start` and `telescreen_hackatime_url` aren't set. The review page shows the ship from that, then asks without it for the rest. Without `?evidence=0`, the response has a `Server-Timing` header with how long each of those services took.
+
 `200` →
 
 ```ts
