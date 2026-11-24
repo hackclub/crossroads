@@ -37,9 +37,14 @@ type projectJSON struct {
 
 	// Only on GET /projects/{id}, fresh from Hackatime. If Hackatime couldn't
 	// be asked, HackatimeError says why instead.
-	HackatimeSeconds   *int   `json:"hackatime_seconds,omitempty"`
-	UnsubmittedSeconds *int   `json:"unsubmitted_seconds,omitempty"`
-	HackatimeError     string `json:"hackatime_error,omitempty"`
+	HackatimeSeconds   *int `json:"hackatime_seconds,omitempty"`
+	UnsubmittedSeconds *int `json:"unsubmitted_seconds,omitempty"`
+	// The most its owner has unsubmitted across all their projects together
+	// (the person's limit), which adding up every project's
+	// UnsubmittedSeconds can go over: time that counted toward two projects
+	// at once is unsubmitted on both.
+	OwnerUnsubmittedSeconds *int   `json:"owner_unsubmitted_seconds,omitempty"`
+	HackatimeError          string `json:"hackatime_error,omitempty"`
 
 	Submissions []submissionJSON `json:"submissions"` // newest first
 
@@ -421,8 +426,10 @@ func (a *API) getProject(w http.ResponseWriter, r *http.Request) {
 		} else {
 			accounted, _ := accountedFor(submissions)
 			unsubmitted := totals.unclaimed(accounted, int(claimed))
+			ownerUnsubmitted := max(0, totals.User-int(claimed))
 			out.HackatimeSeconds = &totals.Project
 			out.UnsubmittedSeconds = &unsubmitted
+			out.OwnerUnsubmittedSeconds = &ownerUnsubmitted
 		}
 	}
 	respond.JSON(w, http.StatusOK, out)
