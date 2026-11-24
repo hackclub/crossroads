@@ -1,14 +1,17 @@
 <script>
 	import { onMount } from 'svelte';
-	import { api, get } from '#lib/api.js';
+	import { api, get, peek } from '#lib/api.js';
 	import { date, effectShort } from '#lib/format.js';
 	import { rail } from '#lib/rail.svelte.js';
 	import BoxOpening from '#lib/BoxOpening.svelte';
 
-	let boxes = $state([]);
-	let types = $state([]);
-	let stamps = $state([]);
-	let projects = $state([]);
+	// Starts from what the last visit showed. Until the boxes are known, the
+	// page says nothing about them, rather than "you don't have any".
+	let boxes = $state(peek('/boxes') ?? []);
+	let known = $state(peek('/boxes') !== undefined);
+	let types = $state(peek('/box-types') ?? []);
+	let stamps = $state(peek('/special-stamps') ?? []);
+	let projects = $state(peek('/projects') ?? []);
 	let error = $state('');
 	let dropped = $state(null);
 	let opening = $state(null);
@@ -20,13 +23,15 @@
 	async function load() {
 		try {
 			[boxes, types, stamps, projects] = await Promise.all([get('/boxes'), get('/box-types'), get('/special-stamps'), get('/projects')]);
+			known = true;
 		} catch (e) {
 			error = e.message;
 		}
 	}
 	onMount(load);
 
-	const typeName = (id) => types.find((t) => t.id === id)?.name ?? `Box type ${id}`;
+	// Before the box types have loaded, a box is just a box, not "Box type 3".
+	const typeName = (id) => types.find((t) => t.id === id)?.name ?? (types.length ? `Box type ${id}` : 'Box');
 	const unopened = $derived(boxes.filter((b) => !b.opened_at));
 	const opened = $derived(boxes.filter((b) => b.opened_at));
 	const stampName = (id) => stamps.find((s) => s.id === id)?.type.name ?? '?';
@@ -62,7 +67,7 @@
 	<div class="page-head">
 		<div class="stack-sm">
 			<h1>Boxes</h1>
-			<p class="muted">Hitting certain milestones in approved hours gets you stamp boxes, and so does each project that gets enough hours approved! Stamps can be collected or applied to your projects for special effects when you ship.</p>
+			<p class="muted measure">Hitting certain milestones in approved hours gets you stamp boxes, and so does each project that gets enough hours approved! Stamps can be collected or applied to your projects for special effects when you ship.</p>
 		</div>
 	</div>
 
@@ -99,20 +104,20 @@
 	</dialog>
 
 	<section class="stack">
-		<h2>Unopened ({unopened.length})</h2>
+		<h2>Unopened{known ? ` (${unopened.length})` : ''}</h2>
 		{#each unopened as box}
 			<div class="card"><div class="row between">
 				<span><strong>{typeName(box.box_type_id)}</strong> <span class="small muted">· got {date(box.granted_at)}{source(box)}</span></span>
 				<button class="btn primary" disabled={opening === box.id} onclick={() => open(box)}>{opening === box.id ? 'Opening…' : 'Open'}</button>
 			</div></div>
 		{:else}
-			<p class="muted small">You don't have any boxes to open right now. Time to ship!</p>
+			{#if known}<p class="muted small">You don't have any boxes to open right now. Time to ship!</p>{/if}
 		{/each}
 	</section>
 
 	<section class="stack">
 		<h2>What's in each box</h2>
-		<p class="small muted">These are the chance tables for each box, so that you know what you're getting! If a stamp isn't listed, it probably ran out.</p>
+		<p class="small muted measure">These are the chance tables for each box, so that you know what you're getting! If a stamp isn't listed, it probably ran out.</p>
 		{#each types as t}
 			<div class="card">
 				<strong>{t.name}</strong>
@@ -132,7 +137,7 @@
 				</table>
 			</div>
 		{:else}
-			<p class="muted small">No box types yet.</p>
+			{#if known}<p class="muted small">No box types yet.</p>{/if}
 		{/each}
 	</section>
 

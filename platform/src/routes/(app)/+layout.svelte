@@ -1,7 +1,7 @@
 <script>
 	// Every page in (app) needs someone signed in.
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { goto, beforeNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { session, refresh } from '#lib/session.svelte.js';
 	import TopBar from '#lib/TopBar.svelte';
@@ -9,7 +9,8 @@
 	import LandingPagePrompt from '#lib/LandingPagePrompt.svelte';
 	import RailTrain from '#lib/RailTrain.svelte';
 	import CommunityBridge from '#lib/CommunityBridge.svelte';
-	import { STATIONS } from '#lib/rail.svelte.js';
+	import { rail, STATIONS } from '#lib/rail.svelte.js';
+	import { getAhead } from '#lib/ahead.js';
 
 	let { children } = $props();
 	let error = $state('');
@@ -18,6 +19,15 @@
 	// Reviewing a ship takes the whole window: the page has its own slim bar
 	// instead of the site's.
 	const reviewing = $derived(page.route.id === '/(app)/review/[id]');
+
+	// From the first move between pages on, the train rolls in when it appears.
+	beforeNavigate(() => {
+		rail.traveled = true;
+	});
+
+	// Fetch a page's data as its link is pointed at, and follow the top bar's
+	// and project rows' links on the press (see ahead.js).
+	onMount(getAhead);
 
 	onMount(async () => {
 		try {
@@ -34,15 +44,20 @@
 	{:else if session.me && reviewing}
 		{@render children()}
 		<DevPanel onchange={refresh} />
-	{:else if session.me}
+	{:else if !reviewing}
+		<!-- The top bar doesn't wait to know who's signed in: it's there as
+		     soon as the page is, and fills in its right-hand side after. -->
 		<TopBar />
-		<!-- Home opens with the community goal ("Repair Bridge"), above the train. -->
-		{#if station}<CommunityBridge open={station === '/home'} />{/if}
-		{#if station}<RailTrain at={station} />{/if}
-		<main class="main">
-			{@render children()}
-		</main>
-		<LandingPagePrompt />
-		<DevPanel onchange={refresh} />
+		{#if session.me}
+			<!-- The train is the first thing on Home, Shop and Boxes, at the same
+			     place and size on each, so moving between them only slides it. -->
+			{#if station}<RailTrain at={station} />{/if}
+			<main class="main">
+				{@render children()}
+			</main>
+			{#if station === '/home'}<CommunityBridge />{/if}
+			<LandingPagePrompt />
+			<DevPanel onchange={refresh} />
+		{/if}
 	{/if}
 </div>

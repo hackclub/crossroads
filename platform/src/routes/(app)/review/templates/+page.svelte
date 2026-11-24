@@ -2,9 +2,9 @@
 	// Feedback templates: snippets reviewers drop into feedback. Shared by
 	// everyone who reviews; anyone can change them.
 	import { onMount } from 'svelte';
-	import { api, get } from '#lib/api.js';
+	import { api, get, peek } from '#lib/api.js';
 
-	let templates = $state(null);
+	let templates = $state(peek('/review/templates') ?? null);
 	let error = $state('');
 	let msg = $state(null);
 	let draft = $state({ title: '', body: '' }); // a new one

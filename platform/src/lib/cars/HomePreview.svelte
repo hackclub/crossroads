@@ -1,28 +1,25 @@
 <script>
-	// The dashboard car while you're on another page: a short version of the
-	// Home hero. The full one comes from the Home page (see Station.svelte).
-	import { get } from '../api.js';
-	import { session } from '../session.svelte.js';
-	import StampIcon from '../StampIcon.svelte';
+	// The dashboard car while you're on Shop or Boxes: the same car Home shows
+	// (HomeCar), drawn from what was last loaded, so it doesn't change as the
+	// train pulls away from Home or back to it.
+	import { get, peek } from '../api.js';
+	import HomeCar from './HomeCar.svelte';
 
-	let unopened = $state(0);
+	const ticketIn = (items) => items?.find((i) => i.kind === 'ticket') ?? null;
+	const detailsOf = (projects) => Object.fromEntries((projects ?? []).map((p) => [p.id, peek(`/projects/${p.id}`)]).filter(([, d]) => d));
+
+	let projects = $state(peek('/projects') ?? null);
+	let boxes = $state(peek('/boxes') ?? null);
+	let ticket = $state(ticketIn(peek('/shop/items')));
+	// Unshipped time comes from Hackatime through each project's own page, so
+	// this only uses what Home already asked for.
+	const details = $derived(detailsOf(projects));
+
 	$effect(() => {
-		get('/boxes')
-			.then((boxes) => (unopened = boxes.filter((b) => !b.opened_at).length))
-			.catch(() => {});
+		get('/projects').then((p) => (projects = p)).catch(() => {});
+		get('/boxes').then((b) => (boxes = b)).catch(() => {});
+		get('/shop/items').then((items) => (ticket = ticketIn(items))).catch(() => {});
 	});
-	const first = $derived(session.me ? session.me.name.replace(/\s*\(dev\)$/, '').trim().split(/\s+/)[0] : '');
 </script>
 
-<div class="preview">
-	<h2>Hi {first}!</h2>
-	<div class="row">
-		<span class="stat">Tickets: <b>{session.me?.stamps}<StampIcon /></b></span>
-		<span class="stat">Boxes: <b>{unopened}</b></span>
-	</div>
-</div>
-
-<style>
-	.preview { display: flex; flex-direction: column; justify-content: center; gap: 14px; height: 100%; padding: 22px 32px 26px; }
-	h2 { font-size: clamp(48px, 5vw, 80px); }
-</style>
+<HomeCar {projects} {details} {boxes} {ticket} />

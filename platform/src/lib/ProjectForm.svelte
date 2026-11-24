@@ -4,7 +4,7 @@
 	// on ruled lines on the right, under a postmark. Hackatime and Save follow.
 	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { api, get } from './api.js';
+	import { api, get, peek } from './api.js';
 	import { hours, inReview } from './format.js';
 	import ImageDrop from './ImageDrop.svelte';
 
@@ -19,7 +19,9 @@
 	let demo_url = $state(project?.demo_url ?? '');
 	let screenshot_url = $state(project?.screenshot_url ?? '');
 	let linked = $state([...(project?.hackatime_projects ?? [])]);
-	let hackatime = $state(null);
+	// Starts from the list Home last loaded, so the form opens at its full
+	// height instead of growing when the list arrives.
+	let hackatime = $state(peek('/hackatime/projects') ?? null);
 	let hackatimeError = $state('');
 	let error = $state('');
 	let saving = $state(false);

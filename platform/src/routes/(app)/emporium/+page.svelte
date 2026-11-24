@@ -3,12 +3,12 @@
 	// an admin let in for a project worth it (GET /emporium/items answers 404
 	// to anyone else). Grants are sold here in pieces, priced per approved hour.
 	import { onMount } from 'svelte';
-	import { api, get } from '#lib/api.js';
+	import { api, get, peek } from '#lib/api.js';
 	import { session, refresh } from '#lib/session.svelte.js';
 	import { stampHours, homeCountry } from '#lib/format.js';
 	import StampIcon from '#lib/StampIcon.svelte';
 
-	let items = $state(null);
+	let items = $state(peek('/emporium/items') ?? null);
 	let ticket = $state(null); // the rail pass, from the shop, to warn before spending what it needs
 	let error = $state('');
 	let message = $state(null); // { tone, text, verify? }
