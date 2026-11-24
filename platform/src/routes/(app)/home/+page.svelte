@@ -133,7 +133,7 @@
 				<a class="project-row" href="/projects/{p.id}">
 					<span class="stack-sm">
 						<span class="name">{p.name}</span>
-						<span class="meta">{hours(p.approved_seconds)} approved{#if details[p.id]?.unsubmitted_seconds} · {hours(details[p.id].unsubmitted_seconds)} not shipped{/if}</span>
+						<span class="meta">{hours(p.approved_seconds)} {p.resubmit_blocked ? 'forfeited' : 'approved'}{#if details[p.id]?.unsubmitted_seconds} · {hours(details[p.id].unsubmitted_seconds)} not shipped{/if}</span>
 					</span>
 					<span class="badge {s.tone}">{s.label}</span>
 				</a>

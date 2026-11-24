@@ -50,12 +50,125 @@ func (q *Queries) AddStampEntry(ctx context.Context, arg AddStampEntryParams) (S
 	return i, err
 }
 
+const forfeitProjectStamps = `-- name: ForfeitProjectStamps :many
+insert into stamp_ledger (user_id, kind, amount, submission_id, created_by)
+select stamp_ledger.user_id, 'forfeit'::stamp_entry_kind, -sum(stamp_ledger.amount), stamp_ledger.submission_id,
+    $1::bigint
+from stamp_ledger
+join submissions on submissions.id = stamp_ledger.submission_id
+where submissions.project_id = $2
+group by stamp_ledger.user_id, stamp_ledger.submission_id
+having sum(stamp_ledger.amount) > 0
+returning id, user_id, kind, amount, submission_id, order_id, created_by, note, created_at
+`
+
+type ForfeitProjectStampsParams struct {
+	CreatedBy int64
+	ProjectID int64
+}
+
+// A hard reject: takes back what each of the project's ships still holds of
+// the tickets it was paid (see migration 43). Lock the owner first.
+func (q *Queries) ForfeitProjectStamps(ctx context.Context, arg ForfeitProjectStampsParams) ([]StampLedger, error) {
+	rows, err := q.db.Query(ctx, forfeitProjectStamps, arg.CreatedBy, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StampLedger
+	for rows.Next() {
+		var i StampLedger
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Kind,
+			&i.Amount,
+			&i.SubmissionID,
+			&i.OrderID,
+			&i.CreatedBy,
+			&i.Note,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const forfeitedStampsForProject = `-- name: ForfeitedStampsForProject :one
+select coalesce(-sum(stamp_ledger.amount), 0)::bigint
+from stamp_ledger
+join submissions on submissions.id = stamp_ledger.submission_id
+where submissions.project_id = $1 and stamp_ledger.kind in ('forfeit', 'restore')
+`
+
+// What the project's ships have forfeited and not been given back.
+func (q *Queries) ForfeitedStampsForProject(ctx context.Context, projectID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, forfeitedStampsForProject, projectID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listStampEntries = `-- name: ListStampEntries :many
 select id, user_id, kind, amount, submission_id, order_id, created_by, note, created_at from stamp_ledger where user_id = $1 order by id desc
 `
 
 func (q *Queries) ListStampEntries(ctx context.Context, userID int64) ([]StampLedger, error) {
 	rows, err := q.db.Query(ctx, listStampEntries, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StampLedger
+	for rows.Next() {
+		var i StampLedger
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Kind,
+			&i.Amount,
+			&i.SubmissionID,
+			&i.OrderID,
+			&i.CreatedBy,
+			&i.Note,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const restoreProjectStamps = `-- name: RestoreProjectStamps :many
+insert into stamp_ledger (user_id, kind, amount, submission_id, created_by)
+select stamp_ledger.user_id, 'restore'::stamp_entry_kind, -sum(stamp_ledger.amount), stamp_ledger.submission_id,
+    $1::bigint
+from stamp_ledger
+join submissions on submissions.id = stamp_ledger.submission_id
+where submissions.project_id = $2 and stamp_ledger.kind in ('forfeit', 'restore')
+group by stamp_ledger.user_id, stamp_ledger.submission_id
+having sum(stamp_ledger.amount) < 0
+returning id, user_id, kind, amount, submission_id, order_id, created_by, note, created_at
+`
+
+type RestoreProjectStampsParams struct {
+	CreatedBy int64
+	ProjectID int64
+}
+
+// Gives back what each of the project's ships has forfeited. Lock the owner
+// first.
+func (q *Queries) RestoreProjectStamps(ctx context.Context, arg RestoreProjectStampsParams) ([]StampLedger, error) {
+	rows, err := q.db.Query(ctx, restoreProjectStamps, arg.CreatedBy, arg.ProjectID)
 	if err != nil {
 		return nil, err
 	}

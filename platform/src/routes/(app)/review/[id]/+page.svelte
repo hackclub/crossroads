@@ -653,6 +653,7 @@
 						{#if result.stamps_paid || result.boxes_granted.length}
 							<span>Paid {result.stamps_paid} tickets{result.boxes_granted.length ? ` and gave ${result.boxes_granted.length} box(es)` : ''}.</span>
 						{/if}
+						{#if result.stamps_forfeited}<span>Took back the {result.stamps_forfeited} tickets the project earned.</span>{/if}
 						<!-- The bar's links too, since on a phone it's scrolled away by now. -->
 						<div class="row">
 							<button class="btn small primary" onclick={nextReview} disabled={moving}>{moving ? 'Finding one…' : 'Next review'}</button>

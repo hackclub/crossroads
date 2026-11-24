@@ -12,7 +12,7 @@
 		['sign_in', 'Sign-ins', []],
 		['special_stamp', 'Special stamps', [['special_stamp.issued', 'Issued'], ['special_stamp.used', 'Used']]],
 		['box', 'Boxes', [['box.granted', 'Granted']]],
-		['stamps', 'Tickets', [['stamps.payout', 'Payouts'], ['stamps.bonus', 'Bonuses'], ['stamps.purchase', 'Purchases'], ['stamps.refund', 'Refunds'], ['stamps.adjustment', 'Adjustments']]],
+		['stamps', 'Tickets', [['stamps.payout', 'Payouts'], ['stamps.bonus', 'Bonuses'], ['stamps.purchase', 'Purchases'], ['stamps.refund', 'Refunds'], ['stamps.adjustment', 'Adjustments'], ['stamps.forfeit', 'Forfeits'], ['stamps.restore', 'Given back']]],
 		['role', 'Roles', [['role.changed', 'Changed']]],
 		['order', 'Orders', [['order.fulfilled', 'Fulfilled'], ['order.cancelled', 'Cancelled']]],
 		['shop_item', 'Shop items', [['shop_item.changed', 'Changed']]]
@@ -94,7 +94,9 @@
 				bonus: `bonus on ${d.project} (ship #${d.submission_id})`,
 				purchase: `on ${d.item} (order #${d.order_id})`,
 				refund: `back for ${d.item} (order #${d.order_id})`,
-				adjustment: `“${d.note}”`
+				adjustment: `“${d.note}”`,
+				forfeit: `taken back from ${d.project} by a hard reject (ship #${d.submission_id})`,
+				restore: `given back for ${d.project} (ship #${d.submission_id})`
 			}[e.kind.slice(7)];
 			return `${signed(d.amount)} tickets ${what ?? ''}, now ${d.balance}`;
 		}

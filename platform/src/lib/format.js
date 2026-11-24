@@ -29,7 +29,8 @@ export function stampHours(stamps, rate) {
 	return h + 'h';
 }
 
-export const approvedSeconds = (projects) => projects.reduce((t, p) => t + p.approved_seconds, 0);
+// A hard-rejected project's hours are forfeit, along with its tickets.
+export const approvedSeconds = (projects) => projects.reduce((t, p) => t + (p.resubmit_blocked ? 0 : p.approved_seconds), 0);
 
 // A ship still in review: waiting for a reviewer, or approved by one and
 // waiting for its final check (final_check) before stamps are paid.

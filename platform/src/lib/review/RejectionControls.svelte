@@ -1,8 +1,9 @@
 <script>
 	// On a rejected ship: soft or hard, and for HQ and admins, what can be
 	// done about it. Soft: they change the project and ship it again. Hard:
-	// the project can't be shipped again until HQ or an admin allows it.
-	// Undoing puts the ship back in the review queue.
+	// the project can't be shipped again until HQ or an admin allows it, and
+	// its tickets are taken back; allowing it can give them back. Undoing puts
+	// the ship back in the review queue.
 	import { api } from '#lib/api.js';
 	import { session } from '#lib/session.svelte.js';
 	import { date } from '#lib/format.js';
@@ -14,6 +15,7 @@
 	const manage = $derived(canManageRejections(session.me) && !mine);
 	let asking = $state(null); // 'block' or 'undo' while the reason box is open
 	let reason = $state('');
+	let restore = $state(false); // give back what the hard reject took
 	let busy = $state(false);
 	let error = $state('');
 
@@ -31,15 +33,17 @@
 			busy = false;
 		}
 	}
+	const restoring = $derived(restore && block?.forfeited_stamps > 0);
 	const setBlocked = (blocked) =>
-		run(() => api('PUT', `/review/projects/${projectId}/resubmit-block`, blocked ? { blocked, reason } : { blocked }));
-	const undo = () => run(() => api('POST', `/review/submissions/${submissionId}/reopen`, { reason }));
+		run(() => api('PUT', `/review/projects/${projectId}/resubmit-block`, blocked ? { blocked, reason } : { blocked, restore_stamps: restoring }));
+	const undo = () => run(() => api('POST', `/review/submissions/${submissionId}/reopen`, { reason, restore_stamps: restoring }));
 </script>
 
 <div class="stack-sm">
 	{#if block}
 		<p class="callout warn small">
 			<strong>Hard rejected{block.by ? ` by ${block.by}` : ''}, {date(block.at)}.</strong> The project can't be shipped again.
+			{#if block.forfeited_stamps}The {block.forfeited_stamps} tickets it earned were taken back.{/if}
 			{#if block.reason}<span class="pre">{block.reason}</span>{/if}
 		</p>
 	{:else}
@@ -47,6 +51,10 @@
 	{/if}
 
 	{#if manage}
+		<!-- Shown with the undo form too, so it's what they confirm. -->
+		{#if block?.forfeited_stamps > 0}
+			<label class="check small"><input type="checkbox" bind:checked={restore} /> Give back the {block.forfeited_stamps} tickets it forfeited</label>
+		{/if}
 		{#if asking}
 			<form class="stack-sm" onsubmit={(e) => { e.preventDefault(); asking === 'undo' ? undo() : setBlocked(true); }}>
 				<label class="field">

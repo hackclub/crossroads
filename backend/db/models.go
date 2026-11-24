@@ -417,6 +417,8 @@ const (
 	StampEntryKindRefund     StampEntryKind = "refund"
 	StampEntryKindAdjustment StampEntryKind = "adjustment"
 	StampEntryKindBonus      StampEntryKind = "bonus"
+	StampEntryKindForfeit    StampEntryKind = "forfeit"
+	StampEntryKindRestore    StampEntryKind = "restore"
 )
 
 func (e *StampEntryKind) Scan(src interface{}) error {
@@ -460,7 +462,9 @@ func (e StampEntryKind) Valid() bool {
 		StampEntryKindPurchase,
 		StampEntryKindRefund,
 		StampEntryKindAdjustment,
-		StampEntryKindBonus:
+		StampEntryKindBonus,
+		StampEntryKindForfeit,
+		StampEntryKindRestore:
 		return true
 	}
 	return false
@@ -473,6 +477,8 @@ func AllStampEntryKindValues() []StampEntryKind {
 		StampEntryKindRefund,
 		StampEntryKindAdjustment,
 		StampEntryKindBonus,
+		StampEntryKindForfeit,
+		StampEntryKindRestore,
 	}
 }
 

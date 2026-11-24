@@ -16,6 +16,7 @@
 	let data = $state(null);
 	let error = $state('');
 	let busy = $state(null); // the project being let back in
+	let restore = $state({}); // project id → give back its forfeited tickets
 
 	async function load() {
 		error = '';
@@ -43,7 +44,7 @@
 		busy = item.project_id;
 		error = '';
 		try {
-			await api('PUT', `/review/projects/${item.project_id}/resubmit-block`, { blocked: false });
+			await api('PUT', `/review/projects/${item.project_id}/resubmit-block`, { blocked: false, restore_stamps: !!restore[item.project_id] });
 			await load();
 		} catch (e) {
 			error = e.message;
@@ -65,7 +66,7 @@
 	{:else if mode === 'rejected'}
 		<p class="small muted">Soft: they can change it and ship it again. Hard: it can't be shipped again until HQ or an admin allows it. Open one to change it.</p>
 	{:else}
-		<p class="small muted">Projects a hard reject stopped from being shipped again. Letting one back means its owner can ship it again.</p>
+		<p class="small muted">Projects a hard reject stopped from being shipped again, which took back their tickets. Letting one back means its owner can ship it again, and you can give the tickets back.</p>
 	{/if}
 	{#if error}<p class="callout warn small" role="alert">{error}</p>{/if}
 
@@ -92,6 +93,9 @@
 							<td>
 								<div class="row end">
 									{#if mode === 'blocked'}
+										{#if i.forfeited_stamps > 0}
+											<label class="check small"><input type="checkbox" bind:checked={restore[i.project_id]} /> Give back {i.forfeited_stamps} tickets</label>
+										{/if}
 										<button class="btn small" disabled={busy === i.project_id} onclick={() => allow(i)}>Let them ship it again</button>
 									{/if}
 									<a class="btn small ghost" href="/review/{i.id}">Open</a>

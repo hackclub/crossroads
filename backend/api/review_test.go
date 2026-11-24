@@ -63,8 +63,9 @@ type decisionResult struct {
 		ReviewerID      *int64  `json:"reviewer_id"`
 		InternalNotes   *string `json:"internal_notes"`
 	} `json:"submission"`
-	StampsPaid   int `json:"stamps_paid"`
-	BoxesGranted []struct {
+	StampsPaid      int `json:"stamps_paid"`
+	StampsForfeited int `json:"stamps_forfeited"`
+	BoxesGranted    []struct {
 		MilestoneID *int64 `json:"milestone_id"`
 		ProjectID   *int64 `json:"project_id"`
 	} `json:"boxes_granted"`
