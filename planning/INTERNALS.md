@@ -180,6 +180,8 @@ Sidekick passes its own `permissions`: it vouches for its reviewers, so `isHq` d
 
 `runChecks` is also what the review page and Sidekick's project detail show, run fresh on each load. What it said at the moment of approval is saved on the submission (`checks`).
 
+The checks ask Hackatime, GitHub, the two links and the Unified YSWS DB at the same time, so they take as long as the slowest of them. The review page doesn't wait for that: it asks `GET /api/review/submissions/{id}?evidence=0` first, which leaves all of them out and answers from the database alone, shows the ship, and fills the evidence in from the plain request when it arrives. It reloads with `?evidence=0` after a comment or a claim, which change none of the evidence. Approving is held until the checks are in; rejecting isn't. The plain request's `Server-Timing` header says how long each service took, slowest first, which is where to look when a review page is slow. GitHub's answers are remembered for 10 minutes, link checks and Unified YSWS DB searches for 5; Hackatime is always asked.
+
 The queues put submissions with a priority-review special stamp first, then oldest first. `ClaimNextSubmission` uses the same order, after the reviewer's own live claim.
 
 ## Boxes and special stamps

@@ -2,8 +2,10 @@ package api_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/scherepi/crossroads-backend/db"
@@ -352,6 +354,42 @@ func TestProjectMilestoneBoxes(t *testing.T) {
 	e.mustCall(t, user, http.StatusOK, "GET", "/api/boxes", nil, &boxes)
 	if len(boxes) != 3 {
 		t.Errorf("has %d boxes, want 3: their own and one with each project", len(boxes))
+	}
+}
+
+// With ?evidence=0 the review page gets the ship without asking any outside
+// service, so it can show it at once and reload it after a comment or a claim.
+func TestReviewDetailWithoutEvidence(t *testing.T) {
+	e := newEnv(t)
+	reviewer := e.newReviewer(t)
+	_, id := e.shipFor(t, "U1", 5)
+
+	var detail struct {
+		Submission struct {
+			ID int64 `json:"id"`
+		} `json:"submission"`
+		Stage     string            `json:"stage"`
+		CanDecide bool              `json:"can_decide"`
+		Checks    []json.RawMessage `json:"checks"`
+		Hackatime json.RawMessage   `json:"hackatime"`
+	}
+	var asked atomic.Int32
+	e.hackatime.beforeStats = func(*http.Request) { asked.Add(1) }
+	e.mustCall(t, reviewer, http.StatusOK, "GET", "/api/review/submissions/"+itoa(id)+"?evidence=0", nil, &detail)
+	if asked.Load() != 0 {
+		t.Errorf("asked Hackatime %d times without evidence", asked.Load())
+	}
+	if detail.Submission.ID != id || detail.Stage != "review" || !detail.CanDecide {
+		t.Errorf("got submission %d at stage %q, can decide %v", detail.Submission.ID, detail.Stage, detail.CanDecide)
+	}
+	if len(detail.Checks) != 0 || string(detail.Hackatime) != "null" {
+		t.Errorf("got %d checks and Hackatime %s without evidence", len(detail.Checks), detail.Hackatime)
+	}
+
+	// Asked plainly, it's all there, as before.
+	e.mustCall(t, reviewer, http.StatusOK, "GET", "/api/review/submissions/"+itoa(id), nil, &detail)
+	if asked.Load() == 0 || len(detail.Checks) == 0 || string(detail.Hackatime) == "null" {
+		t.Errorf("with evidence: asked Hackatime %d times, %d checks, Hackatime %s", asked.Load(), len(detail.Checks), detail.Hackatime)
 	}
 }
 

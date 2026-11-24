@@ -1,12 +1,12 @@
 <script>
 	// The last car of the train (Boxes): every special stamp you own, laid out
 	// on wood like the stamp box. Stamps stuck on a project link to it.
-	import { get } from '../api.js';
+	import { get, peek } from '../api.js';
 	import { rail } from '../rail.svelte.js';
 	import { effectShort } from '../format.js';
 	import wood from '../assets/rail/wood.webp';
 
-	let stamps = $state(null);
+	let stamps = $state(peek('/special-stamps') ?? null);
 	let error = $state('');
 
 	$effect(() => {

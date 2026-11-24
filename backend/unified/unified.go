@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 	"unicode"
 
 	"github.com/scherepi/crossroads-backend/airtable"
@@ -176,7 +178,60 @@ const (
 const maxPersonProjects = 50
 
 // Airtable reads the Unified YSWS DB. It only ever reads.
-type Airtable struct{ client *airtable.Client }
+type Airtable struct {
+	client *airtable.Client
+	// What it found lately. Each search reads through a table of every
+	// project every program has approved, which takes Airtable seconds, and a
+	// review page asks three of them every time it loads.
+	links  cache[[]Record]
+	people cache[Person]
+}
+
+// How long an answer is good for. A project another program approved shows up
+// here this long after it's in the Unified YSWS DB, where people add rows by
+// hand, days after the work.
+const rememberFor = 5 * time.Minute
+
+// cache remembers answers by key for rememberFor. The zero value is ready to use.
+type cache[T any] struct {
+	mu    sync.Mutex
+	found map[string]cached[T]
+}
+
+type cached[T any] struct {
+	value   T
+	expires time.Time
+}
+
+// recall is what was found for key, if that's still good.
+func (c *cache[T]) recall(key string) (T, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	hit, ok := c.found[key]
+	if !ok || time.Now().After(hit.expires) {
+		delete(c.found, key)
+		var none T
+		return none, false
+	}
+	return hit.value, true
+}
+
+func (c *cache[T]) remember(key string, value T) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.found == nil {
+		c.found = map[string]cached[T]{}
+	}
+	// Most keys are never asked for again once their ship is decided, so
+	// what's expired goes whenever something is added.
+	now := time.Now()
+	for k, old := range c.found {
+		if now.After(old.expires) {
+			delete(c.found, k)
+		}
+	}
+	c.found[key] = cached[T]{value, now.Add(rememberFor)}
+}
 
 // NewAirtable needs a personal access token with data.records:read on the
 // Unified YSWS base. A read-only token is all it should be given.
@@ -200,6 +255,10 @@ func (a *Airtable) FindByLinks(ctx context.Context, links ...string) ([]Record, 
 	if len(conditions) == 0 {
 		return nil, nil
 	}
+	key := strings.Join(wanted, "\n")
+	if records, ok := a.links.recall(key); ok {
+		return records, nil
+	}
 	rows, err := a.client.List(ctx, TableID, "OR("+strings.Join(conditions, ",")+")",
 		"Code URL", "Playable URL", "Hours Spent", "Override Hours Spent", "YSWS–Name", "Approved At")
 	if err != nil {
@@ -214,6 +273,7 @@ func (a *Airtable) FindByLinks(ctx context.Context, links ...string) ([]Record, 
 		}
 		records = append(records, r)
 	}
+	a.links.remember(key, records)
 	return records, nil
 }
 
@@ -222,20 +282,6 @@ func (a *Airtable) FindByLinks(ctx context.Context, links ...string) ([]Record, 
 func (a *Airtable) FindByPerson(ctx context.Context, email, slackID string) (Person, error) {
 	person := Person{Projects: []Record{}}
 	email = strings.ToLower(strings.TrimSpace(email))
-	if email != "" {
-		rows, err := a.client.List(ctx, TableID, fmt.Sprintf(`LOWER(TRIM({Email})) = "%s"`, formulaString(email)),
-			"Code URL", "Playable URL", "Hours Spent", "Override Hours Spent", "YSWS–Name", "Approved At", "Description")
-		if err != nil {
-			return person, err
-		}
-		for _, row := range rows {
-			person.Projects = append(person.Projects, toRecord(row))
-		}
-		slices.SortStableFunc(person.Projects, func(x, y Record) int { return strings.Compare(y.ApprovedAt, x.ApprovedAt) })
-		if len(person.Projects) > maxPersonProjects {
-			person.Projects = person.Projects[:maxPersonProjects]
-		}
-	}
 	var who []string
 	if slackID != "" {
 		who = append(who, fmt.Sprintf(`{Slack ID} = "%s"`, formulaString(slackID)))
@@ -243,18 +289,49 @@ func (a *Airtable) FindByPerson(ctx context.Context, email, slackID string) (Per
 	if email != "" {
 		who = append(who, fmt.Sprintf(`LOWER(TRIM({Hack Club Auth Email})) = "%s"`, formulaString(email)))
 	}
-	if len(who) == 0 {
-		return person, nil
+	key := email + "\n" + slackID
+	if p, ok := a.people.recall(key); ok {
+		return p, nil
 	}
-	rows, err := a.client.List(ctx, AuthorsTableID, "OR("+strings.Join(who, ",")+")", "Unified Trust Level", "Weighted Grants–Total")
-	if err != nil {
-		return person, err
+
+	// Their projects and their YSWS Authors row are two tables, asked for at
+	// the same time.
+	var (
+		wg                      sync.WaitGroup
+		projects, authors       []airtable.Record
+		projectsErr, authorsErr error
+	)
+	if email != "" {
+		wg.Go(func() {
+			projects, projectsErr = a.client.List(ctx, TableID, fmt.Sprintf(`LOWER(TRIM({Email})) = "%s"`, formulaString(email)),
+				"Code URL", "Playable URL", "Hours Spent", "Override Hours Spent", "YSWS–Name", "Approved At", "Description")
+		})
 	}
-	if len(rows) > 0 {
+	if len(who) > 0 {
+		wg.Go(func() {
+			authors, authorsErr = a.client.List(ctx, AuthorsTableID, "OR("+strings.Join(who, ",")+")", "Unified Trust Level", "Weighted Grants–Total")
+		})
+	}
+	wg.Wait()
+	if projectsErr != nil {
+		return person, projectsErr
+	}
+	for _, row := range projects {
+		person.Projects = append(person.Projects, toRecord(row))
+	}
+	slices.SortStableFunc(person.Projects, func(x, y Record) int { return strings.Compare(y.ApprovedAt, x.ApprovedAt) })
+	if len(person.Projects) > maxPersonProjects {
+		person.Projects = person.Projects[:maxPersonProjects]
+	}
+	if authorsErr != nil {
+		return person, authorsErr
+	}
+	if len(authors) > 0 {
 		person.Found = true
-		person.TrustLevel = text(rows[0].Fields["Unified Trust Level"])
-		person.WeightedGrants = number(rows[0].Fields["Weighted Grants–Total"])
+		person.TrustLevel = text(authors[0].Fields["Unified Trust Level"])
+		person.WeightedGrants = number(authors[0].Fields["Weighted Grants–Total"])
 	}
+	a.people.remember(key, person)
 	return person, nil
 }
 

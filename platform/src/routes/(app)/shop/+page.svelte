@@ -1,12 +1,18 @@
 <script>
 	import { onMount } from 'svelte';
-	import { api, get } from '#lib/api.js';
+	import { api, get, peek } from '#lib/api.js';
 	import { session, refresh } from '#lib/session.svelte.js';
 	import { stampHours, homeCountry } from '#lib/format.js';
 	import Station from '#lib/Station.svelte';
 	import StampIcon from '#lib/StampIcon.svelte';
+	import ShopCar from '#lib/cars/ShopCar.svelte';
+	import ShopLadder, { hasLadder } from '#lib/cars/ShopLadder.svelte';
 
-	let items = $state([]);
+	let items = $state(peek('/shop/items') ?? []);
+	// Wide enough for the batches and the price lock to ride in the ticket car;
+	// narrower, they sit on the page under the train (see ShopLadder).
+	let innerWidth = $state(1440);
+	const wide = $derived(innerWidth > 960);
 	let error = $state('');
 	let message = $state(null); // { tone, text, verify? }
 	let buying = $state(null);
@@ -37,8 +43,6 @@
 	const inHours = (n) => stampHours(n, rate);
 	// Tickets sold in batches: which one is on sale, and whether a lock would help.
 	const batches = $derived(ticket?.batches);
-	const lastBatch = $derived(!!batches && batches.current === batches.prices.length - 1);
-	const canLock = $derived(!!lock && !!batches && !ticket.locked_price && ticket.bought === 0 && ticket.stock > 0 && !lastBatch);
 	const stamps = $derived(session.me.stamps);
 	const hasTicket = $derived(!!ticket && ticket.bought > 0);
 	const address = $derived(session.me.address);
@@ -118,6 +122,8 @@
 	const lines = (a) => [a.name, a.line_1, a.line_2, [a.city, a.state, a.postal_code].filter(Boolean).join(', '), a.country].filter(Boolean);
 </script>
 
+<svelte:window bind:innerWidth />
+
 <div class="shop">
 	<div class="page-head">
 		<div class="stack-sm">
@@ -140,79 +146,13 @@
 	</div>
 
 	{#if ticket}
-		{@const short = ticket.price - stamps}
-		{@const pct = Math.min(Math.max(stamps / ticket.price, 0), 1) * 100}
 		<!-- The ticket is a car of the train in the layout. -->
 		<Station name="shop">
-		<!-- Up to three columns side by side, so the car stays as low as the
-		     other cars of the train: the trip, your progress, then the batches
-		     and the price lock. -->
-		<div class="ticket" class:laddered={!hasTicket && (batches || ticket.locked_price)}>
-				<div class="trip stack-sm">
-					<span class="kind">The trip</span>
-					<h2 id="ticket-name">{ticket.name}</h2>
-					<span>Berlin, then across Europe by train · February 2027</span>
-					{#if ticket.description}<span class="small">{ticket.description}</span>{/if}
-					{#if !hasTicket}<span class="small">Buying the rail pass is how you qualify. Everything else here spends tickets the rail pass needs.</span>{/if}
-				</div>
-				<div class="progress stack">
-					{#if hasTicket}
-						<p class="big-line">You have your rail pass. See you in Berlin!</p>
-						<a class="btn ghost" href="/shop/orders">See your order</a>
-					{:else}
-						<div class="row between"><span>{Math.max(stamps, 0)} / {ticket.price} tickets</span><span>{short > 0 ? `${short} to go · about ${hoursFor(short)}h` : 'You can buy it now'}</span></div>
-						<div class="bar" role="img" aria-label="{Math.round(pct)}% of the way to your rail pass"><span class="seg approved" style="width: {pct}%"></span></div>
-						{#if soldOutReason(ticket)}
-							<button class="btn" disabled>{soldOutReason(ticket)}</button>
-						{:else if short > 0}
-							<button class="btn" disabled>Buy for {ticket.price}</button>
-						{:else}
-							<button class="btn primary" disabled={buying === ticket.id} onclick={() => ask(ticket)}>{buying === ticket.id ? 'Buying…' : `Buy your rail pass for ${ticket.price}`}</button>
-						{/if}
-					{/if}
-				</div>
-				{#if !hasTicket && (batches || ticket.locked_price)}
-					<div class="ladder stack-sm">
-						{#if batches}
-							<ol class="batches" aria-label="Rail pass batches, {batches.size} passes each">
-								{#each batches.prices as price, i}
-									<li class:sold={i < batches.current} class:now={i === batches.current} aria-current={i === batches.current ? 'step' : undefined}>
-										{inHours(price)}<span class="visually-hidden">{i < batches.current ? ', sold out' : i === batches.current ? ', on sale now' : ''}</span>
-									</li>
-								{/each}
-							</ol>
-							<span class="small">
-								{#if ticket.stock === 0}
-									Every batch has sold out.
-								{:else}
-									Batch {batches.current + 1} of {batches.prices.length}: {batches.left_in_batch} left at {inHours(batches.prices[batches.current])}.
-									{lastBatch ? 'This is the last batch.' : `Then ${inHours(batches.prices[batches.current + 1])}.`}
-								{/if}
-							</span>
-						{/if}
-						{#if ticket.locked_price}
-							<p class="callout info small">Your price is locked at {inHours(ticket.locked_price)} ({ticket.locked_price} tickets).</p>
-						{/if}
-						{#if canLock}
-							<div class="lock">
-								<div class="lock-head">
-									<span>Lock in {inHours(batches.prices[batches.current])} for {inHours(lock.price)}</span>
-									{#if stamps < lock.price}
-										<button class="btn" disabled>Need {lock.price - stamps} more</button>
-									{:else}
-										<button class="btn ghost" disabled={buying === lock.id} onclick={() => ask(lock)}>{buying === lock.id ? 'Locking…' : `Lock for ${lock.price}`}</button>
-									{/if}
-								</div>
-								<span class="small">
-									Keeps this price however many batches sell before you're ready. It's on top of the rail pass, and if the passes sell out
-									before you buy one, you get the {lock.price} tickets back.
-								</span>
-							</div>
-						{/if}
-					</div>
-				{/if}
-		</div>
+			<ShopCar live {ticket} {lock} {buying} onask={ask} {wide} />
 		</Station>
+		{#if !wide && hasLadder(ticket)}
+			<section class="card"><ShopLadder {ticket} {lock} {buying} onask={ask} /></section>
+		{/if}
 	{/if}
 
 	<section class="stack">
@@ -349,7 +289,7 @@
 	   heavy type. The name and price keep clear of it. */
 	.sale-note { font-size: 24px; }
 	.items.on-sale { padding-top: 16px; }
-	.on-sale .item-name, .on-sale .price { padding-right: 80px; }
+	.on-sale .item-name, .on-sale .price { padding-right: 96px; }
 	.sticker {
 		position: absolute;
 		z-index: 1;
@@ -406,42 +346,10 @@
 	.addr-form input { font-size: 22px; }
 	.addr-form input:nth-child(-n + 3) { grid-column: 1 / -1; }
 
-	/* The ticket car of the long train; RailTrain draws the car. */
-	.ticket {
-		display: grid;
-		grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-		gap: 18px 32px;
-		align-items: center;
-		padding: 20px 28px 22px;
-	}
-	/* With batches and the lock: three columns. The lock's note sits under
-	   its title and button, so the column stays short. */
-	.ticket.laddered { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr); }
-	.ticket h2 { font-size: clamp(40px, 4vw, 64px); }
-	.ticket.laddered h2 { font-size: clamp(36px, 3vw, 52px); }
-	.lock-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
-	.lock-head > span { font-size: 26px; }
-	.ticket .kind { font-size: 24px; }
-	.ticket .bar { height: 20px; }
-	.ticket .btn.ghost { box-shadow: inset 0 0 0 2px var(--head); align-self: flex-start; }
-	.big-line { font-size: 36px; }
-	/* The batch ladder: sold ones crossed out, the one on sale filled. */
-	.batches { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
-	.batches li { padding: 2px 12px; font-size: 22px; background: var(--navy-deep); border-radius: 8px; }
-	.batches li.sold { color: var(--muted); text-decoration: line-through; }
-	.batches li.now { background: var(--head); color: var(--ink); text-shadow: none; }
-	.lock { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; background: rgb(0 0 0 / 0.35); border-radius: 14px; }
-	.lock .btn { flex: none; }
 	.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 	.card-foot { margin-top: auto; padding-top: 8px; display: flex; }
 	.card-foot .btn { width: 100%; white-space: normal; }
-	/* Not room for three: the trip across the top, the other two under it. */
-	@media (max-width: 960px) {
-		.ticket.laddered { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-		.ticket.laddered .trip { grid-column: 1 / -1; }
-	}
 	@media (max-width: 820px) {
-		.ticket, .ticket.laddered { grid-template-columns: 1fr; padding-inline: 18px; }
 		/* Inside the page's narrow gutter. */
 		.sticker { right: -10px; }
 	}

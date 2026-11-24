@@ -60,6 +60,10 @@ type checkReport struct {
 	CommitSeconds   map[string]int
 	AfterLastCommit *int
 	CommitTimeError string
+	// How long each outside service took to answer, by name. They're asked at
+	// the same time, so the slowest one is how long the checks took. The
+	// review page's response carries them in a Server-Timing header.
+	Timings map[string]time.Duration
 }
 
 type dayJSON struct {
@@ -140,27 +144,39 @@ func (a *API) runChecks(ctx context.Context, row db.GetSubmissionForReviewRow, s
 	)
 	repoURL, demoURL := deref(project.RepoUrl), deref(project.DemoUrl)
 	_, _, onGitHub := github.ParseRepo(repoURL)
-	if user.SlackID != nil {
+	// Each outside service is asked at the same time as the others, and timed.
+	var timingsMu sync.Mutex
+	report.Timings = map[string]time.Duration{}
+	ask := func(name string, f func()) {
 		wg.Go(func() {
+			start := time.Now()
+			f()
+			timingsMu.Lock()
+			report.Timings[name] = time.Since(start)
+			timingsMu.Unlock()
+		})
+	}
+	if user.SlackID != nil {
+		ask("hackatime", func() {
 			stats, statsErr = a.Hackatime.Stats(ctx, *user.SlackID, s.HackatimeProjects, project.CountsFrom(a.HoursStart))
 		})
 	}
 	switch {
 	case onGitHub && a.GitHub != nil:
-		wg.Go(func() { gh, ghErr = a.GitHub.Activity(ctx, repoURL, since, s.SubmittedAt) })
+		ask("github", func() { gh, ghErr = a.GitHub.Activity(ctx, repoURL, since, s.SubmittedAt) })
 		if user.SlackID != nil && len(s.HackatimeProjects) > 0 {
-			wg.Go(func() {
+			ask("hackatime-spans", func() {
 				spans, spansErr = a.Hackatime.Spans(ctx, *user.SlackID, s.HackatimeProjects, since, s.SubmittedAt)
 			})
 		}
 	case !onGitHub && repoURL != "" && a.Links != nil:
-		wg.Go(func() { repoLink = a.Links.Check(ctx, repoURL) })
+		ask("repo-link", func() { repoLink = a.Links.Check(ctx, repoURL) })
 	}
 	if demoURL != "" && a.Links != nil && linkcheck.Invalid(demoURL) == "" && linkcheck.NotADemo(demoURL) == "" {
-		wg.Go(func() { demoLink = a.Links.Check(ctx, demoURL) })
+		ask("demo-link", func() { demoLink = a.Links.Check(ctx, demoURL) })
 	}
 	if a.Unified != nil && (repoURL != "" || demoURL != "") {
-		wg.Go(func() { inUnified, unifiedErr = a.Unified.FindByLinks(ctx, repoURL, demoURL) })
+		ask("unified-links", func() { inUnified, unifiedErr = a.Unified.FindByLinks(ctx, repoURL, demoURL) })
 	}
 	wg.Wait()
 	switch {

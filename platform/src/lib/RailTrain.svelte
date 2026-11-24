@@ -1,17 +1,36 @@
+<script module>
+	// The tallest the cars have been at each width of the train, for as long
+	// as the site stays loaded: coming back from a page without the train, it
+	// is the height it was.
+	const tallest = {};
+</script>
+
 <script>
 	// One long train shared by Home, Shop and Boxes. It lives in the (app)
 	// layout, so it stays put between those pages and slides to the car for
 	// the page you're on, passing every car in between.
 	//
-	//   rear ◀  stamps · cargo · ticket (Shop) · cargo · dashboard (Home)  ▶ front
+	//   front ◀  dashboard (Home) · cargo · ticket (Shop) · cargo · stamps (Boxes)  ▶ rear
 	//
-	// Going Home → Shop the train moves right to bring the ticket car in;
-	// Boxes → Home it rolls left past them all. The page's own car shows its
-	// live content (handed over with <Station>); the others show a preview and
-	// can't be focused while they're off to the side.
-	import { untrack } from 'svelte';
+	// The cars are in the top bar's order, Home, Shop, Boxes, left to right.
+	// Going Home → Shop the train moves left to bring the ticket car in, as if
+	// turning to the next page; Boxes → Home it rolls right past them all. The
+	// page's own car has its
+	// live content (handed over with <Station>); the others draw the same car
+	// from what was last loaded, and can't be focused while they're off to
+	// the side.
+	//
+	// Three things keep it steady, whatever page you're on and however fast
+	// you click:
+	//   - It is the first thing under the top bar on all three pages, so it
+	//     never moves up or down.
+	//   - Every car is as tall as the tallest any of them has been at this
+	//     width (see `floor`), so the train is one height on all three pages
+	//     and the page under it starts at the same place.
+	//   - The slide is a single CSS transition on the strip's transform. A
+	//     click part-way through just gives it a new place to stop: it carries
+	//     on from where it is, with nothing queued behind it.
 	import { goto } from '$app/navigation';
-	import { browser } from '$app/environment';
 	import { rail, STATIONS } from './rail.svelte.js';
 	import StampCar from './cars/StampCar.svelte';
 	import HomePreview from './cars/HomePreview.svelte';
@@ -19,31 +38,71 @@
 	import wood from './assets/rail/wood.webp';
 
 	let { at } = $props(); // the current path: one of STATIONS
+	// Coming from a page without the train, it rolls in. On a fresh load it's
+	// simply there: nothing should move while the page is still filling in.
+	const roll = rail.traveled;
 
-	// Which station the train is drawn at, and how long the move there takes:
-	// longer the more cars it passes.
-	// Leaving Home, it waits for the bridge above to fold away first; either
-	// way it notes when it will come to rest, so the bridge can wait for that.
-	let shown = $state(untrack(() => STATIONS.indexOf(at)));
+	// Which car is centred. The slide takes a little longer the more cars it
+	// passes; it eases out, so it answers a click at once.
+	const shown = $derived(STATIONS.indexOf(at));
+	let from = STATIONS.indexOf(at);
 	let duration = $state(0);
-	let delay = $state(0);
-	const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-	if (browser) rail.settle = performance.now() + (still() ? 0 : 1600); // the roll-in below
+	$effect.pre(() => {
+		duration = 0.38 + 0.14 * Math.abs(shown - from);
+		from = shown;
+	});
+
+	// The cars' shared height: never less than the tallest the strip has been
+	// at this width. Cars stretch to the tallest one, and which one that is
+	// changes with the page (a car's live content can be taller than another's),
+	// so without this the train would change height from page to page.
+	let railEl;
+	let strip;
+	let width = 0;
+	let floor = $state(0);
 	$effect(() => {
-		const target = STATIONS.indexOf(at);
-		// After this update's other effects, so the bridge has had its say.
-		queueMicrotask(() => {
-			if (target === shown) return;
-			delay = Math.max(0, rail.foldUntil - performance.now()) / 1000;
-			duration = 0.9 + 0.6 * Math.abs(target - shown);
-			shown = target;
-			rail.settle = performance.now() + (still() ? 0 : (delay + duration) * 1000);
+		let frame;
+		// Not before the fonts are in: text in the fallback font is wider and
+		// wraps onto more lines, and that taller height would stick.
+		let ready = false;
+		const measure = () => {
+			if (!ready) return;
+			const w = Math.round(railEl.clientWidth);
+			if (w !== width) {
+				// A new width lays the cars out differently: start from what
+				// this width needed before, or from nothing, and measure again
+				// once the cars have settled at that.
+				width = w;
+				floor = tallest[w] ?? 0;
+				frame = requestAnimationFrame(measure);
+				return;
+			}
+			const h = Math.ceil(strip.getBoundingClientRect().height);
+			if (h > floor) floor = tallest[w] = h;
+		};
+		// On the next frame, not inside the observer: resizing what it watches
+		// from its own callback makes the browser report a "ResizeObserver
+		// loop" error.
+		const watch = new ResizeObserver(() => {
+			cancelAnimationFrame(frame);
+			frame = requestAnimationFrame(measure);
 		});
+		watch.observe(railEl);
+		watch.observe(strip);
+		document.fonts.ready.then(() => {
+			ready = true;
+			frame = requestAnimationFrame(measure);
+		});
+		return () => {
+			ready = false;
+			cancelAnimationFrame(frame);
+			watch.disconnect();
+		};
 	});
 
 	// A two-finger sideways scroll (a trackpad swipe) goes to the next car:
-	// scrolling right goes toward the front (Boxes → Shop → Home), left toward
-	// the back. One swipe moves one car, however long the scroll's momentum
+	// scrolling right goes on down the train (Home → Shop → Boxes), left back
+	// toward Home. One swipe moves one car, however long the scroll's momentum
 	// keeps going, and it doesn't steal sideways scrolls from things that
 	// scroll sideways themselves, like the stamp tray.
 	const SWIPE = 80; // px of sideways scroll that count as a swipe
@@ -87,14 +146,14 @@
 	});
 </script>
 
-<div class="rail" class:under-mountains={rail.mountains} style="--k: {shown}; --wood: url({wood})">
+<div class="rail" bind:this={railEl} style="--k: {shown}; --wood: url({wood}); --floor: {floor}px">
 	<div class="track rails" aria-hidden="true"></div>
-	<div class="arrive">
-		<div class="strip" style="transition-duration: {duration}s; transition-delay: {delay}s">
-			<div class="end rear" aria-hidden="true"><span class="coupler"><i class="knob"></i><i class="bar"></i><i class="block"></i></span></div>
+	<div class="arrive" class:roll>
+		<div class="strip" bind:this={strip} style="transition-duration: {duration}s">
+			<div class="end left" aria-hidden="true"><span class="coupler"><i class="knob"></i><i class="bar"></i><i class="block"></i></span></div>
 
-			<section class="car station" aria-label="Your stamps" inert={at !== '/boxes'}>
-				<StampCar />
+			<section class="car station" aria-label="Your progress" inert={at !== '/home'}>
+				{#if at === '/home' && rail.home}{@render rail.home()}{:else}<HomePreview />{/if}
 			</section>
 			<div class="joint" aria-hidden="true"><span class="coupler"><i class="block"></i><i class="bar"></i><i class="knob"></i><i class="bar"></i><i class="block"></i></span></div>
 			<div class="car cargo" aria-hidden="true"><span class="door"></span></div>
@@ -107,10 +166,10 @@
 			<div class="car cargo" aria-hidden="true"><span class="door"></span></div>
 			<div class="joint" aria-hidden="true"><span class="coupler"><i class="block"></i><i class="bar"></i><i class="knob"></i><i class="bar"></i><i class="block"></i></span></div>
 
-			<section class="car station front" aria-label="Your progress" inert={at !== '/home'}>
-				{#if at === '/home' && rail.home}{@render rail.home()}{:else}<HomePreview />{/if}
+			<section class="car station" aria-label="Your stamps" inert={at !== '/boxes'}>
+				<StampCar />
 			</section>
-			<div class="end front" aria-hidden="true"><span class="coupler"><i class="block"></i><i class="bar"></i><i class="knob"></i></span></div>
+			<div class="end right" aria-hidden="true"><span class="coupler"><i class="block"></i><i class="bar"></i><i class="knob"></i></span></div>
 		</div>
 	</div>
 </div>
@@ -126,45 +185,31 @@
 		padding-block: 16px;
 		overflow-x: clip;
 	}
-	/* On Home the mountains above (CommunityBridge) rise out of the train:
-	   their solid black base runs on down to the cars' top edge (over the
-	   margin and padding above them, 24 + 16px) and fades out just past it.
-	   It fades in as the mountains finish rising, and out as soon as they
-	   start to fold. */
-	.rail::before {
-		content: '';
-		position: absolute;
-		inset: -24px 0 auto;
-		height: 88px;
-		background: linear-gradient(#000 40px, transparent);
-		opacity: 0;
-		transition: opacity 0.2s ease-in;
-		pointer-events: none;
-	}
-	.rail.under-mountains::before { opacity: 1; transition: opacity 0.4s ease-out 0.6s; }
-	@media (prefers-reduced-motion: reduce) {
-		.rail::before, .rail.under-mountains::before { transition: none; }
-	}
 	.strip {
 		--W: min(var(--content), 100cqw - 2 * var(--gutter)); /* a station car */
 		--C: calc(var(--W) * 0.42); /* a cargo car */
 		--g: clamp(16px, 2.8cqw, 48px); /* coupling gap */
+		/* What the tallest car needs with the usual content, so the train is
+		   already full height on a first load, before `floor` has measured it. */
+		--car: 320px;
 		position: relative;
 		left: 50%;
 		display: flex;
 		align-items: stretch;
 		width: max-content;
-		/* Centre car k (0 stamps, 1 ticket, 2 dashboard) on the page. */
+		/* Centre car k (0 dashboard, 1 ticket, 2 stamps) on the page. */
 		transform: translateX(calc(-1 * (var(--k) * (var(--W) + var(--C) + 2 * var(--g)) + var(--W) / 2)));
 		transition-property: transform;
-		transition-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+		/* Eases out only: it starts moving on the click, and a second click
+		   part-way through doesn't have to wait for it to speed up again. */
+		transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 	}
 	.rails { position: absolute; inset: 0; }
 
 	.car { position: relative; z-index: 1; flex: none; border-radius: var(--radius); }
 	/* Every car is as tall as the tallest; content sits in the middle of it.
 	   (Not ".main": that's the page content wrapper in app.css.) */
-	.station { display: flex; flex-direction: column; justify-content: center; width: var(--W); min-height: 220px; background: var(--car-bg); }
+	.station { display: flex; flex-direction: column; justify-content: center; width: var(--W); min-height: max(var(--car), var(--floor, 0px)); background: var(--car-bg); }
 	/* A plank-sided boxcar with a sliding door. */
 	.cargo {
 		width: var(--C);
@@ -201,22 +246,28 @@
 	.joint .coupler { left: -32px; right: -32px; }
 	.end .coupler { width: 72px; }
 	.end .bar { flex: none; width: 20px; }
-	.rear .coupler { right: -33px; }
-	.front .coupler { left: -33px; }
+	.left .coupler { right: -33px; }
+	.right .coupler { left: -33px; }
 
-	/* Arriving from another page (or a fresh load): the train is a quarter of
-	   the window to the left and rolls into place, slowing to a stop. "backwards",
-	   not "both": once it stops, nothing keeps the train on its own GPU layer,
+	/* Arriving from a page without the train (not a fresh load of one that
+	   has it, where nothing should be moving while the page fills in): the
+	   train starts a little to the right and rolls into place, front first. "backwards", not
+	   "both": once it stops, nothing keeps the train on its own GPU layer,
 	   which made the stamps and text in the cars render blurry. */
-	.arrive { animation: roll-in 1.6s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+	.arrive.roll { animation: roll-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
 	@keyframes roll-in {
-		from { translate: -25cqw 0; }
+		from { translate: 8cqw 0; }
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.arrive { animation: none; }
+		.arrive.roll { animation: none; }
 		.strip { transition: none; }
+	}
+	/* Narrower, the ticket car's three columns wrap onto more lines. */
+	@container (max-width: 1200px) {
+		.strip { --car: 340px; }
 	}
 	@media (max-width: 820px) {
 		.rail { --gutter: 16px; margin-top: 16px; }
+		.strip { --car: 460px; }
 	}
 </style>

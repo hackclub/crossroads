@@ -7,7 +7,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, get } from '#lib/api.js';
+	import { api, get, peek } from '#lib/api.js';
 	import { refresh } from '#lib/session.svelte.js';
 	import { hours, date, projectStatus, inReview, EFFECTS, effectShort } from '#lib/format.js';
 
@@ -17,8 +17,12 @@
 	// "NOV 4" for the postmark.
 	const shortDate = (iso) => new Date(iso).toLocaleDateString('en', { month: 'short', day: 'numeric' }).toUpperCase();
 
-	let project = $state(null);
-	let stamps = $state([]);
+	// Opened again, the page starts from what it showed last time while it asks
+	// Hackatime for the new numbers, instead of emptying to "Loading…".
+	// (The backend leaves `stamps` out when there are none; the page wants a list.)
+	const whole = (p) => (p ? { ...p, stamps: p.stamps ?? [] } : null);
+	let project = $state(whole(peek(`/projects/${page.params.id}`)));
+	let stamps = $state(peek('/special-stamps') ?? []);
 	let error = $state('');
 	let actionError = $state('');
 	let busy = $state(false);
@@ -32,7 +36,9 @@
 			project.stamps ??= [];
 			// Open the stamp box the first time there's something in it.
 			if (!boxTouched) {
-				boxOpen = inBox.length > 0 && innerWidth > 820;
+				// Only where it has room beside the page: on a laptop it would
+				// sit on top of the Repo link and the Edit button.
+				boxOpen = inBox.length > 0 && innerWidth >= BOX_CLEAR_WIDTH;
 				boxTouched = true;
 			}
 		} catch (e) {
@@ -74,6 +80,9 @@
 	let innerWidth = $state(1440);
 	let boxOpen = $state(false);
 	let boxTouched = false;
+	// The content column (1162px + padding) with a 300px stamp box clear of it on
+	// each side, so the open box doesn't cover the page.
+	const BOX_CLEAR_WIDTH = 1900;
 	let board = $state(); // the postcard stamps stick on
 	let drag = $state(null); // a stamp being dragged out of the box
 	let toPlace = $state(null); // { stamp, x, y, rotation } waiting for the warning popup
@@ -239,7 +248,9 @@
 	<p class="callout warn">{error}</p>
 	<p><a href="/home">Back home</a></p>
 {:else if !project}
-	<p class="muted">Loading… (this asks Hackatime, so it can take a moment)</p>
+	<!-- The postcard's place and shape while it loads (it asks Hackatime, so it
+	     can take a moment), so the page doesn't start as one line of text. -->
+	<div class="ghost-card" role="status"><span>Loading your project…</span></div>
 {:else}
 	{@const s = projectStatus(project)}
 	<div class="stack-lg">
@@ -432,6 +443,8 @@
 {/if}
 
 <style>
+	.ghost-card { display: grid; place-items: center; aspect-ratio: var(--postcard-ratio); border-radius: 4px; background: rgb(240 232 215 / 0.14); color: var(--muted); }
+
 	/* ---- The project postcard (same card stock as the ships below) ---- */
 	.project-card {
 		--paper: #efe9dc;

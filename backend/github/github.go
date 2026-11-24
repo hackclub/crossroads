@@ -214,12 +214,45 @@ func (c *Client) activity(ctx context.Context, owner, repo string, since, until 
 		r.Language = *info.Language
 	}
 
+	// The README doesn't depend on the commits, so it's asked for alongside
+	// them rather than after.
+	var readme struct {
+		Content  string `json:"content"`
+		Encoding string `json:"encoding"`
+	}
+	var readmeErr error
+	readmeDone := make(chan struct{})
+	go func() {
+		defer close(readmeDone)
+		_, readmeErr = c.get(ctx, path+"/readme", nil, &readme)
+	}()
+	commitsErr := c.commits(ctx, path, r)
+	<-readmeDone
+	if commitsErr != nil {
+		return nil, commitsErr
+	}
+	switch {
+	case errors.Is(readmeErr, ErrNotFound):
+	case readmeErr != nil:
+		return nil, readmeErr
+	case readme.Encoding == "base64":
+		text, _ := base64.StdEncoding.DecodeString(strings.ReplaceAll(readme.Content, "\n", ""))
+		r.Readme = string(text)
+	default:
+		r.Readme = readme.Content
+	}
+	return r, nil
+}
+
+// commits fills in the repo's commit count, the commits in the report's
+// window, and their line counts.
+func (c *Client) commits(ctx context.Context, path string, r *Report) error {
 	// All-time commits: ask for one per page and read how many pages there are.
 	var one []json.RawMessage
 	header, err := c.get(ctx, path+"/commits", url.Values{"per_page": {"1"}}, &one)
 	switch {
 	case err != nil && !errors.Is(err, errEmptyRepo):
-		return nil, err
+		return err
 	case err == nil:
 		r.TotalCommits = len(one)
 		if last := lastPage.FindStringSubmatch(header.Get("Link")); last != nil {
@@ -229,28 +262,10 @@ func (c *Client) activity(ctx context.Context, owner, repo string, since, until 
 
 	if r.TotalCommits > 0 {
 		if err := c.windowCommits(ctx, path, r); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	if err := c.countLines(ctx, path, r); err != nil {
-		return nil, err
-	}
-
-	var readme struct {
-		Content  string `json:"content"`
-		Encoding string `json:"encoding"`
-	}
-	switch _, err := c.get(ctx, path+"/readme", nil, &readme); {
-	case errors.Is(err, ErrNotFound):
-	case err != nil:
-		return nil, err
-	case readme.Encoding == "base64":
-		text, _ := base64.StdEncoding.DecodeString(strings.ReplaceAll(readme.Content, "\n", ""))
-		r.Readme = string(text)
-	default:
-		r.Readme = readme.Content
-	}
-	return r, nil
+	return c.countLines(ctx, path, r)
 }
 
 var lastPage = regexp.MustCompile(`[?&]page=(\d+)[^>]*>;\s*rel="last"`)
