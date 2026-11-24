@@ -8,7 +8,7 @@
 		['Can I ship the same project again?', 'Yes. Each ship only claims the time you tracked since the last one.'],
 		['What are boxes and special stamps?', 'You get a box each time your approved hours pass a milestone. Opening it drops a special stamp. Some special stamps do something when you ship, like moving your project to the front of the review queue. The chances are always shown on the Boxes page, and boxes can never be bought.'],
 		['Why can\'t you read my Hackatime?', 'Your Hack Club account needs Slack linked, you need a Hackatime account with the same Slack, and your Hackatime stats need to be public.'],
-		['Where do I get help?', 'Ask in <a href="https://hackclub.enterprise.slack.com/archives/C0CDHHFABAR" target="_blank" rel="noreferrer">#crossroads-help</a> on the Hack Club Slack.']
+		['Where do I get help?', 'Ask in <a href="https://hackclub.enterprise.slack.com/archives/C0CD7F4RBK9" target="_blank" rel="noreferrer">#crossroads-help</a> on the Hack Club Slack.']
 	];
 </script>
 
