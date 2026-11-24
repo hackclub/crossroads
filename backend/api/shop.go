@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -513,7 +514,7 @@ type shopItemFields struct {
 	Name         *string          `json:"name"`
 	Description  *string          `json:"description"`
 	ImageURL     optional[string] `json:"image_url"`
-	Price        *int32           `json:"price"`
+	Price        *int64           `json:"price"` // checked to fit an int32 in apply
 	StipendCents optional[int32]  `json:"stipend_cents"`
 	Stock        optional[int32]  `json:"stock"`
 	MaxPerUser   optional[int32]  `json:"max_per_user"`
@@ -545,7 +546,10 @@ func (f shopItemFields) apply(item *db.ShopItem, stampsPerHour int) string {
 		item.ImageUrl = f.ImageURL.Value
 	}
 	if f.Price != nil {
-		item.Price = *f.Price
+		if *f.Price > math.MaxInt32 {
+			return fmt.Sprintf("price can be at most %d.", math.MaxInt32)
+		}
+		item.Price = int32(max(*f.Price, 0))
 	}
 	if f.StipendCents.Set {
 		item.StipendCents = f.StipendCents.Value

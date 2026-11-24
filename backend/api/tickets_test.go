@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -192,6 +193,18 @@ func TestTicketBatchFields(t *testing.T) {
 	e.mustCall(t, user, http.StatusOK, "GET", "/api/me", nil, &me)
 	if me.ID != user.ID || me.StampsPerHour != 10 {
 		t.Errorf("/api/me: got %+v", me)
+	}
+}
+
+// Batches that would cost more than a price can hold stop at the most it
+// can, rather than wrapping around to cheap or negative.
+func TestHugeTicketBatches(t *testing.T) {
+	e := newEnv(t)
+	admin := e.newAdmin(t)
+	e.newItem(t, admin, map[string]any{"kind": "ticket", "name": "Ticket", "price": 2_000_000_000, "stock": 4, "batch_size": 2, "batch_step": 1_000_000_000})
+	user := e.verifiedUser(t, admin, "U1", 100)
+	if seen := e.ticketFor(t, user); seen.Batches == nil || !slices.Equal(seen.Batches.Prices, []int{2_000_000_000, math.MaxInt32}) {
+		t.Errorf("got %+v, want the second batch at %d", seen.Batches, math.MaxInt32)
 	}
 }
 

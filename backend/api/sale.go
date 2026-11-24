@@ -24,7 +24,8 @@ func (a *API) onSale(item db.ShopItem, now time.Time) bool {
 }
 
 // salePrice is price with the sale's discount, rounded down so it's never
-// less than salePercent off, but never free.
+// less than salePercent off, but never free. It works in int64: a big price
+// times 90 doesn't fit in an int32, and wrapping made it 1.
 func salePrice(price int32) int32 {
-	return max(price*(100-salePercent)/100, 1)
+	return int32(max(int64(price)*(100-salePercent)/100, 1))
 }

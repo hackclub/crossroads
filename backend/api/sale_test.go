@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -53,6 +54,19 @@ func TestLaunchSale(t *testing.T) {
 		if c.discounted && (got.Sale.FullPrice != c.fullPrice || got.Sale.Percent != 10 || !got.Sale.EndsAt.Equal(e.api.SaleEnd)) {
 			t.Errorf("item %d: got sale %+v", c.id, got.Sale)
 		}
+	}
+
+	// A huge price stays huge on sale, rather than wrapping around to 1.
+	huge := e.newItem(t, admin, map[string]any{"kind": "physical", "name": "Yacht", "price": 2_000_000_000})
+	if got := list()[huge.ID]; got.Price != 1_800_000_000 {
+		t.Errorf("a 2,000,000,000 ticket item on sale costs %d, want 1,800,000,000", got.Price)
+	}
+	if status, o := e.buy(t, user, huge, address); status != http.StatusUnprocessableEntity || !strings.Contains(o.Error, "you need") {
+		t.Errorf("buying it with 5,000 tickets: got %d %q, want 422 for not having enough", status, o.Error)
+	}
+	var problem apiError
+	if status := e.call(t, admin, "PATCH", "/api/admin/shop-items/"+itoa(huge.ID), map[string]any{"price": 7_000_000_000}, &problem); status != http.StatusUnprocessableEntity {
+		t.Errorf("a price of 7,000,000,000: got %d %q, want 422", status, problem.Error)
 	}
 
 	// Buying charges the sale price; the admin still sees the full one.

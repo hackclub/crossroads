@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -27,7 +28,13 @@ func ticketPrice(ticket db.ShopItem, sold int64) int32 {
 	if ticket.BatchSize == nil {
 		return ticket.Price
 	}
-	return ticket.Price + *ticket.BatchStep*int32(sold/int64(*ticket.BatchSize))
+	return batchPrice(ticket, sold/int64(*ticket.BatchSize))
+}
+
+// batchPrice is what a ticket costs in batch (from 0), stopping at the most
+// a price can be rather than wrapping around to cheap.
+func batchPrice(ticket db.ShopItem, batch int64) int32 {
+	return int32(min(int64(ticket.Price)+int64(*ticket.BatchStep)*batch, math.MaxInt32))
 }
 
 type batchesJSON struct {
@@ -47,7 +54,7 @@ func toBatchesJSON(ticket db.ShopItem, sold int64) *batchesJSON {
 	count := max((sold+left+size-1)/size, 1)
 	prices := make([]int32, count)
 	for i := range prices {
-		prices[i] = ticket.Price + *ticket.BatchStep*int32(i)
+		prices[i] = batchPrice(ticket, int64(i))
 	}
 	return &batchesJSON{
 		Size:        int32(size),
