@@ -154,15 +154,19 @@ func toSubmissionJSON(s db.Submission) submissionJSON {
 }
 
 // accountedFor looks at a project's submissions and returns how much of its
-// Hackatime time its approved submissions have covered, including time a
-// reviewer didn't accept, and every Hackatime project paid out on it.
+// Hackatime time its approved submissions and its ship in review have
+// covered, including time a reviewer didn't accept, and every Hackatime
+// project paid out on it.
 func accountedFor(submissions []db.Submission) (seconds int, paid map[string]bool) {
 	paid = map[string]bool{}
 	for _, s := range submissions {
-		if s.Status != db.SubmissionStatusApproved {
+		if s.Status == db.SubmissionStatusRejected {
 			continue
 		}
 		seconds += int(s.NewSeconds)
+		if s.Status != db.SubmissionStatusApproved {
+			continue
+		}
 		for _, name := range s.HackatimeProjects {
 			paid[name] = true
 		}
@@ -180,10 +184,10 @@ type hackatimeTotals struct {
 }
 
 // unclaimed is how much of a project's time can still be submitted: what's
-// been added since its approved submissions, but never more than its owner has
-// left unclaimed across all their projects. The second limit is what stops
-// time that counted toward two projects at once, or that moved to a renamed
-// Hackatime project, from being paid twice.
+// been added since its approved submissions and its ship in review, but never
+// more than its owner has left unclaimed across all their projects. The second
+// limit is what stops time that counted toward two projects at once, or that
+// moved to a renamed Hackatime project, from being paid twice.
 func (t hackatimeTotals) unclaimed(projectAccountedFor, userClaimed int) int {
 	return max(0, min(t.Project-projectAccountedFor, t.User-userClaimed))
 }

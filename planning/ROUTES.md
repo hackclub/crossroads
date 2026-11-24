@@ -81,7 +81,7 @@ interface Project {
   updated_at: string;
   // Only on GET /api/projects/{id}, and only if it has Hackatime projects linked:
   hackatime_seconds?: number;   // its Hackatime time since the event started, right now
-  unsubmitted_seconds?: number; // how much a submission right now would claim
+  unsubmitted_seconds?: number; // how much a submission right now would claim (with a ship in review, the time since it)
   hackatime_error?: string;     // set instead of the two above if Hackatime couldn't be asked
   submissions: Submission[];    // newest first
 }
@@ -385,7 +385,7 @@ Only `name` is required. Everything else can be filled in later, but submitting 
 
 ### `GET /api/projects/{id}`
 
-`200` → `Project`, including `hackatime_seconds` and `unsubmitted_seconds` (or `hackatime_error`) if it has Hackatime projects linked. `unsubmitted_seconds` is exactly what submitting now would claim, after both double-counting limits (see INTERNALS.md). Asking Hackatime makes this slower than the list.
+`200` → `Project`, including `hackatime_seconds` and `unsubmitted_seconds` (or `hackatime_error`) if it has Hackatime projects linked. `unsubmitted_seconds` is exactly what submitting now would claim, after both double-counting limits (see INTERNALS.md); while a ship is in review, its time isn't in it. Asking Hackatime makes this slower than the list.
 
 `404` if it's not theirs.
 

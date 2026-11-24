@@ -134,7 +134,7 @@ Time comes from Hackatime's `GET /api/v1/users/{slack_id}/stats?features=project
 
 A submission's `new_seconds` is `hackatimeTotals.unclaimed`, the smaller of two limits, and never below zero:
 
-1. **The project's limit:** its Hackatime total minus what its approved submissions have already covered (`accountedFor`: the sum of their `new_seconds`). That sum deliberately uses `new_seconds`, not `approved_seconds`, so time a reviewer cut can't be claimed again.
+1. **The project's limit:** its Hackatime total minus what its approved submissions and its ship in review have already covered (`accountedFor`: the sum of their `new_seconds`). Shipping waits until nothing is in review, but the project page shows this before then, and counting the ship in review keeps its time out of "not shipped". That sum deliberately uses `new_seconds`, not `approved_seconds`, so time a reviewer cut can't be claimed again.
 2. **The person's limit:** their Hackatime total across **every** Hackatime project they've linked to any project (overlaps counted once) minus everything their pending and approved submissions have claimed (`ClaimedSecondsForUser`).
 
 The second limit catches:
