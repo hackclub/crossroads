@@ -21,6 +21,19 @@
 	let linked = $state([...(project?.hackatime_projects ?? [])]);
 	let hackatime = $state(null);
 	let hackatimeError = $state('');
+	let hackatimePage = $state(1);
+	let hackatimeSearch = $state('');
+	const perPage = 10;
+	// Sorted by time, biggest first: the API returns whatever order Hackatime
+	// sent, which in development is alphabetical rather than by time.
+	const matching = $derived(
+		(hackatime ?? [])
+			.filter((h) => h.name.toLowerCase().includes(hackatimeSearch.trim().toLowerCase()))
+			.sort((a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name))
+	);
+	const pages = $derived(Math.max(1, Math.ceil(matching.length / perPage)));
+	const page = $derived(Math.min(hackatimePage, pages));
+	const shown = $derived(matching.slice((page - 1) * perPage, page * perPage));
 	let error = $state('');
 	let saving = $state(false);
 
@@ -106,8 +119,19 @@
 			{:else if hackatime.length === 0}
 				<p class="note">No Hackatime time since Aug 1 yet. Code a bit with Hackatime running, then come back.</p>
 			{:else}
+			<input
+				type="text"
+				placeholder="Search your Hackatime projects…"
+				aria-label="Search your Hackatime projects"
+				bind:value={hackatimeSearch}
+				oninput={() => (hackatimePage = 1)}
+				onkeydown={(e) => e.key === 'Enter' && e.preventDefault()}
+			/>
+			{#if matching.length === 0}
+				<p class="note">No Hackatime projects match "{hackatimeSearch}".</p>
+			{:else}
 				<ul class="ht">
-					{#each hackatime as h}
+					{#each shown as h}
 						{@const elsewhere = h.project_id && h.project_id !== project?.id}
 						<li class:elsewhere>
 							<label class="check">
@@ -119,7 +143,15 @@
 						</li>
 					{/each}
 				</ul>
+				{#if pages > 1}
+					<nav class="pager" aria-label="Pages of Hackatime projects">
+						<button type="button" class="btn ghost" disabled={page === 1} onclick={() => (hackatimePage = page - 1)}>← Previous</button>
+						<span class="note">{page} of {pages}</span>
+						<button type="button" class="btn ghost" disabled={page === pages} onclick={() => (hackatimePage = page + 1)}>Next →</button>
+					</nav>
+				{/if}
 			{/if}
+		{/if}
 			<p class="note">Each Hackatime project can only count toward one of your projects.</p>
 		</section>
 	</fieldset>
@@ -251,6 +283,8 @@
 	.ht li.elsewhere .check span { color: var(--muted); }
 	.ht a { font-size: 21px; color: var(--muted); }
 	.ht b { font-weight: 400; min-width: 72px; padding: 4px 14px; text-align: center; background: var(--navy-deep); border-radius: 10px; }
+	.pager { display: flex; align-items: center; justify-content: center; gap: 14px; }
+	.pager .btn.ghost { padding: 8px 18px; font-size: 21px; }
 	.note { margin: 0; font-size: 24px; }
 
 	/* The home page's "Next" bar, holding Save. */
